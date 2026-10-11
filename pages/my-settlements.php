@@ -227,11 +227,11 @@ require __DIR__ . '/../partials/head.php';
       <label class="field-label" for="ref">Reference no. <span class="font-medium text-slate-400">(optional)</span></label>
       <input id="ref" data-field="ref" v-model="payRef" @input="touch('ref')" :class="{ 'is-invalid': err('ref') }" class="input-soft" maxlength="60" placeholder="e.g. 1009 234 567 890" />
       <p v-if="err('ref')" class="field-error">{{ err('ref') }}</p>
-      <p class="field-label mt-4">Screenshot <span class="font-medium text-slate-400">(optional)</span></p>
+      <p class="field-label mt-4">Proof of payment <span class="font-medium text-slate-400">(optional)</span></p>
       <input ref="proof" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" @change="pickProof" aria-label="Proof screenshot" />
       <div class="flex items-center gap-3">
         <img v-if="proofPreview" :src="proofPreview" alt="Selected screenshot" class="h-16 w-16 rounded-xl object-cover" />
-        <button type="button" @click="$refs.proof.click()" class="btn btn-outline btn-sm">{{ proofFile ? 'Change screenshot' : 'Attach screenshot' }}</button>
+        <button type="button" @click="$refs.proof.click()" class="btn btn-outline btn-sm">{{ proofFile ? 'Change photo' : 'Attach photo' }}</button>
         <button v-if="proofFile" type="button" @click="clearProof" class="text-xs font-semibold text-slate-400">Remove</button>
       </div>
       <div class="mt-5 grid grid-cols-2 gap-2.5">
