@@ -99,7 +99,12 @@ if (method() === 'GET') {
                     'discount'     => pesos($calc['discount']),
                     'total'        => pesos($calc['total']),
                     'unassigned'   => $calc['unassigned_count'],
+                    // subtotal…discount and items are in the receipt's currency; total, shares and settlements in the bill's
+                    'receipt_currency' => $calc['receipt_currency'],
+                    'native_total'     => pesos($calc['native_total']),
+                    'fx'               => fx_payload($calc['fx']),
                 ],
+                'fx_log'      => fx_log_rows($bill['id']),
                 'shares'      => array_map(fn ($c) => pesos((int) $c), $calc['shares']),
             ]);
 

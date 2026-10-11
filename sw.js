@@ -8,6 +8,7 @@ const SHELL = [
   'assets/js/ui.js',
   'assets/js/theme.js',
   'assets/js/summary.js',
+  'assets/js/replay.js',
   'assets/js/validate.js',
   'assets/js/docscan-core.js',
   'assets/js/docscan.js',

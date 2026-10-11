@@ -88,8 +88,12 @@ if (method() === 'GET') {
         [$me['id']]
     )->fetchAll(PDO::FETCH_KEY_PAIR);
     $owe = $owed = [];
+    $home = user_currency($me['id']);
     foreach (settlement_rows_with_parts($rows) as $row) {
         $row['my_last_nudge'] = $nudged[$row['id']] ?? null;
+        // A debt in another currency: roughly what's left in mine, at today's rate (settled ones keep their snapshot)
+        $est = $row['currency'] !== $home && $row['status'] !== 'settled' ? fx_estimate(cents($row['remaining']), $row['currency'], $home) : null;
+        $row['estimate'] = $est ? ['currency' => $home, 'amount' => pesos($est['cents']), 'rate' => $est['rate'], 'source' => $est['source'], 'at' => $est['at']] : null;
         if ($row['to']['id'] === $me['id']) {
             $owed[] = $row;
         } else {
@@ -97,7 +101,7 @@ if (method() === 'GET') {
         }
     }
     $cover = array_values(array_filter(settlement_rows_with_parts($others), fn ($r) => $r['open'] > 0 || $r['online_started']));
-    json_ok(['owe' => $owe, 'owed' => $owed, 'others_open' => $cover]);
+    json_ok(['owe' => $owe, 'owed' => $owed, 'others_open' => $cover, 'currency' => $home]);
 }
 
 if (method() !== 'POST') {
@@ -117,6 +121,12 @@ $receiverName = first_name($s['to_name']);
 // Paying for someone else: any member of the bill who is neither side of this debt.
 $covering = !$isSender && !$isReceiver && in_array(input('for_other'), ['1', 1, true], true) && is_member((int) $s['bill_id'], $me['id']);
 
+/** An amount of this settlement, in its currency: "₱500.00", "¥2,000". */
+function s_money(array $s, int $cents): string
+{
+    return money_str($cents, $s['currency'] ?? 'PHP');
+}
+
 /** Absolute URL of an app page, for PayMongo to send the payer back to. */
 function absolute_url(string $path): string
 {
@@ -133,10 +143,10 @@ function part_cents(array $s, int $min = 100): int
     $raw = input('amount');
     $cents = $raw === null || $raw === '' ? $open : cents($raw);
     if ($cents > $open) {
-        fail('That’s more than the ' . peso_str($open) . ' still to pay.', 422, ['fields' => ['amount' => 'At most ' . peso_str($open) . '.']]);
+        fail('That’s more than the ' . s_money($s, $open) . ' still to pay.', 422, ['fields' => ['amount' => 'At most ' . s_money($s, $open) . '.']]);
     }
     if ($cents < min($min, $open)) {
-        fail('Pay at least ' . peso_str(min($min, $open)) . '.', 422, ['fields' => ['amount' => 'At least ' . peso_str(min($min, $open)) . '.']]);
+        fail('Pay at least ' . s_money($s, min($min, $open)) . '.', 422, ['fields' => ['amount' => 'At least ' . s_money($s, min($min, $open)) . '.']]);
     }
     return $cents;
 }
@@ -145,7 +155,7 @@ function part_cents(array $s, int $min = 100): int
 function part_words(int $cents, array $s): string
 {
     $left = cents($s['amount']) - cents($s['paid_amount']) - $cents;
-    return peso_str($cents) . ($left > 0 ? ' (part — ' . peso_str($left) . ' left after it)' : '');
+    return s_money($s, $cents) . ($left > 0 ? ' (part — ' . s_money($s, $left) . ' left after it)' : '');
 }
 
 $pdo = db();
@@ -175,10 +185,10 @@ switch (input('action', '')) {
         $who = $covering ? "$myName (for $debtorName)" : "$myName$onBehalf";
         log_event($id, $me['id'], 'marked_paid', "$who marked " . part_words($cents, $locked) . " as sent to $receiverName" . ($details ? ' (' . implode(', ', $details) . ')' : '') . '.');
         if ($covering) {
-            log_event($id, $me['id'], 'covered', "$myName is paying " . peso_str($cents) . " of {$debtorName}’s debt" . (input('pay_back') ? "; $debtorName will pay $myName back." : ' as a treat.'));
+            log_event($id, $me['id'], 'covered', "$myName is paying " . s_money($s, $cents) . " of {$debtorName}’s debt" . (input('pay_back') ? "; $debtorName will pay $myName back." : ' as a treat.'));
         }
         refresh_settlement_status($id);
-        notify((int) $s['to_user_id'], 'paid', "$who marked " . peso_str($cents) . " as Paid for {$s['bill_name']}. Confirm you received it.", 'my-settlements?tab=owed');
+        notify((int) $s['to_user_id'], 'paid', "$who marked " . s_money($s, $cents) . " as Paid for {$s['bill_name']}. Confirm you received it.", 'my-settlements?tab=owed');
         $pdo->commit();
         break;
 
@@ -191,9 +201,9 @@ switch (input('action', '')) {
         $p = load_payment($id, input('payment_id') ? (int) input('payment_id') : null, 'awaiting');
         confirm_payment($locked, $p, $me['id']);
         $left = settlement_payload($id, $me)['remaining'];
-        log_event($id, $me['id'], 'confirmed', "$myName confirmed receiving " . peso_str(cents($p['amount'])) . '.' . ($left > 0 ? ' ' . peso_str(cents($left)) . ' still to pay.' : ' Settlement closed.'));
+        log_event($id, $me['id'], 'confirmed', "$myName confirmed receiving " . s_money($s, cents($p['amount'])) . '.' . ($left > 0 ? ' ' . s_money($s, cents($left)) . ' still to pay.' : ' Settlement closed.'));
         foreach (array_unique([(int) $s['from_user_id'], (int) $p['paid_by']]) as $uid) {
-            notify($uid, 'confirmed', "$myName confirmed your " . peso_str(cents($p['amount'])) . " payment for {$s['bill_name']}.", 'settlement-audit?id=' . $id);
+            notify($uid, 'confirmed', "$myName confirmed your " . s_money($s, cents($p['amount'])) . " payment for {$s['bill_name']}.", 'settlement-audit?id=' . $id);
         }
         $pdo->commit();
         break;
@@ -212,7 +222,7 @@ switch (input('action', '')) {
         reject_payment($locked, $p, $reason);
         log_event($id, $me['id'], 'disputed', $reason);
         foreach (array_unique([(int) $s['from_user_id'], (int) $p['paid_by']]) as $uid) {
-            notify($uid, 'disputed', "$myName disputed the " . peso_str(cents($p['amount'])) . " payment for {$s['bill_name']}.", 'my-settlements');
+            notify($uid, 'disputed', "$myName disputed the " . s_money($s, cents($p['amount'])) . " payment for {$s['bill_name']}.", 'my-settlements');
         }
         $pdo->commit();
         break;
@@ -251,7 +261,7 @@ switch (input('action', '')) {
         $raw = input('amount');
         $tendered = $raw === null || $raw === '' ? $open : cents($raw);
         if ($tendered < min(100, $open)) {
-            fail('Enter at least ' . peso_str(min(100, $open)) . '.', 422, ['fields' => ['amount' => 'At least ' . peso_str(min(100, $open)) . '.']]);
+            fail('Enter at least ' . s_money($s, min(100, $open)) . '.', 422, ['fields' => ['amount' => 'At least ' . s_money($s, min(100, $open)) . '.']]);
         }
         $cents = min($tendered, $open);
         $extra = $tendered - $cents;
@@ -263,15 +273,15 @@ switch (input('action', '')) {
         $pid = add_payment($locked, (int) $s['from_user_id'], $cents, 'cash', 'awaiting', $over);
         $payer = $debtorName . ($fromGuest ? ' (guest)' : '');
         log_event($id, $me['id'], 'marked_paid', "$myName received " . part_words($cents, $locked) . " in cash from $payer"
-            . ($extra > 0 ? ' (handed over ' . peso_str($tendered) . '; ' . peso_str($extra) . ($keep ? ' kept — owed back as utang' : ' given back as change') . ')' : '') . '.');
+            . ($extra > 0 ? ' (handed over ' . s_money($s, $tendered) . '; ' . s_money($s, $extra) . ($keep ? ' kept — owed back as utang' : ' given back as change') . ')' : '') . '.');
         confirm_payment($locked, ['id' => $pid, 'amount' => pesos($cents), 'paid_by' => $s['from_user_id'], 'pay_back' => 0], $me['id']);
         if ($extra > 0 && $keep) {
-            record_change_utang((int) $s['from_user_id'], $me['id'], $extra, $pid, $s['bill_name'], $me['id']);
-            $used = apply_credits((int) $s['from_user_id'], $me['id'], $me['id']);
+            record_change_utang((int) $s['from_user_id'], $me['id'], $extra, $pid, $s['bill_name'], $me['id'], $s['currency']);
+            $used = apply_credits((int) $s['from_user_id'], $me['id'], $me['id'], $s['currency']);
             $still = $extra - $used;
-            notify((int) $s['from_user_id'], 'confirmed', "$myName kept " . peso_str($extra) . " change from your cash"
-                . ($used ? ' — ' . peso_str($used) . ' already paid your other debts to them' : '')
-                . ($still > 0 ? '. They owe you ' . peso_str($still) . ' (in Utang); it pays your next debts to them, or they pay it back.' : '.'), 'utang');
+            notify((int) $s['from_user_id'], 'confirmed', "$myName kept " . s_money($s, $extra) . " change from your cash"
+                . ($used ? ' — ' . s_money($s, $used) . ' already paid your other debts to them' : '')
+                . ($still > 0 ? '. They owe you ' . s_money($s, $still) . ' (in Utang); it pays your next debts to them, or they pay it back.' : '.'), 'utang');
         }
         // Receiving cash ends a dispute about an earlier part.
         if ($locked['status'] === 'disputed') {
@@ -279,8 +289,8 @@ switch (input('action', '')) {
             refresh_settlement_status($id);
         }
         $left = settlement_payload($id, $me)['remaining'];
-        log_event($id, $me['id'], 'confirmed', "$myName confirmed receiving the cash." . ($left > 0 ? ' ' . peso_str(cents($left)) . ' still to pay.' : ' Settlement closed.'));
-        notify((int) $s['from_user_id'], 'confirmed', "$myName confirmed receiving your " . peso_str($cents) . " cash for {$s['bill_name']}.", 'settlement-audit?id=' . $id);
+        log_event($id, $me['id'], 'confirmed', "$myName confirmed receiving the cash." . ($left > 0 ? ' ' . s_money($s, cents($left)) . ' still to pay.' : ' Settlement closed.'));
+        notify((int) $s['from_user_id'], 'confirmed', "$myName confirmed receiving your " . s_money($s, $cents) . " cash for {$s['bill_name']}.", 'settlement-audit?id=' . $id);
         $pdo->commit();
         break;
 
@@ -288,6 +298,9 @@ switch (input('action', '')) {
         // Opens a PayMongo checkout page for this part; it counts only after PayMongo confirms payment (check_online).
         if (!$isSender && !$covering) {
             fail('Only the person who owes can pay this.', 403);
+        }
+        if (($s['currency'] ?? 'PHP') !== 'PHP') {
+            fail("Online payment (PayMongo) only takes pesos, and this debt is in {$s['currency']}. Send it another way and mark it paid.", 422);
         }
         $paidBy = $covering ? $me['id'] : (int) $s['from_user_id'];
         $pdo->beginTransaction();
@@ -311,7 +324,7 @@ switch (input('action', '')) {
         }
         $cents = part_cents($locked, PAYMONGO_MIN_CENTS);
         if ($cents < PAYMONGO_MIN_CENTS) {
-            fail('Online payment needs at least ' . peso_str(PAYMONGO_MIN_CENTS) . '. Pay this one another way.', 422);
+            fail('Online payment needs at least ' . s_money($s, PAYMONGO_MIN_CENTS) . '. Pay this one another way.', 422);
         }
         try {
             $checkout = paymongo_create_checkout(
@@ -362,7 +375,7 @@ switch (input('action', '')) {
             log_event($id, (int) $p['paid_by'], 'marked_paid', "$payer paid " . part_words($paid['amount'], $locked) . " online via PayMongo ($via, ref {$paid['id']})" . ((int) $p['paid_by'] !== (int) $s['from_user_id'] ? " for $debtorName" : '') . '.');
             confirm_payment($locked, $p, null);
             log_event($id, null, 'confirmed', 'PayMongo confirmed the payment.' . (settlement_payload($id, $me)['remaining'] > 0 ? '' : ' Settlement closed.'));
-            notify((int) $s['to_user_id'], 'confirmed', "$payer paid you " . peso_str($paid['amount']) . " online ($via) for {$s['bill_name']}. Counted automatically.", 'settlement-audit?id=' . $id);
+            notify((int) $s['to_user_id'], 'confirmed', "$payer paid you " . s_money($s, $paid['amount']) . " online ($via) for {$s['bill_name']}. Counted automatically.", 'settlement-audit?id=' . $id);
             $pdo->commit();
             $counted++;
         }
@@ -376,7 +389,7 @@ switch (input('action', '')) {
         if ($fromGuest) {
             fail('Guests don’t have an account, so they can’t get reminders.', 409);
         }
-        $left = peso_str(cents($s['amount']) - cents($s['paid_amount']));
+        $left = s_money($s, cents($s['amount']) - cents($s['paid_amount']));
         if ($isReceiver && $s['status'] === 'pending') {
             [$target, $msg] = [(int) $s['from_user_id'], "$myName sent a reminder: you owe $left for {$s['bill_name']}."];
             $link = 'my-settlements';

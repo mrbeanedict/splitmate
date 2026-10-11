@@ -18,10 +18,15 @@ if (!$u || $u['status'] !== 'active') {
 }
 
 $owe = q(
-    "SELECT s.id, s.amount - s.paid_amount AS amount, s.status, b.name AS bill_name, b.id AS bill_id FROM settlements s JOIN bills b ON b.id = s.bill_id
+    "SELECT s.id, s.currency, s.amount - s.paid_amount AS amount, s.status, b.name AS bill_name, b.id AS bill_id FROM settlements s JOIN bills b ON b.id = s.bill_id
      WHERE s.from_user_id = ? AND s.to_user_id = ? AND s.status <> 'settled' ORDER BY s.created_at",
     [$me['id'], $u['id']]
 )->fetchAll();
+// One total per currency (debts to the same person can be in several)
+$totals = [];
+foreach ($owe as $s) {
+    $totals[$s['currency']] = ($totals[$s['currency']] ?? 0) + cents($s['amount']);
+}
 
 json_ok([
     'person' => public_user($u) + [
@@ -32,9 +37,10 @@ json_ok([
     'owe'    => array_map(fn ($s) => [
         'id'        => (int) $s['id'],
         'amount'    => (float) $s['amount'],
+        'currency'  => $s['currency'],
         'status'    => $s['status'],
         'bill_name' => $s['bill_name'],
         'bill_id'   => (int) $s['bill_id'],
     ], $owe),
-    'owe_total' => pesos(array_sum(array_map(fn ($s) => cents($s['amount']), $owe))),
+    'owe_totals' => array_map('pesos', $totals),
 ]);

@@ -10,6 +10,15 @@ body.badge-bg {
   background-repeat: no-repeat;
   background-attachment: fixed;
 }
+/* Dark mode: a deep gray base with faint washes, so light text and the dark cards stand out. The badges keep drifting
+   at full strength on top of it. */
+html.dark body.badge-bg {
+  background-color: rgb(var(--canvas));
+  background-image:
+    radial-gradient(600px 420px at 8% 22%, rgba(45, 212, 191, .08), transparent 70%),
+    radial-gradient(560px 420px at 95% 78%, rgba(129, 140, 248, .08), transparent 70%),
+    radial-gradient(420px 320px at 85% 40%, rgba(251, 191, 36, .05), transparent 70%);
+}
 /* The page shell is gray too; let the backdrop and badges show through it. */
 body.badge-bg .device:not(.device-white) { background: transparent; }
 

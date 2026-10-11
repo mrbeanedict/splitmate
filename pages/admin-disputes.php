@@ -20,7 +20,7 @@ require __DIR__ . '/../partials/admin-top.php';
         <avatar :user="s.to" :size="36"></avatar>
         <div>
           <p class="text-sm font-semibold">{{ s.from.name }} → {{ s.to.name }}</p>
-          <p class="text-xs text-slate-400">{{ s.bill_name }} · {{ peso(s.amount) }}</p>
+          <p class="text-xs text-slate-400">{{ s.bill_name }} · {{ peso(s.amount, s.currency) }}</p>
         </div>
       </div>
       <status-pill status="disputed"></status-pill>

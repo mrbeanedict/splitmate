@@ -7,12 +7,24 @@ $me = api_user();
 // $col is interpolated into the SQL below, so it must never come from request input — only the two
 // hardcoded literals this file calls it with. The whitelist check keeps that true even if this
 // function is reused elsewhere later.
-$sum = function (string $col) use ($me): array {
+// Debts in other currencies are added in at today's market rate, in my currency ('estimated': some were converted).
+$home = user_currency($me['id']);
+$sum = function (string $col) use ($me, $home): array {
     if (!in_array($col, ['from_user_id', 'to_user_id'], true)) {
         throw new InvalidArgumentException('Invalid column for $sum().');
     }
-    $r = q("SELECT COALESCE(SUM(amount - paid_amount), 0) AS total, COUNT(*) AS n FROM settlements WHERE $col = ? AND status <> 'settled'", [$me['id']])->fetch();
-    return ['total' => (float) $r['total'], 'count' => (int) $r['n']];
+    $total = $n = 0;
+    $estimated = false;
+    foreach (q("SELECT currency, COALESCE(SUM(amount - paid_amount), 0) AS total, COUNT(*) AS n FROM settlements WHERE $col = ? AND status <> 'settled' GROUP BY currency", [$me['id']]) as $r) {
+        $n += (int) $r['n'];
+        if ($r['currency'] === $home) {
+            $total += cents($r['total']);
+        } else {
+            $estimated = true;
+            $total += fx_estimate(cents($r['total']), $r['currency'], $home)['cents'] ?? 0;
+        }
+    }
+    return ['total' => pesos($total), 'count' => $n, 'currency' => $home, 'estimated' => $estimated];
 };
 
 $bills = q(
@@ -22,7 +34,7 @@ $bills = q(
 )->fetchAll();
 
 $activity = q(
-    "SELECT e.event, e.created_at, s.amount, u.full_name AS actor, u.id AS actor_id, u.role AS actor_role, tu.full_name AS to_name, b.name AS bill_name
+    "SELECT e.event, e.created_at, s.amount, s.currency, u.full_name AS actor, u.id AS actor_id, u.role AS actor_role, tu.full_name AS to_name, b.name AS bill_name
      FROM settlement_events e
      JOIN settlements s ON s.id = e.settlement_id
      JOIN bills b ON b.id = s.bill_id
@@ -35,7 +47,7 @@ $activity = q(
 )->fetchAll();
 
 json_ok([
-    'user'     => public_user($me),
+    'user'     => public_user($me) + ['currency' => $home],
     'owe'      => $sum('from_user_id'),
     'owed'     => $sum('to_user_id'),
     'bills'    => array_map(fn ($b) => bill_card($b) + ['link' => bill_link($b, $me['id'])], $bills),
@@ -45,6 +57,7 @@ json_ok([
         'actor'      => $a['actor_id'] === null ? 'PayMongo' : ($a['actor_role'] === 'admin' ? 'The app manager' : ((int) $a['actor_id'] === $me['id'] ? 'You' : first_name((string) $a['actor']))),
         'to'         => first_name($a['to_name']),
         'amount'     => (float) $a['amount'],
+        'currency'   => $a['currency'],
         'bill'       => $a['bill_name'],
         'created_at' => $a['created_at'],
     ], $activity),

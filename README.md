@@ -167,6 +167,7 @@ Role is never fixed by who created the Bill — it's determined by who paid the 
 - Non-food expense types (trips, transport, accommodation) are out of scope for this build.
 - Dispute handling is intentionally simple, not a full resolution workflow.
 - Shared live screens (Fun Mode games) update every 1–2 s by polling, not instantly.
+- Market exchange rates come from free public feeds, updated about daily. They are estimates, so for a foreign receipt the amount actually charged should be entered. A bill's receipts must all be in one currency.
 ## Login & sign-up landing
 
 - Guests land on `pages/login`; the old splash page redirects there. Log in and **Create account** share one design: brand and features on the left, the card in the middle, an illustrative phone on the right. The side columns hide on smaller screens.
@@ -231,6 +232,23 @@ The person who made a saved group can switch **Fun Mode** on from the group page
 - **Skip — split normally** is always offered.
 - **Race and Closest outcome:** the winners pay nothing and everyone else splits the bill equally. If nobody wins, or everyone ties, it's a normal split.
 - **Rules and API:** the rules are in `includes/games.php`, the API in `api/games.php`.
+
+## Currencies
+
+Rules in `includes/currency.php`; split math in `includes/domain.php` (`compute_shares` → `convert_calc`), mirrored client-side by `Setlo.convertShares` in `assets/js/ui.js`.
+
+- **Home currency** (`users.currency`). Each user picks it after choosing a profile picture, and can change it in Profile. Dashboard, Profile, Stats, Utang and the person card add up money in it. Amounts in other currencies are converted at today's rate and marked ≈.
+- **Agreed currency** (`bills.currency`). Everyone settles a bill in one currency. It starts as the payer's and follows them if the payer changes. The creator can switch it on Bill Detail until settling starts. Settlements and their payments carry it (`settlements.currency`).
+- **Receipt currency** (`bills.receipt_currency`, `receipts.currency`). The scanner reads it from symbols, language, address and tax labels, and saves its clues. Review shows what was read and lets the creator correct it. The scanner's reading stays in `receipts.currency_detected`, and a receipt read in a different currency from the bill is flagged.
+- **Settlement rate.** For a receipt in another currency, Bill Detail shows:
+  - **Market estimate.** Rates come from open.er-api.com, with frankfurter.app (ECB) as the fallback. They are cached in `fx_rates` for 6 h, and the source and publication time are shown.
+  - **Actual amount charged.** The rate becomes charged ÷ receipt total.
+  - **Manual rate.** A rate the creator types in.
+  - **Extras.** Fees recorded separately (shared equally) and a rounding policy: exact, nearest whole unit, or each share rounded up. The payer keeps the rounding difference.
+
+  Example: a ¥6,000 receipt is estimated at ₱2,400. The card actually charged ₱2,460, so each of 3 people pays ₱820.
+- **Nothing is overwritten.** Receipts and items keep their printed amounts. Every currency or rate change is appended to `bill_fx_log` with the full settings at that moment, including when settling started. When a debt settles in another currency than the debtor's, `settlements.local_*` keeps what it came to in theirs, with the rate, source and timestamp.
+- **Kept change and credits** only offset debts in the same currency. **PayMongo** takes pesos only, so other currencies are sent another way and marked paid.
 
 ## Real-time screens (short polling)
 

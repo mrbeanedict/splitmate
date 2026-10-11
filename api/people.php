@@ -41,7 +41,26 @@ foreach ($rows as &$r) {
 unset($r);
 
 $open = array_values(array_filter($rows, fn ($s) => $s['status'] !== 'settled'));
-$sum = fn (array $list) => pesos(array_sum(array_map(fn ($s) => cents($s['remaining']), $list)));
+// Totals are in my currency; debts in others count at today's market rate ('estimated' says when that happened)
+$home = user_currency($me['id']);
+$estimated = false;
+$inHome = function (int $cents, string $cur) use ($home, &$estimated): int {
+    if ($cur === $home || $cents === 0) {
+        return $cents;
+    }
+    $estimated = true;
+    return fx_estimate($cents, $cur, $home)['cents'] ?? 0;
+};
+$sum = fn (array $list) => pesos(array_sum(array_map(fn ($s) => $inHome(cents($s['remaining']), $s['currency']), $list)));
+// Kept change one of us owes the other, across currencies
+$change = function (int $holder, int $owner) use ($inHome): int {
+    $c = credit_cents($owner, $holder); // legacy credit, pesos
+    $c = $inHome($c, 'PHP');
+    foreach (q('SELECT DISTINCT currency FROM settlements WHERE from_user_id = ? AND to_user_id = ?', [$holder, $owner])->fetchAll(PDO::FETCH_COLUMN) as $cur) {
+        $c += $inHome(change_owed_cents($holder, $owner, $cur), $cur);
+    }
+    return $c;
+};
 $theyOwe = array_values(array_filter($open, fn ($s) => $s['from']['id'] === $id));
 $iOwe = array_values(array_filter($open, fn ($s) => $s['from']['id'] === $me['id']));
 // An installment: being paid in parts, or on an installment plan with interest, and not finished.
@@ -51,6 +70,7 @@ $history = [];
 foreach ($rows as $s) {
     foreach ($s['payments'] as $p) {
         $history[] = $p + [
+            'currency'      => $s['currency'],
             'settlement_id' => $s['id'],
             'bill_name'     => $s['bill_name'],
             'from'          => $s['from'],
@@ -64,6 +84,7 @@ $brief = fn (array $s) => [
     'id'            => $s['id'],
     'bill_name'     => $s['bill_name'],
     'from_id'       => $s['from']['id'],
+    'currency'      => $s['currency'],
     'amount'        => $s['amount'],
     'paid_amount'   => $s['paid_amount'],
     'remaining'     => $s['remaining'],
@@ -83,9 +104,11 @@ json_ok([
     ],
     'they_owe'     => $sum($theyOwe),
     // Extra cash kept instead of giving change (change utang, plus any legacy credit): theirs I kept, and mine they kept.
-    'their_credit' => pesos(change_owed_cents($me['id'], $id) + credit_cents($id, $me['id'])),
-    'my_credit'    => pesos(change_owed_cents($id, $me['id']) + credit_cents($me['id'], $id)),
+    'their_credit' => pesos($change($me['id'], $id)),
+    'my_credit'    => pesos($change($id, $me['id'])),
     'i_owe'        => $sum($iOwe),
+    'currency'     => $home,
+    'estimated'    => $estimated,
     'installments' => array_map($brief, array_values(array_filter($open, $isInstallment))),
     'open'         => array_map($brief, array_values(array_filter($open, fn ($s) => !$isInstallment($s)))),
     'history'      => array_slice($history, 0, 30),

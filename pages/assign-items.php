@@ -28,11 +28,21 @@ require __DIR__ . '/../partials/head.php';
 
   <spinner v-if="loading"></spinner>
   <div v-else class="flex-1 pb-4 pt-4">
+    <!-- Receipt in another currency: shares are converted at the bill's settlement rate (set on Bill Detail) -->
+    <a v-if="foreign" :href="'bill-detail.php?bill=' + billId + '#currency'" class="mx-5 mb-3 block rounded-2xl border px-3.5 py-2.5 text-[12px] leading-snug"
+       :class="bill.fx.missing ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-sky-200 bg-sky-50 text-sky-800'">
+      <template v-if="bill.fx.missing"><b>No exchange rate yet</b> for {{ rcur }} → {{ bill.currency }}. Tap to refresh it or enter what was charged.</template>
+      <template v-else>
+        <b>Receipt in {{ rcur }} · settles in {{ bill.currency }}</b> at {{ fmtRate(bill.fx.rate, rcur, bill.currency) }}
+        <span class="text-sky-700/80">({{ bill.fx.mode === 'market' ? 'estimate, ' + bill.fx.source : bill.fx.source }}{{ bill.fx.at ? ', ' + fmtDateTime(bill.fx.at) : '' }}<template v-if="bill.fx.fees > 0"> · +{{ peso(bill.fx.fees) }} fees</template>)</span>
+        <span class="font-bold underline">Change</span>
+      </template>
+    </a>
     <!-- Fun Mode: a game decided the split (pages/game.php) -->
     <div v-if="splitMode === 'game'" class="tile mx-5 !border-fuchsia-200 !bg-fuchsia-50/60 p-4">
       <p class="text-[11px] font-extrabold tracking-[.08em] text-fuchsia-700">🎉 FUN MODE</p>
       <p class="mt-1 text-[15px] font-extrabold text-ink">{{ gameHeadline }}</p>
-      <p class="mt-0.5 text-[12px] text-slate-500">Of the whole bill: {{ peso(billTotal / 100) }}, with tax, service charge and discount.</p>
+      <p class="mt-0.5 text-[12px] text-slate-500">Of the whole bill: {{ peso(billTotal / 100, rcur) }}<template v-if="foreign"> ≈ {{ peso(settled.total / 100) }}</template>, with tax, service charge and discount.</p>
       <div class="mt-3 space-y-1.5">
         <div v-for="m in members" :key="m.id" class="flex items-center gap-2.5">
           <avatar :user="m" :size="26"></avatar>
@@ -57,7 +67,7 @@ require __DIR__ . '/../partials/head.php';
         <p class="text-[14px] font-extrabold text-ink">Who pays what share</p>
         <button @click="evenPercents" class="text-[12px] font-bold text-brand-700">Split evenly</button>
       </div>
-      <p class="mt-0.5 text-[12px] text-slate-400">Of the whole bill: {{ peso(billTotal / 100) }}, with tax, service charge and discount. Change one and the rest is shared by the others.</p>
+      <p class="mt-0.5 text-[12px] text-slate-400">Of the whole bill: {{ peso(billTotal / 100, rcur) }}<template v-if="foreign"> ≈ {{ peso(settled.total / 100) }}</template>, with tax, service charge and discount. Change one and the rest is shared by the others.</p>
       <div class="mt-3 space-y-2">
         <label v-for="m in members" :key="m.id" class="flex items-center gap-2.5">
           <avatar :user="m" :size="28"></avatar>
@@ -94,7 +104,7 @@ require __DIR__ . '/../partials/head.php';
           <p class="text-[14px] font-bold text-ink">{{ it.name }}{{ it.qty > 1 ? ' ×' + it.qty : '' }}</p>
           <p v-if="it.details" class="mt-0.5 text-[11.5px] text-slate-500">Includes {{ it.details }}</p>
           <p class="mt-0.5 text-[12px] text-slate-400">
-            {{ peso(it.line_total) }} ·
+            {{ peso(it.line_total, rcur) }} ·
             <span v-if="!it.who.length" class="font-semibold text-rose-500">not assigned</span>
             <span v-else-if="it.who.length === 1">{{ nameOf(it.who[0]) }} only</span>
             <span v-else>shared by {{ it.who.length }}</span>
@@ -113,9 +123,9 @@ require __DIR__ . '/../partials/head.php';
     <div v-if="extras > 0" class="mx-5 mt-3 flex items-center justify-between rounded-[18px] border border-brand-100 bg-brand-50/70 px-4 py-3">
       <div>
         <p class="text-[13px] font-bold text-brand-900">{{ bill.tax_included ? 'Service charge' : 'Tax + service charge' }}</p>
-        <p class="text-[12px] text-brand-700/80">Split equally · {{ peso(extras / members.length) }} each</p>
+        <p class="text-[12px] text-brand-700/80">Split equally · {{ peso(extras / members.length, rcur) }} each</p>
       </div>
-      <span class="text-[14px] font-extrabold text-brand-900">{{ peso(extras) }}</span>
+      <span class="text-[14px] font-extrabold text-brand-900">{{ peso(extras, rcur) }}</span>
     </div>
 
     <div v-if="discount > 0" class="mx-5 mt-3 rounded-[18px] border border-emerald-100 bg-emerald-50/70 px-4 py-3">
@@ -124,7 +134,7 @@ require __DIR__ . '/../partials/head.php';
           <p class="text-[13px] font-bold text-emerald-900">Receipt discount</p>
           <p class="text-[12px] text-emerald-700/80">{{ flaggedCount ? 'Goes to Senior/PWD members first' : 'Shared by everyone, in proportion to what they ordered' }}</p>
         </div>
-        <span class="text-[14px] font-extrabold text-emerald-900">−{{ peso(discount) }}</span>
+        <span class="text-[14px] font-extrabold text-emerald-900">−{{ peso(discount, rcur) }}</span>
       </div>
       <p class="mt-3 text-[11px] font-extrabold tracking-[.06em] text-emerald-900/60">WHO HAS A SENIOR / PWD ID? <span class="font-medium normal-case tracking-normal">tap to change</span></p>
       <div class="mt-1.5 flex flex-wrap gap-1.5">
@@ -137,15 +147,15 @@ require __DIR__ . '/../partials/head.php';
     <p v-else class="mx-5 mt-3 text-[11.5px] text-slate-400">Senior/PWD or promo discount on the receipt? Add it on the Review step.</p>
 
     <p v-if="unassignedCount" class="mx-5 mt-3 text-[12px] font-semibold text-rose-500">
-      {{ unassignedCount }} item{{ unassignedCount > 1 ? 's' : '' }} still unassigned ({{ peso(unassignedTotal) }}) — assign {{ unassignedCount > 1 ? 'them' : 'it' }} before sending.
+      {{ unassignedCount }} item{{ unassignedCount > 1 ? 's' : '' }} still unassigned ({{ peso(unassignedTotal, rcur) }}) — assign {{ unassignedCount > 1 ? 'them' : 'it' }} before sending.
     </p>
 
     <div class="mx-5 mt-4 tile divide-y divide-slate-100">
       <div v-for="m in members" :key="m.id" class="flex items-center gap-3 px-4 py-2.5">
         <avatar :user="m" :size="26"></avatar>
         <span class="flex-1 text-[13px] font-semibold text-slate-700">{{ m.id === me ? 'You' : m.name }}</span>
-        <span v-if="calc.discountBy[m.id]" class="text-[11px] font-semibold text-emerald-600">−{{ peso(calc.discountBy[m.id] / 100) }}</span>
-        <span class="text-[13px] font-bold text-ink">{{ peso(shares[m.id] / 100) }}</span>
+        <span v-if="calc.discountBy[m.id]" class="text-[11px] font-semibold text-emerald-600">−{{ peso(calc.discountBy[m.id] / 100, rcur) }}</span>
+        <span class="text-right text-[13px] font-bold text-ink">{{ peso(shares[m.id] / 100) }}<span v-if="foreign" class="block text-[10.5px] font-medium text-slate-400">{{ peso(calc.shares[m.id] / 100, rcur) }}</span></span>
       </div>
     </div>
     </template>
@@ -295,7 +305,12 @@ Setlo.mount({
       for (const id of ids) out[id] -= discountBy[id];
       return { shares: out, discountBy };
     },
-    shares() { return this.calc.shares; },
+    /** The receipt's currency (items, tax, discount) and whether it differs from the agreed settlement currency. */
+    rcur() { return this.bill ? this.bill.receipt_currency || this.bill.currency : 'PHP'; },
+    foreign() { return !!(this.bill && this.bill.fx && this.bill.fx.foreign); },
+    /** calc's receipt-currency shares in the settlement currency (Setlo.convertShares mirrors the server). */
+    settled() { return Setlo.convertShares(this.calc.shares, this.billTotal, this.bill && this.bill.fx, this.bill ? this.bill.payer_id : 0); },
+    shares() { return this.settled.shares; },
   },
   async mounted() {
     let shown = null; // assignments as filled from this tab's saved reply
@@ -305,6 +320,7 @@ Setlo.mount({
       if (!r.items.length) { location.replace('review-items?bill=' + this.billId); return; }
       if (fresh && r.bill.game_pending) { location.replace('game?bill=' + this.billId); return; }
       if (fresh && shown !== null && shown !== state()) return; // already tapping: keep their work
+      Setlo.useCurrency(r.bill.currency); // shares and the plan; receipt amounts pass rcur
       this.bill = r.bill;
       this.members = r.members;
       this.splitMode = r.bill.split_mode || 'items';
@@ -425,6 +441,10 @@ Setlo.mount({
         return api.get('bills.php', { id: this.billId });
       });
       if (!r) return;
+      if (r.bill.fx && r.bill.fx.missing) {
+        Setlo.toast('Set an exchange rate on Bill Detail first.');
+        return;
+      }
       if (r.payments.mismatch) {
         Setlo.toast('Payments don’t cover the bill total — fix “Who paid” on Bill Detail.');
         return;

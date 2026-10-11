@@ -7,10 +7,17 @@ declare(strict_types=1);
 require_once __DIR__ . '/gemini.php';
 
 const RECEIPT_PROMPT = <<<'TXT'
-You are reading photos of restaurant or food receipts from the Philippines. Amounts are in pesos.
+You are reading photos of restaurant or food receipts. Most are from the Philippines (pesos), but they can be from
+any country, in any currency. Copy amounts exactly as printed; never convert them.
 
 Return receipts: one entry per separate receipt you can see. If a photo shows two or more receipts side by side
 or overlapping, return each one separately; never combine two receipts into one. For each receipt:
+- currency: the ISO 4217 code of the amounts (PHP, JPY, USD, KRW, EUR, SGD, HKD, TWD, CNY, THB, VND, IDR, MYR...).
+  Decide from what is printed: a currency sign or code (₱ / PHP / Php, ¥ / 円 / JPY, ₩ / 원, $ / US$, S$, HK$, NT$,
+  €, ฿, ₫, Rp, RM), the language and script, the address, phone prefix and tax labels (VAT/TIN → PHP, 消費税 /
+  税込 → JPY, 부가세 → KRW, GST with S$ → SGD). ¥ with Japanese text is JPY, with Chinese text CNY. A bare "$"
+  is USD unless the address says otherwise. Return "" only when nothing hints at the country.
+- currency_clues: what you based the currency on, in a few words, e.g. "¥ sign, Japanese text" or "VAT, TIN, Manila".
 - store_name: the store/restaurant name as printed (without the branch), or "" if not visible.
 - title: a short name (1-4 words) for this purchase, to tell it apart from the group's other receipts. Base it on
   the meal and the time printed (Breakfast, Lunch, Merienda, Dinner, Coffee, Snacks, Drinks, Dessert, Groceries)
@@ -65,6 +72,8 @@ TXT;
 const RECEIPT_SCHEMA = [
     'type'       => 'OBJECT',
     'properties' => [
+        'currency'       => ['type' => 'STRING'],
+        'currency_clues' => ['type' => 'STRING'],
         'store_name' => ['type' => 'STRING'],
         'title'      => ['type' => 'STRING'],
         'receipt_no' => ['type' => 'STRING'],
@@ -93,7 +102,7 @@ const RECEIPT_SCHEMA = [
         'discount'       => ['type' => 'NUMBER'],
         'total'          => ['type' => 'NUMBER', 'nullable' => true],
     ],
-    'required'   => ['store_name', 'title', 'receipt_no', 'date_time', 'raw_text', 'items', 'tax', 'service_charge', 'discount'],
+    'required'   => ['currency', 'currency_clues', 'store_name', 'title', 'receipt_no', 'date_time', 'raw_text', 'items', 'tax', 'service_charge', 'discount'],
 ];
 
 const RECEIPTS_SCHEMA = [
@@ -105,8 +114,8 @@ const RECEIPTS_SCHEMA = [
 /**
  * Read receipt photos into one entry per receipt found. Usually one photo (which may show several receipts); with
  * $partsOfOne, several photos that are sections of one long receipt, which always gives at most one receipt.
- * @return list<array{items: array, subtotal: ?float, tax: float, service_charge: float, discount: float, total: ?float,
- *                    raw_text: string, store_name: string, title: string, receipt_no: string, txn_date: string}>
+ * @return list<array{currency: string, currency_clues: string, items: array, subtotal: ?float, tax: float, service_charge: float,
+ *                    discount: float, total: ?float, raw_text: string, store_name: string, title: string, receipt_no: string, txn_date: string}>
  * @throws GeminiException
  */
 function scan_receipt(array $imagePaths, bool $partsOfOne = false): array
@@ -132,7 +141,7 @@ function merge_receipt_parts(array $parts): array
     foreach (array_slice($parts, 1) as $p) {
         $out['items'] = array_merge($out['items'], $p['items']);
         $out['raw_text'] = trim($out['raw_text'] . "\n" . $p['raw_text']);
-        foreach (['store_name', 'title', 'receipt_no', 'txn_date'] as $k) {
+        foreach (['store_name', 'title', 'receipt_no', 'txn_date', 'currency', 'currency_clues'] as $k) {
             $out[$k] = $out[$k] ?: $p[$k];
         }
         foreach (['subtotal', 'total'] as $k) {
@@ -209,7 +218,11 @@ function parse_receipt($data): array
         $discount = 0.0;
     }
 
+    // Only currencies the app can handle; anything else is left for the user to pick on Review.
+    $currency = strtoupper(preg_replace('/[^A-Za-z]/', '', (string) ($data['currency'] ?? '')));
     return [
+        'currency'       => is_currency($currency) ? $currency : '',
+        'currency_clues' => $clean($data['currency_clues'] ?? '', 120),
         'items'          => $items,
         'subtotal'       => $amount($data['subtotal'] ?? null),
         'tax'            => $amount($data['tax'] ?? null) ?? 0.0,

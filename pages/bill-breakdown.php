@@ -8,7 +8,7 @@ if (!$billId) {
     redirect('pages/stats?tab=history');
 }
 $back = 'stats?tab=history';
-$headExtra = ['assets/js/summary.js'];
+$headExtra = ['assets/js/summary.js', 'assets/js/replay.js'];
 require __DIR__ . '/../partials/head.php';
 ?>
 <div id="app" class="device device-narrow" v-cloak>
@@ -36,16 +36,16 @@ require __DIR__ . '/../partials/head.php';
             <p class="text-sm font-medium">{{ it.name }} ×{{ it.qty }}</p>
             <p class="text-xs text-slate-400">{{ assignedLabel(it) }}</p>
           </div>
-          <p class="shrink-0 text-sm font-semibold">{{ peso(it.line_total) }}</p>
+          <p class="shrink-0 text-sm font-semibold">{{ peso(it.line_total, (bill.receipt_currency || bill.currency)) }}</p>
         </div>
         </template>
         <div v-if="d.extras > 0" class="flex items-center justify-between p-3.5">
           <div><p class="text-sm font-medium">Tax + service charge</p><p class="text-xs text-slate-400">Split equally</p></div>
-          <p class="text-sm font-semibold">{{ peso(d.extras) }}</p>
+          <p class="text-sm font-semibold">{{ peso(d.extras, (bill.receipt_currency || bill.currency)) }}</p>
         </div>
         <div v-if="bill.discount > 0" class="flex items-center justify-between p-3.5">
           <div><p class="text-sm font-medium">Receipt discount</p><p class="text-xs text-slate-400">{{ d.members.some((m) => m.discount_type !== 'none') ? 'Senior/PWD members first' : 'Shared in proportion to orders' }}</p></div>
-          <p class="text-sm font-semibold text-emerald-600">−{{ peso(bill.discount) }}</p>
+          <p class="text-sm font-semibold text-emerald-600">−{{ peso(bill.discount, (bill.receipt_currency || bill.currency)) }}</p>
         </div>
       </div>
     </section>
@@ -57,7 +57,7 @@ require __DIR__ . '/../partials/head.php';
           <avatar :user="m" :size="32"></avatar>
           <p class="flex-1 text-sm font-medium">{{ m.name }}{{ d.payments && d.payments.paid[m.id] ? ' (paid ' + peso(d.payments.paid[m.id]) + ')' : '' }}{{ m.id === me ? ' · You' : '' }}
             <span v-if="m.discount_type !== 'none'" class="pill pill-settled ml-1">{{ m.discount_type === 'pwd' ? 'PWD' : 'Senior' }}</span>
-            <span v-if="d.discount_by[m.id]" class="block text-xs text-emerald-600">−{{ peso(d.discount_by[m.id]) }} discount</span>
+            <span v-if="d.discount_by[m.id]" class="block text-xs text-emerald-600">−{{ peso(d.discount_by[m.id], (bill.receipt_currency || bill.currency)) }} discount</span>
           </p>
           <p class="text-sm font-bold">{{ peso(d.shares[m.id] || 0) }}</p>
         </div>
@@ -77,10 +77,12 @@ require __DIR__ . '/../partials/head.php';
       </div>
     </section>
 
+    <bill-replay v-if="d.items.length" :d="d"></bill-replay>
     <share-summary :d="d"></share-summary>
 
     <div class="tile bg-slate-50 p-3.5">
       <div class="flex justify-between text-sm font-bold"><span>Bill total</span><span class="text-brand-700">{{ peso(d.total) }}</span></div>
+      <p v-if="bill.fx && bill.fx.foreign" class="mt-1 text-right text-[11.5px] text-slate-400">{{ peso(d.native_total, bill.receipt_currency) }} on the receipt, at {{ fmtRate(bill.fx.rate, bill.receipt_currency, bill.currency) }} · {{ bill.fx.source }}{{ bill.fx.at ? ', ' + fmtDateTime(bill.fx.at) : '' }}<template v-if="bill.fx.fees > 0"> · incl. {{ peso(bill.fx.fees) }} fees</template></p>
     </div>
 
     <div v-if="bill.status === 'closed'">
@@ -100,7 +102,7 @@ Setlo.mount({
     itemGroups() { return Setlo.groupByReceipt(this.d.items, this.d.receipts); },
     memberMap() { return Object.fromEntries(this.d.members.map((m) => [m.id, m])); } },
   async mounted() {
-    await Setlo.load(this, 'bills.php', { id: this.billId }, (r) => { this.d = r; this.bill = r.bill; });
+    await Setlo.load(this, 'bills.php', { id: this.billId }, (r) => { Setlo.useCurrency(r.bill.currency); this.d = r; this.bill = r.bill; });
   },
   methods: {
     toggleArchive() { return Setlo.toggleArchive(this.bill); },

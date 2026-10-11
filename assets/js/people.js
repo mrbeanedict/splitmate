@@ -2,7 +2,8 @@
 // other (unfinished installments first) and the payments between you, each with its receipt.
 // Open from anywhere with Setlo.showPerson(userId).
 (function (global) {
-  const peso = (n) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Amounts in the given currency (Setlo.peso in ui.js); the card's totals are in the viewer's currency (d.currency).
+  const peso = (n, cur) => global.Setlo.peso(n, cur || 'PHP');
   const esc = (s) => global.Setlo.escapeHtml(String(s ?? ''));
   const day = (s) => new Date(String(s).replace(' ', 'T')).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
   const METHOD = { online: 'Online', transfer: 'Transfer', cash: 'Cash', credit: 'Kept change' };
@@ -20,9 +21,9 @@
     return `<a href="settlement-audit?id=${s.id}" class="block rounded-xl border border-slate-100 px-3 py-2.5 text-left hover:bg-slate-50">
       <span class="flex items-baseline justify-between gap-2">
         <span class="min-w-0 truncate text-[13px] font-bold text-ink">${esc(s.bill_name)}</span>
-        <span class="shrink-0 text-[13px] font-extrabold tabular-nums ${s.from_id === d.person.id ? 'text-emerald-700' : 'text-ink'}">${peso(s.remaining)}</span>
+        <span class="shrink-0 text-[13px] font-extrabold tabular-nums ${s.from_id === d.person.id ? 'text-emerald-700' : 'text-ink'}">${peso(s.remaining, s.currency)}</span>
       </span>
-      <span class="mt-0.5 block text-[11.5px] text-slate-500">${who}${s.paid_amount > 0 ? ` · ${peso(s.paid_amount)} paid of ${peso(s.amount)}` : ''}${s.interest_rate ? ` · ${esc(s.interest_rate)}% per part` : ''}</span>
+      <span class="mt-0.5 block text-[11.5px] text-slate-500">${who}${s.paid_amount > 0 ? ` · ${peso(s.paid_amount, s.currency)} paid of ${peso(s.amount, s.currency)}` : ''}${s.interest_rate ? ` · ${esc(s.interest_rate)}% per part` : ''}</span>
       ${s.installment ? `<span class="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-slate-100"><span class="block h-full rounded-full bg-amber-400" style="width:${pct}%"></span></span>` : ''}
     </a>`;
   }
@@ -36,7 +37,7 @@
         <span class="block truncate text-[12.5px] font-semibold text-ink">${dir} · ${esc(p.bill_name)}</span>
         <span class="block text-[11px] text-slate-400">${day(p.created_at)} · ${esc(Setlo.methodWithVia(p, METHOD))}${payer} · <span class="${tone} font-semibold">${label}</span></span>
       </span>
-      <span class="shrink-0 text-[13px] font-bold tabular-nums">${peso(p.amount)}</span>
+      <span class="shrink-0 text-[13px] font-bold tabular-nums">${peso(p.amount, p.currency)}</span>
       ${p.status === 'confirmed' ? `<button type="button" data-receipt="${p.id}" class="shrink-0 text-[11.5px] font-bold text-brand-700 underline">Receipt</button>` : ''}
     </div>`;
   }
@@ -56,13 +57,13 @@
         ${p.pay_code && !p.is_me ? '<button type="button" data-qr class="shrink-0 text-[12px] font-bold text-brand-700">Show QR</button>' : ''}
       </div>
       <div class="mt-4 grid grid-cols-2 gap-2">
-        <div class="rounded-xl bg-emerald-50 px-3 py-2"><p class="text-[10.5px] font-bold uppercase tracking-wide text-emerald-700">Owes you</p><p class="text-[17px] font-extrabold tabular-nums text-emerald-800">${peso(d.they_owe)}</p></div>
-        <div class="rounded-xl bg-slate-50 px-3 py-2"><p class="text-[10.5px] font-bold uppercase tracking-wide text-slate-500">You owe</p><p class="text-[17px] font-extrabold tabular-nums text-ink">${peso(d.i_owe)}</p></div>
+        <div class="rounded-xl bg-emerald-50 px-3 py-2"><p class="text-[10.5px] font-bold uppercase tracking-wide text-emerald-700">Owes you</p><p class="text-[17px] font-extrabold tabular-nums text-emerald-800">${peso(d.they_owe, d.currency)}</p></div>
+        <div class="rounded-xl bg-slate-50 px-3 py-2"><p class="text-[10.5px] font-bold uppercase tracking-wide text-slate-500">You owe</p><p class="text-[17px] font-extrabold tabular-nums text-ink">${peso(d.i_owe, d.currency)}</p></div>
       </div>
       ${p.badges?.length ? `<div class="mt-3 flex flex-wrap gap-1.5">${p.badges.map((a) => `<button type="button" data-badge="${esc(a.code)}" class="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-50" title="${esc(a.description)}">${esc(a.emoji)} ${esc(a.title)}</button>`).join('')}</div>` : ''}
-      ${d.their_credit > 0 ? `<p class="mt-2 rounded-xl bg-violet-50 px-3 py-2 text-[12px] text-violet-800">💵 You kept <b>${peso(d.their_credit)}</b> of ${esc(p.first)}'s change — it pays their next debt to you, or pay it back (Utang).</p>` : ''}
-      ${d.my_credit > 0 ? `<p class="mt-2 rounded-xl bg-violet-50 px-3 py-2 text-[12px] text-violet-800">💵 ${esc(p.first)} kept <b>${peso(d.my_credit)}</b> of your change — it pays your next debt to them, or they pay it back.</p>` : ''}
-      ${net !== 0 && d.they_owe > 0 && d.i_owe > 0 ? `<p class="mt-2 text-[12px] text-slate-500">Overall, ${net > 0 ? esc(p.first) + ' owes you' : 'you owe ' + esc(p.first)} ${peso(Math.abs(net))}.</p>` : ''}
+      ${d.their_credit > 0 ? `<p class="mt-2 rounded-xl bg-violet-50 px-3 py-2 text-[12px] text-violet-800">💵 You kept <b>${peso(d.their_credit, d.currency)}</b> of ${esc(p.first)}'s change — it pays their next debt to you, or pay it back (Utang).</p>` : ''}
+      ${d.my_credit > 0 ? `<p class="mt-2 rounded-xl bg-violet-50 px-3 py-2 text-[12px] text-violet-800">💵 ${esc(p.first)} kept <b>${peso(d.my_credit, d.currency)}</b> of your change — it pays your next debt to them, or they pay it back.</p>` : ''}
+      ${net !== 0 && d.they_owe > 0 && d.i_owe > 0 ? `<p class="mt-2 text-[12px] text-slate-500">Overall, ${net > 0 ? esc(p.first) + ' owes you' : 'you owe ' + esc(p.first)} ${peso(Math.abs(net), d.currency)}.</p>` : ''}
       ${d.installments.length ? section('UNFINISHED INSTALLMENTS', `<div class="mt-1.5 space-y-1.5">${d.installments.map((s) => debtRow(s, d)).join('')}</div>`) : ''}
       ${d.open.length ? section('OTHER OPEN DEBTS', `<div class="mt-1.5 space-y-1.5">${d.open.map((s) => debtRow(s, d)).join('')}</div>`) : ''}
       ${section('PAYMENT HISTORY', d.history.length

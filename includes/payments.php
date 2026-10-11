@@ -63,38 +63,42 @@ function add_payment(array $s, int $paidBy, int $cents, string $method, string $
 // shows on both Utang pages, can be paid back like any debt (in parts, any method, with receipts), and until then
 // it's used up against whatever $ownerId owes $holderId (offset_change()), now and as new debts come.
 
-/** Record kept change as an utang from the holder back to the owner. $forName: what the cash was for. Returns the settlement id. */
-function record_change_utang(int $ownerId, int $holderId, int $cents, int $paymentId, string $forName, ?int $actorId): int
+/**
+ * Record kept change as an utang from the holder back to the owner, in $currency (the debt's). $forName: what the
+ * cash was for. Returns the settlement id.
+ */
+function record_change_utang(int $ownerId, int $holderId, int $cents, int $paymentId, string $forName, ?int $actorId, string $currency = 'PHP'): int
 {
     $name = mb_substr('Change from ' . $forName, 0, 120);
-    q("INSERT INTO bills (name, kind, loan_amount, change_payment_id, creator_id, payer_id, status, settling_at) VALUES (?, 'loan', ?, ?, ?, ?, 'settling', NOW())",
-        [$name, pesos($cents), $paymentId, $holderId, $ownerId]);
+    q("INSERT INTO bills (name, kind, loan_amount, change_payment_id, creator_id, payer_id, status, settling_at, currency) VALUES (?, 'loan', ?, ?, ?, ?, 'settling', NOW(), ?)",
+        [$name, pesos($cents), $paymentId, $holderId, $ownerId, $currency]);
     $billId = (int) db()->lastInsertId();
     q('INSERT INTO bill_members (bill_id, user_id) VALUES (?, ?), (?, ?)', [$billId, $holderId, $billId, $ownerId]);
-    q('INSERT INTO settlements (bill_id, from_user_id, to_user_id, principal, amount) VALUES (?, ?, ?, ?, ?)', [$billId, $holderId, $ownerId, pesos($cents), pesos($cents)]);
+    q('INSERT INTO settlements (bill_id, from_user_id, to_user_id, currency, principal, amount) VALUES (?, ?, ?, ?, ?, ?)', [$billId, $holderId, $ownerId, $currency, pesos($cents), pesos($cents)]);
     $sid = (int) db()->lastInsertId();
     $names = first_names([$holderId, $ownerId]);
-    log_event($sid, $actorId, 'created', "{$names[$holderId]} kept " . peso_str($cents) . " extra cash from {$names[$ownerId]} ($forName) instead of giving change, and owes it back.");
+    log_event($sid, $actorId, 'created', "{$names[$holderId]} kept " . money_str($cents, $currency) . " extra cash from {$names[$ownerId]} ($forName) instead of giving change, and owes it back.");
     return $sid;
 }
 
 /**
  * Use change $holderId owes $ownerId (open change utang) to pay $ownerId's open debts to $holderId, oldest first.
  * Each use is a payment part on both sides (method credit, with receipts): the debt is paid, the change utang goes
- * down by the same amount. Call inside a transaction. Returns the cents used.
+ * down by the same amount. Only debts in the same $currency offset each other. Call inside a transaction. Returns
+ * the cents used.
  */
-function offset_change(int $ownerId, int $holderId, ?int $actorId): int
+function offset_change(int $ownerId, int $holderId, ?int $actorId, string $currency = 'PHP'): int
 {
     $open = "status IN ('pending','awaiting','disputed')";
     $changes = q(
         "SELECT s.id FROM settlements s JOIN bills b ON b.id = s.bill_id
-         WHERE s.from_user_id = ? AND s.to_user_id = ? AND b.change_payment_id IS NOT NULL AND s.$open ORDER BY s.created_at, s.id",
-        [$holderId, $ownerId]
+         WHERE s.from_user_id = ? AND s.to_user_id = ? AND s.currency = ? AND b.change_payment_id IS NOT NULL AND s.$open ORDER BY s.created_at, s.id",
+        [$holderId, $ownerId, $currency]
     )->fetchAll(PDO::FETCH_COLUMN);
     if (!$changes) {
         return 0;
     }
-    $debts = q("SELECT id FROM settlements WHERE from_user_id = ? AND to_user_id = ? AND $open ORDER BY created_at, id", [$ownerId, $holderId])->fetchAll(PDO::FETCH_COLUMN);
+    $debts = q("SELECT id FROM settlements WHERE from_user_id = ? AND to_user_id = ? AND currency = ? AND $open ORDER BY created_at, id", [$ownerId, $holderId, $currency])->fetchAll(PDO::FETCH_COLUMN);
     $names = first_names([$holderId, $ownerId]);
     $used = 0;
     foreach ($debts as $did) {
@@ -106,10 +110,10 @@ function offset_change(int $ownerId, int $holderId, ?int $actorId): int
                 continue;
             }
             $pd = add_payment($d, $ownerId, $take, 'credit', 'awaiting');
-            log_event((int) $did, $actorId, 'marked_paid', peso_str($take) . " paid from change {$names[$holderId]} kept earlier ({$c['bill_name']}).");
+            log_event((int) $did, $actorId, 'marked_paid', money_str($take, $currency) . " paid from change {$names[$holderId]} kept earlier ({$c['bill_name']}).");
             confirm_payment($d, ['id' => $pd, 'amount' => pesos($take), 'paid_by' => $ownerId, 'pay_back' => 0], $actorId);
             $pc = add_payment($c, $holderId, $take, 'credit', 'awaiting');
-            log_event((int) $cid, $actorId, 'marked_paid', peso_str($take) . " used to pay {$names[$ownerId]}’s debt for {$d['bill_name']}.");
+            log_event((int) $cid, $actorId, 'marked_paid', money_str($take, $currency) . " used to pay {$names[$ownerId]}’s debt for {$d['bill_name']}.");
             confirm_payment($c, ['id' => $pc, 'amount' => pesos($take), 'paid_by' => $holderId, 'pay_back' => 0], $actorId);
             $used += $take;
         }
@@ -117,13 +121,13 @@ function offset_change(int $ownerId, int $holderId, ?int $actorId): int
     return $used;
 }
 
-/** Change $holderId still owes $ownerId (open change utang), in cents. */
-function change_owed_cents(int $holderId, int $ownerId): int
+/** Change $holderId still owes $ownerId (open change utang) in $currency, in cents. */
+function change_owed_cents(int $holderId, int $ownerId, string $currency = 'PHP'): int
 {
     return (int) q(
         "SELECT COALESCE(SUM(ROUND((s.amount - s.paid_amount) * 100)), 0) FROM settlements s JOIN bills b ON b.id = s.bill_id
-         WHERE s.from_user_id = ? AND s.to_user_id = ? AND b.change_payment_id IS NOT NULL AND s.status <> 'settled'",
-        [$holderId, $ownerId]
+         WHERE s.from_user_id = ? AND s.to_user_id = ? AND s.currency = ? AND b.change_payment_id IS NOT NULL AND s.status <> 'settled'",
+        [$holderId, $ownerId, $currency]
     )->fetchColumn();
 }
 
@@ -136,16 +140,17 @@ function credit_cents(int $ownerId, int $holderId): int
 /**
  * $ownerId has a new (or still open) debt to $holderId: pay it from change $holderId kept from $ownerId's cash (and
  * any legacy credit), each use a payment part of its own (method credit, with a receipt). Called wherever a debt is
- * created. Call inside a transaction. Returns the cents used.
+ * created. Only debts in $currency are paid this way (legacy credit is pesos). Call inside a transaction. Returns
+ * the cents used.
  */
-function apply_credits(int $ownerId, int $holderId, ?int $actorId): int
+function apply_credits(int $ownerId, int $holderId, ?int $actorId, string $currency = 'PHP'): int
 {
-    $used = offset_change($ownerId, $holderId, $actorId);
-    if (credit_cents($ownerId, $holderId) <= 0) {
+    $used = offset_change($ownerId, $holderId, $actorId, $currency);
+    if ($currency !== 'PHP' || credit_cents($ownerId, $holderId) <= 0) {
         return $used;
     }
     $debts = q(
-        "SELECT id FROM settlements WHERE from_user_id = ? AND to_user_id = ? AND status IN ('pending','awaiting','disputed') ORDER BY created_at, id",
+        "SELECT id FROM settlements WHERE from_user_id = ? AND to_user_id = ? AND currency = 'PHP' AND status IN ('pending','awaiting','disputed') ORDER BY created_at, id",
         [$ownerId, $holderId]
     )->fetchAll(PDO::FETCH_COLUMN);
     foreach ($debts as $sid) {
@@ -167,7 +172,7 @@ function apply_credits(int $ownerId, int $holderId, ?int $actorId): int
             }
         }
         $pid = add_payment($s, $ownerId, $take, 'credit', 'awaiting');
-        log_event((int) $sid, $actorId, 'marked_paid', peso_str($take) . ' paid from credit (cash paid over an earlier debt).');
+        log_event((int) $sid, $actorId, 'marked_paid', money_str($take, 'PHP') . ' paid from credit (cash paid over an earlier debt).');
         confirm_payment($s, ['id' => $pid, 'amount' => pesos($take), 'paid_by' => $ownerId, 'pay_back' => 0], $actorId);
         $used += $take;
         if (credit_cents($ownerId, $holderId) <= 0) {
@@ -204,7 +209,29 @@ function refresh_settlement_status(int $id): string
         "UPDATE settlements SET status = ?, settle_method = ?, paid_at = ?, confirmed_at = IF(? = 'settled', COALESCE(confirmed_at, NOW()), NULL) WHERE id = ?",
         [$status, $method, $paidAt, $status, $id]
     );
+    if ($status === 'settled' && $s['local_currency'] === null) {
+        record_local_amount($s);
+    }
     return $status;
+}
+
+/**
+ * A debt just settled in another currency than the debtor's own: keep what it came to in theirs, at that day's
+ * market rate (with its source and timestamp), so each side's history reads in their own money.
+ */
+function record_local_amount(array $s): void
+{
+    $cur = $s['currency'] ?? 'PHP';
+    $home = user_currency((int) $s['from_user_id']);
+    if ($home === $cur) {
+        return;
+    }
+    $paid = (int) q('SELECT ROUND(paid_amount * 100) FROM settlements WHERE id = ?', [$s['id']])->fetchColumn();
+    $est = fx_estimate($paid, $cur, $home);
+    if ($est) {
+        q('UPDATE settlements SET local_currency = ?, local_amount = ?, local_rate = ?, local_rate_source = ?, local_rate_at = ? WHERE id = ?',
+            [$home, pesos($est['cents']), round($est['rate'], 10), $est['source'], $est['at'], $s['id']]);
+    }
 }
 
 /** First names by user id, for event notes and notifications. */
@@ -231,13 +258,14 @@ function confirm_payment(array $s, array $p, ?int $actorId): void
     $s['paid_amount'] = pesos(cents($s['paid_amount']) + $cents);
 
     // Installments: interest on what's still left, unless the rest is already on its way (waiting for confirmation).
+    $cur = $s['currency'] ?? 'PHP';
     $rate = (float) ($s['interest_rate'] ?? 0);
     if ($rate > 0 && cents($s['amount']) - cents($s['paid_amount']) > 0) {
         $base = open_cents($s);
         $interest = (int) round($base * $rate / 100);
         if ($interest > 0) {
             q('UPDATE settlements SET amount = amount + ? WHERE id = ?', [pesos($interest), $s['id']]);
-            log_event((int) $s['id'], null, 'interest', peso_str($interest) . ' interest added: ' . rtrim(rtrim(number_format($rate, 2), '0'), '.') . '% of the ' . peso_str($base) . ' still to pay.');
+            log_event((int) $s['id'], null, 'interest', money_str($interest, $cur) . ' interest added: ' . rtrim(rtrim(number_format($rate, 2), '0'), '.') . '% of the ' . money_str($base, $cur) . ' still to pay.');
         }
     }
 
@@ -245,11 +273,11 @@ function confirm_payment(array $s, array $p, ?int $actorId): void
     $debtor = (int) $s['from_user_id'];
     if ($p['pay_back'] && $payer !== $debtor) {
         $names = first_names([$payer, $debtor, (int) $s['to_user_id']]);
-        q('INSERT INTO settlements (bill_id, from_user_id, to_user_id, principal, amount) VALUES (?, ?, ?, ?, ?)', [$s['bill_id'], $debtor, $payer, pesos($cents), pesos($cents)]);
+        q('INSERT INTO settlements (bill_id, from_user_id, to_user_id, currency, principal, amount) VALUES (?, ?, ?, ?, ?, ?)', [$s['bill_id'], $debtor, $payer, $cur, pesos($cents), pesos($cents)]);
         $newId = (int) db()->lastInsertId();
-        log_event($newId, $actorId, 'created', "{$names[$payer]} paid " . peso_str($cents) . " of {$names[$debtor]}’s debt to {$names[(int) $s['to_user_id']]}; {$names[$debtor]} pays {$names[$payer]} back.");
-        notify($debtor, 'settling', "{$names[$payer]} paid " . peso_str($cents) . " of your debt to {$names[(int) $s['to_user_id']]} for {$s['bill_name']}. You now owe {$names[$payer]} that instead.", 'my-settlements');
-        apply_credits($debtor, $payer, $actorId);
+        log_event($newId, $actorId, 'created', "{$names[$payer]} paid " . money_str($cents, $cur) . " of {$names[$debtor]}’s debt to {$names[(int) $s['to_user_id']]}; {$names[$debtor]} pays {$names[$payer]} back.");
+        notify($debtor, 'settling', "{$names[$payer]} paid " . money_str($cents, $cur) . " of your debt to {$names[(int) $s['to_user_id']]} for {$s['bill_name']}. You now owe {$names[$payer]} that instead.", 'my-settlements');
+        apply_credits($debtor, $payer, $actorId, $cur);
     }
 
     refresh_settlement_status((int) $s['id']);
@@ -325,6 +353,7 @@ function payment_receipt(array $p, array $s): array
         'no'          => receipt_no((int) $p['id']),
         'payment_id'  => (int) $p['id'],
         'received_at' => $p['confirmed_at'] ?? $p['created_at'],
+        'currency'    => $s['currency'] ?? 'PHP',
         'amount'      => (float) $p['amount'],
         'method'      => $p['method'],
         'online_via'  => $p['online_via'] ?? null,

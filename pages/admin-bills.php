@@ -102,7 +102,7 @@ require __DIR__ . '/../partials/admin-top.php';
           <td class="td font-medium">{{ b.name }}</td>
           <td class="td text-slate-500">{{ b.creator }}</td>
           <td class="td text-slate-500">{{ b.members }}</td>
-          <td class="td font-medium">{{ peso(b.total) }}</td>
+          <td class="td font-medium">{{ peso(b.total, b.currency) }}</td>
           <td class="td text-slate-500">{{ fmtDate(b.created_at, true) }}</td>
           <td class="td"><div class="progress w-24"><span :style="{ width: b.progress + '%' }"></span></div></td>
           <td class="td">
@@ -137,7 +137,7 @@ require __DIR__ . '/../partials/admin-top.php';
         </div>
         <div v-if="head" class="bd-row" style="margin-top:.8rem; align-items:flex-end; justify-content:space-between">
           <div>
-            <div class="bd-total">{{ peso(head.total) }}</div>
+            <div class="bd-total">{{ peso(head.total, head.currency) }}</div>
             <div class="flex flex-wrap gap-1" style="margin-top:.45rem">
               <status-pill :status="head.status"></status-pill>
               <status-pill v-if="listRow && listRow.disputed" status="disputed" :label="listRow.disputed + ' disputed'"></status-pill>
@@ -166,18 +166,19 @@ require __DIR__ . '/../partials/admin-top.php';
           <div class="bd-stats">
             <div class="bd-stat"><b>{{ detail.members.length }}</b><span>Members</span></div>
             <div class="bd-stat"><b>{{ assignedCount }}/{{ detail.items.length }}</b><span>Items assigned</span></div>
-            <div class="bd-stat ok"><b>{{ peso(paidTotal) }}</b><span>Paid so far</span></div>
-            <div class="bd-stat" :class="{ warn: owedTotal > 0 }"><b>{{ peso(owedTotal) }}</b><span>Still owed</span></div>
+            <div class="bd-stat ok"><b>{{ peso(paidTotal, detail.bill.currency) }}</b><span>Paid so far</span></div>
+            <div class="bd-stat" :class="{ warn: owedTotal > 0 }"><b>{{ peso(owedTotal, detail.bill.currency) }}</b><span>Still owed</span></div>
           </div>
 
           <p class="section-label">BILL MATH</p>
           <div class="card bd-math" style="margin-bottom:1.25rem">
-            <div><span>Items subtotal</span><span>{{ peso(detail.totals.subtotal) }}</span></div>
-            <div v-if="detail.totals.tax"><span>Tax</span><span>{{ peso(detail.totals.tax) }}</span></div>
+            <div><span>Items subtotal</span><span>{{ peso(detail.totals.subtotal, detail.totals.receipt_currency) }}</span></div>
+            <div v-if="detail.totals.tax"><span>Tax</span><span>{{ peso(detail.totals.tax, detail.totals.receipt_currency) }}</span></div>
             <div v-else-if="detail.totals.tax_included"><span>Tax</span><span class="bd-muted">included in prices</span></div>
-            <div v-if="detail.totals.service"><span>Service charge</span><span>{{ peso(detail.totals.service) }}</span></div>
-            <div v-if="detail.totals.discount"><span>Discount</span><span>−{{ peso(detail.totals.discount) }}</span></div>
-            <div class="bd-grand"><span>Total</span><span>{{ peso(detail.totals.total) }}</span></div>
+            <div v-if="detail.totals.service"><span>Service charge</span><span>{{ peso(detail.totals.service, detail.totals.receipt_currency) }}</span></div>
+            <div v-if="detail.totals.discount"><span>Discount</span><span>−{{ peso(detail.totals.discount, detail.totals.receipt_currency) }}</span></div>
+            <div class="bd-grand"><span>Total</span><span>{{ peso(detail.totals.total, detail.bill.currency) }}</span></div>
+            <div v-if="detail.totals.fx && detail.totals.fx.foreign" class="bd-muted" style="font-size:.75rem">{{ peso(detail.totals.native_total, detail.totals.receipt_currency) }} on the receipt at {{ fmtRate(detail.totals.fx.rate, detail.totals.receipt_currency, detail.bill.currency) }} · {{ detail.totals.fx.source }}{{ detail.totals.fx.at ? ', ' + fmtDateTime(detail.totals.fx.at) : '' }}<template v-if="detail.totals.fx.fees"> · +{{ peso(detail.totals.fx.fees, detail.bill.currency) }} fees</template> · {{ detail.fx_log.length }} rate change{{ detail.fx_log.length === 1 ? '' : 's' }} logged</div>
           </div>
           <p v-if="detail.totals.unassigned" class="bd-note" style="background:#fffbeb; color:#92400e; margin-bottom:1.25rem">
             {{ detail.totals.unassigned }} item{{ detail.totals.unassigned === 1 ? ' isn’t' : 's aren’t' }} assigned to anyone yet, so those amounts aren’t in anyone’s share.
@@ -193,7 +194,7 @@ require __DIR__ . '/../partials/admin-top.php';
                     <span v-if="m.discount_type && m.discount_type !== 'none'" class="pill pill-settling" style="margin-left:.3rem">{{ m.discount_type.toUpperCase() }}</span>
                     <span v-if="m.id === detail.bill.payer_id" class="pill pill-active" style="margin-left:.3rem">Paid the bill</span>
                   </span>
-                  <b style="font-size:.88rem">{{ peso(detail.shares[m.id] || 0) }}</b>
+                  <b style="font-size:.88rem">{{ peso(detail.shares[m.id] || 0, detail.bill.currency) }}</b>
                 </span>
                 <span class="bd-bar"><span :style="{ width: sharePct(m.id) + '%' }"></span></span>
               </span>
@@ -225,17 +226,17 @@ require __DIR__ . '/../partials/admin-top.php';
                   <span class="bd-row" style="flex-shrink:0">
                     <span class="bd-faces"><avatar v-for="m in faces(it)" :key="m.id" :user="m" :size="20"></avatar></span>
                     <span v-if="it.who.length > 4" class="bd-muted">+{{ it.who.length - 4 }}</span>
-                    <b style="font-size:.88rem">{{ peso(it.line_total) }}</b>
+                    <b style="font-size:.88rem">{{ peso(it.line_total, detail.totals.receipt_currency) }}</b>
                   </span>
                 </span>
                 <span v-if="openItems[it.id]" class="bd-item-more" style="display:block">
-                  {{ it.qty }} × {{ peso(it.unit_price) }}<span v-if="it.promo"> · promo −{{ peso(Math.abs(it.promo)) }}</span><br />
+                  {{ it.qty }} × {{ peso(it.unit_price, detail.totals.receipt_currency) }}<span v-if="it.promo"> · promo −{{ peso(Math.abs(it.promo), detail.totals.receipt_currency) }}</span><br />
                   <span v-if="it.printed_name && it.printed_name !== it.name">Printed on receipt: <b>{{ it.printed_name }}</b><br /></span>
                   <span v-if="it.ocr_name && it.ocr_name !== it.name">Scanned as: <b>{{ it.ocr_name }}</b><br /></span>
                   <span v-if="it.details">{{ it.details }}<br /></span>
                   <span v-if="it.dup_note">{{ it.dup_note }}<br /></span>
                   Ordered by: <b>{{ it.who.length ? it.who.map(memberName).join(', ') : 'nobody yet' }}</b>
-                  <span v-if="it.who.length > 1"> · {{ peso(it.line_total / it.who.length) }} each</span>
+                  <span v-if="it.who.length > 1"> · {{ peso(it.line_total / it.who.length, detail.totals.receipt_currency) }} each</span>
                 </span>
               </button>
             </template>
@@ -256,16 +257,16 @@ require __DIR__ . '/../partials/admin-top.php';
                     <avatar :user="s.from" :size="26"></avatar>
                     <span style="font-size:.88rem; min-width:0">{{ s.from.name }} <span class="bd-muted">→</span> {{ s.to.name }}</span>
                   </span>
-                  <span class="bd-row" style="flex-shrink:0"><b style="font-size:.9rem">{{ peso(s.amount) }}</b><status-pill :status="s.status"></status-pill></span>
+                  <span class="bd-row" style="flex-shrink:0"><b style="font-size:.9rem">{{ peso(s.amount, s.currency) }}</b><status-pill :status="s.status"></status-pill></span>
                 </span>
                 <span class="bd-bar" :class="{ bad: s.status === 'disputed' }"><span :style="{ width: paidPct(s) + '%' }"></span></span>
-                <span class="bd-muted" style="display:block; margin-top:.3rem">{{ peso(s.paid_amount) }} paid · {{ peso(s.remaining) }} left<span v-if="s.interest_added"> · incl. {{ peso(s.interest_added) }} interest</span></span>
+                <span class="bd-muted" style="display:block; margin-top:.3rem">{{ peso(s.paid_amount, s.currency) }} paid · {{ peso(s.remaining, s.currency) }} left<span v-if="s.interest_added"> · incl. {{ peso(s.interest_added, s.currency) }} interest</span></span>
               </button>
               <div v-if="openSettle[s.id]" style="padding:0 1rem 1rem">
                 <p v-if="s.status === 'disputed'" class="bd-note"><b>Disputed:</b> {{ s.dispute_reason || 'No reason given.' }}</p>
                 <div v-for="p in s.payments" :key="p.id" class="bd-part" style="margin-top:.4rem">
                   <span>
-                    <b>{{ peso(p.amount) }}</b> by {{ p.paid_by.name }}
+                    <b>{{ peso(p.amount, s.currency) }}</b> by {{ p.paid_by.name }}
                     <span class="bd-muted">· {{ methodLabel(p) }}<span v-if="p.payment_ref"> · ref {{ p.payment_ref }}</span><span v-if="p.has_proof"> · proof attached</span></span>
                     <span v-if="p.status === 'rejected' && p.reject_reason" class="bd-muted" style="display:block">Rejected: {{ p.reject_reason }}</span>
                   </span>

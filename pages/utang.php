@@ -20,11 +20,11 @@ require __DIR__ . '/../partials/head.php';
     <div class="mt-5 grid grid-cols-2 gap-3">
       <div class="rounded-2xl bg-white/10 px-3.5 py-2.5">
         <p class="text-[10.5px] font-bold uppercase tracking-wide text-brand-50/80">Lent · still out</p>
-        <p class="text-[19px] font-extrabold tabular-nums">{{ peso(totals.lent) }}</p>
+        <p class="text-[19px] font-extrabold tabular-nums">{{ (totals.estimated ? "≈ " : "") + peso(totals.lent, totals.currency) }}</p>
       </div>
       <div class="rounded-2xl bg-white/10 px-3.5 py-2.5">
         <p class="text-[10.5px] font-bold uppercase tracking-wide text-brand-50/80">Borrowed · to repay</p>
-        <p class="text-[19px] font-extrabold tabular-nums">{{ peso(totals.borrowed) }}</p>
+        <p class="text-[19px] font-extrabold tabular-nums">{{ (totals.estimated ? "≈ " : "") + peso(totals.borrowed, totals.currency) }}</p>
       </div>
     </div>
   </div>
@@ -51,8 +51,8 @@ require __DIR__ . '/../partials/head.php';
             </div>
             <div class="shrink-0 text-right">
               <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{{ l.status === 'closed' ? 'Paid back' : l.settlement ? 'Left' : 'Amount' }}</p>
-              <p class="text-sm font-bold tabular-nums">{{ peso(l.settlement && l.status !== 'closed' ? l.settlement.remaining : l.amount) }}</p>
-              <p v-if="l.settlement && l.settlement.paid_amount > 0 && l.status !== 'closed'" class="text-[10.5px] text-slate-400">of {{ peso(l.settlement.amount) }}</p>
+              <p class="text-sm font-bold tabular-nums">{{ peso(l.settlement && l.status !== 'closed' ? l.settlement.remaining : l.amount, l.currency) }}</p>
+              <p v-if="l.settlement && l.settlement.paid_amount > 0 && l.status !== 'closed'" class="text-[10.5px] text-slate-400">of {{ peso(l.settlement.amount, l.currency) }}</p>
             </div>
           </div>
           <div v-if="l.settlement && l.settlement.paid_amount > 0 && l.status !== 'closed'" class="mt-2.5">
@@ -72,7 +72,7 @@ require __DIR__ . '/../partials/head.php';
               </template>
               <template v-else>
                 <button @click="decline(l)" class="btn btn-danger btn-sm" :disabled="busy">That's not right</button>
-                <button @click="act(l, 'confirm')" class="btn btn-accent btn-sm" :disabled="busy">Confirm {{ peso(l.amount) }}</button>
+                <button @click="act(l, 'confirm')" class="btn btn-accent btn-sm" :disabled="busy">Confirm {{ peso(l.amount, l.currency) }}</button>
               </template>
             </template>
             <template v-else-if="l.status === 'settling'">
@@ -112,14 +112,14 @@ require __DIR__ . '/../partials/head.php';
         <p v-if="err('person')" class="field-error">{{ err('person') }}</p>
         <div v-if="results.length" class="tile mt-2 divide-y divide-slate-100 overflow-hidden">
           <button v-for="u in results" :key="u.id" type="button" @click="pick(u)" class="flex w-full items-center gap-3 px-3.5 py-2.5 text-left hover:bg-slate-50">
-            <avatar :user="u" :size="28"></avatar><span class="flex-1 text-[13px] font-bold">{{ u.name }}</span>
+            <person-result :user="u" :size="28"></person-result>
           </button>
         </div>
       </template>
 
       <label class="field-label mt-4" for="loan-amount">Amount</label>
       <div class="flex items-center gap-2">
-        <span class="text-slate-400">₱</span>
+        <div class="shrink-0"><currency-select compact v-model="f.currency" label="Currency"></currency-select></div>
         <input id="loan-amount" data-field="amount" :value="f.amount" @input="f.amount = filterMoney($event.target.value); $event.target.value = f.amount; touch('amount')" :class="{ 'is-invalid': err('amount') }" class="input-soft flex-1" inputmode="decimal" placeholder="0.00" />
       </div>
       <p v-if="err('amount')" class="field-error">{{ err('amount') }}</p>
@@ -153,11 +153,11 @@ const money = (v) => Math.round((parseFloat(String(v).replace(/,/g, '')) || 0) *
 Setlo.mount({
   mixins: [Setlo.validation],
   data: () => ({
-    loading: true, busy: false, loans: [],
+    loading: true, busy: false, loans: [], serverTotals: null,
     drafting: false, search: '', results: [], timer: null,
     // Installment interest: one of the fixed rates (INSTALLMENT_RATES), the lowest picked by default
     rates: <?= json_encode(INSTALLMENT_RATES) ?>,
-    f: { direction: 'lent', person: null, amount: '', purpose: '', interestOn: false, rate: <?= (int) INSTALLMENT_RATES[0]['rate'] ?> },
+    f: { direction: 'lent', person: null, currency: Setlo.homeCurrency, amount: '', purpose: '', interestOn: false, rate: <?= (int) INSTALLMENT_RATES[0]['rate'] ?> },
   }),
   computed: {
     sections() {
@@ -169,16 +169,19 @@ Setlo.mount({
         { key: 'borrowed', title: 'YOU BORROWED', items: rest.filter((l) => !l.i_lent) },
       ].filter((s) => s.items.length);
     },
+    /** Still out each way, in my currency: the server converts other currencies (loans.php totals). */
     totals() {
+      if (this.serverTotals) return this.serverTotals;
       const left = (l) => (l.status === 'settling' && l.settlement ? l.settlement.remaining : 0);
       return {
         lent: this.loans.filter((l) => l.i_lent).reduce((s, l) => s + left(l), 0),
         borrowed: this.loans.filter((l) => !l.i_lent).reduce((s, l) => s + left(l), 0),
+        currency: Setlo.homeCurrency, estimated: false,
       };
     },
   },
   async mounted() {
-    await Setlo.load(this, 'loans.php', null, (r) => { this.loans = r.loans; });
+    await Setlo.load(this, 'loans.php', null, (r) => { this.loans = r.loans; this.serverTotals = r.totals || null; });
   },
   methods: {
     /** "You lent Ana" / "Ana lent you", or for kept change "You owe Ana change" / "Ana owes you change". */
@@ -187,9 +190,9 @@ Setlo.mount({
       return l.i_lent ? 'You lent ' + l.other.first : l.other.first + ' lent you';
     },
     showPerson(id) { Setlo.showPerson(id); },
-    async load() { this.loans = (await api.get('loans.php')).loans; },
+    async load() { const r = await api.get('loans.php'); this.loans = r.loans; this.serverTotals = r.totals || null; },
     openNew() {
-      this.f = { direction: 'lent', person: null, amount: '', purpose: '', interestOn: false, rate: this.rates[0].rate };
+      this.f = { direction: 'lent', person: null, currency: Setlo.homeCurrency, amount: '', purpose: '', interestOn: false, rate: this.rates[0].rate };
       this.search = '';
       this.results = [];
       Object.keys(this.touched).forEach((k) => { this.touched[k] = false; });
@@ -208,7 +211,7 @@ Setlo.mount({
       const rateOk = this.rates.some((x) => x.rate === this.f.rate);
       return {
         person: this.f.person ? '' : 'Choose who it was with.',
-        amount: V.money(this.f.amount, { required: true, label: 'Amount' }) || (money(this.f.amount) < 1 ? 'Enter at least ₱1.00.' : ''),
+        amount: V.money(this.f.amount, { required: true, label: 'Amount' }) || (money(this.f.amount) < 1 ? 'Enter at least ' + this.peso(1, this.f.currency) + '.' : ''),
         purpose: V.required(this.f.purpose, 'What it was for') || V.maxLen(this.f.purpose, 120, 'What it was for'),
         interest: this.f.direction === 'lent' && this.f.interestOn && !rateOk ? 'Choose one of the interest rates.' : '',
       };
@@ -217,7 +220,7 @@ Setlo.mount({
       if (!this.validateAll(['person', 'amount', 'purpose', 'interest'])) return;
       const f = this.f;
       const r = await Setlo.run(this, () => api.post('loans.php', {
-        action: 'create', person_id: f.person.id, direction: f.direction, amount: money(f.amount), purpose: f.purpose.trim(),
+        action: 'create', person_id: f.person.id, direction: f.direction, currency: f.currency, amount: money(f.amount), purpose: f.purpose.trim(),
         interest_rate: f.direction === 'lent' && f.interestOn ? f.rate : null,
       }));
       if (!r) return;

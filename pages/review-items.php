@@ -39,6 +39,25 @@ require __DIR__ . '/../partials/head.php';
       <button v-if="!receipts.length && bill.has_receipt" @click="showPhotos([])" class="h-10 shrink-0 rounded-xl border-[1.5px] border-brand-300 px-4 text-[13px] font-bold text-brand-700 hover:bg-brand-50">Photo</button>
     </div>
 
+    <!-- Receipt currency: as the scanner read it (and why), correctable. Prices stay as printed. -->
+    <div class="tile p-3.5">
+      <div class="flex items-center gap-3">
+        <div class="min-w-0 flex-1">
+          <p class="text-[13.5px] font-extrabold text-ink">Receipt currency</p>
+          <p class="text-[11.5px] leading-snug text-slate-500">
+            <template v-if="detected">Read as {{ detected.code }}<template v-if="detected.clues"> ({{ detected.clues }})</template>{{ detected.code !== receiptCur ? ' — corrected to ' + receiptCur : '' }}.</template>
+            <template v-else-if="receipts.length">No currency printed — assumed {{ receiptCur }}.</template>
+            <template v-else>Prices you type are in this currency.</template>
+            <template v-if="receiptCur !== bill.currency"> Settles in {{ bill.currency }}; the rate is set on Bill Detail.</template>
+          </p>
+        </div>
+        <div class="shrink-0"><currency-select compact :model-value="receiptCur" @update:model-value="setReceiptCurrency" :disabled="busy" label="Receipt currency"></currency-select></div>
+      </div>
+    </div>
+    <div v-for="rc in receipts.filter((x) => x.currency_note)" :key="'cur' + rc.id" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12.5px] leading-relaxed text-amber-800" role="alert">
+      <b class="text-amber-900">{{ rc.number }}. {{ receiptLabel(rc) }}:</b> {{ rc.currency_note }}
+    </div>
+
     <!-- Same purchase scanned twice -->
     <div v-for="rc in dupReceipts" :key="'dup' + rc.id" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[12.5px] leading-relaxed text-rose-800" role="alert">
       <b class="text-rose-900">{{ rc.number }}. {{ receiptLabel(rc) }}:</b> {{ rc.dup_note }}
@@ -143,6 +162,28 @@ require __DIR__ . '/../partials/head.php';
         {{ diff === 0 ? '✓ Matches the receipt total' : 'Off by ' + peso(Math.abs(diff)) + ' — check quantities and prices' }}
       </p>
     </div>
+
+    <!-- Several people paid the restaurant: each one's contribution, if known (ticked on the Create Bill step) -->
+    <div v-if="payers.length > 1" class="tile p-4 text-[13px]">
+      <p class="text-[14px] font-extrabold text-ink">Who paid the restaurant?</p>
+      <p class="mt-0.5 text-[12px] text-slate-400">Enter each payer's contribution, if known — the cash or card amount handed to the cashier. Leave blank to fill in later on Bill Detail.</p>
+      <div class="mt-3 space-y-2">
+        <label v-for="m in payers" :key="m.id" class="flex items-center gap-3">
+          <avatar :user="m" :size="28"></avatar>
+          <span class="min-w-0 flex-1 truncate font-semibold">{{ m.id === meId ? 'You' : m.name }}</span>
+          <!-- Short of the total: one tap puts the rest on this payer -->
+          <button v-if="payShort > 0" type="button" @click.prevent="fillShort(m)" class="shrink-0 rounded-lg border border-brand-300 px-2 py-1 text-[11.5px] font-bold text-brand-700 hover:bg-brand-50"
+                  :aria-label="'Add the ' + peso(payShort) + ' short to ' + m.name">+{{ peso(payShort) }}</button>
+          <span class="text-slate-400">{{ currencySymbol(bill.currency) }}</span>
+          <input :value="payDraft[m.id]" @input="payDraft[m.id] = filterMoney($event.target.value); $event.target.value = payDraft[m.id]; touch('pay' + m.id)" :data-field="'pay' + m.id"
+                 :class="{ 'is-invalid': err('pay' + m.id) }" inputmode="decimal" placeholder="0.00" class="row-in !h-9 w-28 text-right" :aria-label="'Amount paid by ' + m.name" />
+        </label>
+      </div>
+      <p v-for="m in payers" :key="'pe' + m.id" v-show="err('pay' + m.id)" class="field-error">{{ m.first }}: {{ err('pay' + m.id) }}</p>
+      <p class="mt-2 text-[12px] font-semibold" :class="payCovers ? 'text-brand-600' : 'text-slate-500'">
+        {{ peso(payTotal, bill.currency) }} put in<template v-if="!foreign"> of {{ peso(total) }}{{ payTotal === 0 ? '' : payCovers ? ' ✓' : ' — ' + peso(Math.round((total - payTotal) * 100) / 100) + ' short' }}</template><template v-else> (in {{ bill.currency }}; the receipt is in {{ receiptCur }})</template>
+      </p>
+    </div>
   </div>
 
   <div class="dock">
@@ -176,6 +217,7 @@ Setlo.mount({
   data: () => ({
     billId: <?= $billId ?>, loading: true, busy: false, photos: null, shown: null,
     bill: null, receipts: [], rows: [], tax: '0.00', svc: '0.00', discount: '0.00', receiptTotal: '',
+    meId: <?= (int) $user['id'] ?>, payers: [], payDraft: {},
   }),
   computed: {
     flaggedCount() { return this.rows.filter((r) => r.needs_review).length; },
@@ -198,6 +240,18 @@ Setlo.mount({
       return 'Manual entry';
     },
     dupReceipts() { return this.receipts.filter((rc) => rc.dup_note); },
+    payTotal() { return Math.round(this.payers.reduce((s, m) => s + money(this.payDraft[m.id] || 0), 0) * 100) / 100; },
+    /** The amounts handed over only have to cover the bill total (change goes back to the biggest payer). */
+    payCovers() { return this.payTotal > 0 && this.payTotal >= this.total - 0.005; },
+    /** How much the payers' amounts are short of the bill total (0 when covered, or when the receipt is in another currency). */
+    payShort() { return this.foreign ? 0 : Math.max(0, Math.round((this.total - this.payTotal) * 100) / 100); },
+    foreign() { return !!(this.bill && this.bill.fx && this.bill.fx.foreign); },
+    receiptCur() { return this.bill.receipt_currency || this.bill.currency || 'PHP'; },
+    /** What the scanner read on the first receipt that printed a currency: { code, clues }. */
+    detected() {
+      const rc = this.receipts.find((x) => x.currency_detected);
+      return rc ? { code: rc.currency_detected, clues: rc.currency_clues } : null;
+    },
     /** Items under their receipt; typed-in rows (and everything, when nothing was scanned) in one plain list. */
     groups() {
       if (!this.receipts.length) return [{ key: 'all', receipt: null, label: this.bill.ocr_status === 'ok' ? 'EXTRACTED ITEMS' : 'ITEMS', rows: this.rows }];
@@ -216,11 +270,13 @@ Setlo.mount({
       }
       if (fresh && this.shown !== null && this.shown !== this.formState()) return; // already typing: keep their work
       this.fill(r);
+      if (fresh && r.bill.group_suggest) this.askSaveGroup(r);
     });
   },
   methods: {
     money,
     fill(r) {
+      Setlo.useCurrency(r.bill.receipt_currency || r.bill.currency); // everything here is as printed on the receipt
       this.bill = r.bill;
       this.receipts = r.receipts || []; // a cached reply from before receipts existed has none
       this.rows = r.items.map((it) => ({ ...it, key: ++keySeq, unit_price: it.unit_price.toFixed(2), fixed: false, nudge: false, renamedFrom: renamedFrom(it) }));
@@ -228,12 +284,16 @@ Setlo.mount({
       this.svc = r.bill.service_charge.toFixed(2);
       this.discount = r.bill.discount.toFixed(2);
       this.receiptTotal = r.bill.receipt_total === null ? '' : r.bill.receipt_total.toFixed(2);
+      // Ticked as payers on the Create Bill step (only shown when there are several)
+      const payerIds = r.payments.multi ? r.payments.payer_ids : [];
+      this.payers = r.members.filter((m) => payerIds.includes(m.id));
+      this.payDraft = Object.fromEntries(this.payers.map((m) => [m.id, r.payments.paid[m.id] ? r.payments.paid[m.id].toFixed(2) : '']));
       if (!this.rows.length && !this.receipts.length) this.add();
       this.shown = this.formState();
     },
     async reload() { this.fill(await api.get('bills.php', { id: this.billId })); },
     formState() {
-      return JSON.stringify([this.rows.map(({ key, ...row }) => row), this.tax, this.svc, this.discount, this.receiptTotal]);
+      return JSON.stringify([this.rows.map(({ key, ...row }) => row), this.tax, this.svc, this.discount, this.receiptTotal, this.payDraft]);
     },
     flagText(r) {
       if (r.suggestion) return 'Looks like “' + r.suggestion + '”?';
@@ -295,6 +355,7 @@ Setlo.mount({
       v.svc = V.money(this.svc, { label: 'Service charge' });
       v.discount = V.money(this.discount, { label: 'Discount' }) || (money(this.discount) > this.subtotal ? 'The discount can’t be more than the items subtotal.' : '');
       v.receipt = V.money(this.receiptTotal, { label: 'Receipt total' });
+      for (const m of this.payers) v['pay' + m.id] = V.money(this.payDraft[m.id], { label: 'Amount' });
       return v;
     },
     rowErr(r) { return this.err('name' + r.key) || this.err('qty' + r.key) || this.err('price' + r.key); },
@@ -304,6 +365,7 @@ Setlo.mount({
         items: this.rows.map((x) => ({ id: x.id, name: x.name.trim(), qty: Number(x.qty), unit_price: money(x.unit_price), promo: money(x.promo || 0), needs_review: !!x.needs_review })),
         tax: money(this.tax), service_charge: money(this.svc), discount: money(this.discount),
         receipt_total: this.receiptTotal === '' ? null : money(this.receiptTotal),
+        ...(this.payers.length > 1 ? { payments: Object.fromEntries(this.payers.map((m) => [m.id, money(this.payDraft[m.id] || 0)])) } : {}),
       };
     },
     /**
@@ -345,6 +407,58 @@ Setlo.mount({
         Setlo.toast(err.message);
         e.target.value = rc.title || '';
       }
+    },
+    /**
+     * After a scan, once per bill: save these people as a group (so the next bill starts from it), with Fun Mode on
+     * or off. Fun Mode on makes Continue go to a game that decides who pays. Guests aren't added (no account).
+     */
+    async askSaveGroup(r) {
+      const key = 'setlo-group-asked-' + this.billId;
+      try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch (e) { /* storage blocked: may ask again */ }
+      const people = r.members.filter((m) => !m.is_guest);
+      const guests = r.members.length - people.length;
+      const names = people.map((m) => (m.id === r.me.id ? 'You' : m.first));
+      const list = names.length > 1 ? names.slice(0, -1).join(', ') + ' & ' + names[names.length - 1] : names[0];
+      const suggested = people.map((m) => m.first).join(', ').slice(0, 60);
+      const esc = Setlo.escapeHtml;
+      const res = await Swal.fire({
+        customClass: { popup: 'setlo-swal' }, reverseButtons: true,
+        confirmButtonColor: window.SetloTheme ? SetloTheme.color(600) : '#0d9488', cancelButtonColor: '#94a3b8',
+        icon: 'question', title: 'Save as a group?',
+        html: `<p class="text-[13.5px] text-slate-500">${esc(list)} — next time, start a bill from the group instead of adding everyone again.${guests ? ' Guests aren’t added (no account).' : ''}</p>
+          <input id="grp-name" class="swal2-input" maxlength="60" value="${esc(suggested)}" placeholder="Group name, e.g. Barkada" aria-label="Group name" />
+          <label class="mx-auto mt-3 flex max-w-[22rem] cursor-pointer items-start gap-2.5 rounded-2xl bg-fuchsia-50 px-3.5 py-3 text-left text-[13px] leading-snug text-fuchsia-900">
+            <input id="grp-fun" type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 accent-fuchsia-600" />
+            <span><b>🎉 Turn on Fun Mode</b><br /><span class="text-fuchsia-700">After the review, a quick game (Receipt Race, Roulette, Mystery Card…) decides who pays. You can always skip it.</span></span>
+          </label>`,
+        showCancelButton: true, confirmButtonText: 'Save group', cancelButtonText: 'Not now', focusConfirm: false,
+        preConfirm: async () => {
+          const name = document.getElementById('grp-name').value.trim().replace(/\s+/g, ' ');
+          if (name.length < 2 || /[<>]/.test(name)) { Swal.showValidationMessage('Name it in 2–60 characters, no < or >.'); return false; }
+          try {
+            return await api.post('bills.php', { action: 'save_as_group', bill_id: this.billId, name, fun_mode: document.getElementById('grp-fun').checked });
+          } catch (e) { Swal.showValidationMessage(e.message); return false; }
+        },
+      });
+      if (!res.isConfirmed || !res.value) return;
+      this.bill.fun_mode = res.value.fun_mode;
+      Setlo.toast(res.value.fun_mode ? 'Group saved · Fun Mode on 🎉 — Continue starts the game' : 'Group saved', 'ok');
+    },
+    /** Put what's still short of the total on this payer's amount. */
+    fillShort(m) {
+      this.payDraft[m.id] = (money(this.payDraft[m.id] || 0) + this.payShort).toFixed(2);
+      this.touch('pay' + m.id);
+    },
+    /** Correct the receipt currency (edits so far are saved first; prices are kept as typed). */
+    async setReceiptCurrency(code) {
+      if (code === this.receiptCur) return;
+      const done = await Setlo.run(this, async () => {
+        if (!(await this.saveDraft())) return false;
+        await api.post('receipts.php', { action: 'set_currency', bill_id: this.billId, currency: code });
+        await this.reload();
+        return true;
+      });
+      if (done) Setlo.toast('Receipt currency: ' + code, 'ok');
     },
     async keepReceipt(rc) {
       const r = await Setlo.run(this, () => api.post('receipts.php', { action: 'keep_receipt', bill_id: this.billId, receipt_id: rc.id }));

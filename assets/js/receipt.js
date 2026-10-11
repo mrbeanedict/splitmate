@@ -4,7 +4,7 @@
   const W = 600;
   const PAD = 40;
   const FONT = '"Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif';
-  const peso = (n) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const peso = (n, cur) => global.Setlo.peso(n, cur || 'PHP'); // a payment's receipt is in its debt's currency (r.currency)
   const METHOD = { online: 'Online via PayMongo', transfer: 'Transfer', cash: 'Cash, in person', credit: 'Kept change from earlier cash' };
   const when = (s) => new Date(String(s).replace(' ', 'T')).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -29,13 +29,13 @@
     out.push(['Method', Setlo.methodWithVia(r, METHOD)]);
     if (r.payment_ref) out.push([r.method === 'online' ? 'PayMongo ref' : 'Reference no.', r.payment_ref]);
     if (r.tendered !== null && r.tendered > r.amount) {
-      out.push(['Cash handed over', peso(r.tendered)]);
-      if (r.change > 0) out.push(['Change given back', peso(r.change)]);
-      if (r.credit > 0) out.push(['Kept, owed back (Utang)', peso(r.credit)]);
+      out.push(['Cash handed over', peso(r.tendered, r.currency)]);
+      if (r.change > 0) out.push(['Change given back', peso(r.change, r.currency)]);
+      if (r.credit > 0) out.push(['Kept, owed back (Utang)', peso(r.credit, r.currency)]);
     }
     out.push(null); // divider
-    out.push(['Paid so far', peso(r.paid_so_far)]);
-    out.push(['Still to pay now', peso(r.left_now)]);
+    out.push(['Paid so far', peso(r.paid_so_far, r.currency)]);
+    out.push(['Still to pay now', peso(r.left_now, r.currency)]);
     return out;
   }
 
@@ -60,7 +60,7 @@
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, 190);
     text(ctx, 'setlo', PAD, 42, { size: 24, weight: 800, color: '#fff' });
     text(ctx, 'PAYMENT RECEIPT', W - PAD, 42, { size: 15, weight: 800, color: 'rgba(255,255,255,.85)', align: 'right' });
-    text(ctx, peso(r.amount), PAD, 104, { size: 42, weight: 800, color: '#fff' });
+    text(ctx, peso(r.amount, r.currency), PAD, 104, { size: 42, weight: 800, color: '#fff' });
     text(ctx, r.no + ' · ' + when(r.received_at), PAD, 152, { size: 16, weight: 600, color: 'rgba(255,255,255,.9)' });
 
     ctx.beginPath(); ctx.roundRect(PAD / 2, CARD_TOP, W - PAD, cardBottom - CARD_TOP, 22); ctx.fillStyle = '#fff'; ctx.fill();
@@ -100,7 +100,7 @@
     const res = await global.Swal.fire({
       // The title row leaves room for the ✕, so it never sits on the receipt image.
       html: `<p class="mb-3 pr-10 text-left text-[15px] font-extrabold leading-8 text-ink">Receipt ${global.Setlo.escapeHtml(r.no)}</p>
-             <img src="${url}" alt="Receipt ${r.no} for ${global.Setlo.escapeHtml(peso(r.amount))}" style="width:100%;border-radius:16px" />`,
+             <img src="${url}" alt="Receipt ${r.no} for ${global.Setlo.escapeHtml(peso(r.amount, r.currency))}" style="width:100%;border-radius:16px" />`,
       showConfirmButton: true, confirmButtonText: 'Save image', confirmButtonColor: window.SetloTheme ? SetloTheme.color(600) : '#0d9488',
       showDenyButton: canShare, denyButtonText: 'Share', denyButtonColor: '#64748b',
       showCloseButton: true, padding: '1rem', customClass: { popup: 'setlo-swal' },

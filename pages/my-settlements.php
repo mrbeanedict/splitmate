@@ -44,18 +44,21 @@ require __DIR__ . '/../partials/head.php';
         </div>
         <div class="shrink-0 text-right">
           <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{{ amountLabel(s) }}</p>
-          <p class="text-sm font-bold">{{ peso(s.status === 'settled' ? s.paid_amount : s.remaining) }}</p>
-          <p v-if="s.status !== 'settled' && s.paid_amount > 0" class="text-[10.5px] text-slate-400">of {{ peso(s.amount) }}</p>
+          <p class="text-sm font-bold">{{ peso(s.status === 'settled' ? s.paid_amount : s.remaining, s.currency) }}</p>
+          <p v-if="s.status !== 'settled' && s.paid_amount > 0" class="text-[10.5px] text-slate-400">of {{ peso(s.amount, s.currency) }}</p>
+          <!-- Another currency: about this much in mine today; once settled, what it came to in the debtor's -->
+          <p v-if="s.estimate" class="text-[10.5px] text-slate-400" :title="'At ' + fmtRate(s.estimate.rate, s.currency, s.estimate.currency) + ', ' + s.estimate.source + ', ' + fmtDateTime(s.estimate.at)">≈ {{ peso(s.estimate.amount, s.estimate.currency) }}</p>
+          <p v-else-if="s.local" class="text-[10.5px] text-slate-400" :title="'At ' + fmtRate(s.local.rate, s.currency, s.local.currency) + ', ' + s.local.source + ', ' + fmtDateTime(s.local.at)">= {{ peso(s.local.amount, s.local.currency) }}</p>
         </div>
       </div>
 
       <!-- Paid in parts so far -->
       <div v-if="s.status !== 'settled' && s.paid_amount > 0" class="mt-2.5 px-0.5">
         <div class="progress !h-1.5"><span :style="{ width: Math.min(100, (100 * s.paid_amount) / s.amount) + '%' }"></span></div>
-        <p class="mt-1 text-[11px] text-slate-500">{{ peso(s.paid_amount) }} paid · {{ peso(s.remaining) }} left</p>
+        <p class="mt-1 text-[11px] text-slate-500">{{ peso(s.paid_amount, s.currency) }} paid · {{ peso(s.remaining, s.currency) }} left</p>
       </div>
       <div v-if="s.interest_rate" class="mt-2 rounded-lg bg-amber-50 px-3 py-1.5 text-[11px] leading-snug text-amber-800">
-        <p><b>Installments:</b> each partial payment adds {{ s.interest_rate }}% of what's left<span v-if="s.interest_added > 0"> · {{ peso(s.interest_added) }} interest so far</span>.</p>
+        <p><b>Installments:</b> each partial payment adds {{ s.interest_rate }}% of what's left<span v-if="s.interest_added > 0"> · {{ peso(s.interest_added, s.currency) }} interest so far</span>.</p>
       </div>
 
       <div v-if="s.status === 'disputed'" class="mt-2.5 rounded-lg bg-red-50 px-3 py-2">
@@ -80,7 +83,7 @@ require __DIR__ . '/../partials/head.php';
       <div v-if="s.payments.length && s.status !== 'settled'" class="mt-2.5 space-y-1.5">
         <div v-for="p in s.payments" :key="p.id" class="rounded-lg px-3 py-2 text-xs" :class="partStyle[p.status]">
           <div class="flex items-center justify-between gap-2">
-            <span class="min-w-0"><b>{{ peso(p.amount) }}</b> · {{ methodWithVia(p, methodName) }}<span v-if="p.paid_by.id !== s.from.id"> · paid by {{ p.paid_by.id === me ? 'you' : p.paid_by.first }}</span></span>
+            <span class="min-w-0"><b>{{ peso(p.amount, s.currency) }}</b> · {{ methodWithVia(p, methodName) }}<span v-if="p.paid_by.id !== s.from.id"> · paid by {{ p.paid_by.id === me ? 'you' : p.paid_by.first }}</span></span>
             <span class="flex shrink-0 items-center gap-2 font-semibold">{{ partLabel(s, p) }}
               <button v-if="p.status === 'confirmed'" @click="showReceipt(p.id)" class="font-bold underline">Receipt</button>
             </span>
@@ -91,7 +94,7 @@ require __DIR__ . '/../partials/head.php';
           </div>
           <div v-if="tab === 'owed' && p.status === 'awaiting'" class="mt-2 flex justify-end gap-2">
             <button @click="openReject(s, p)" class="btn btn-danger btn-sm" :disabled="busy">Reject</button>
-            <button @click="confirmPart(s, p)" class="btn btn-accent btn-sm" :disabled="busy">Confirm {{ peso(p.amount) }}</button>
+            <button @click="confirmPart(s, p)" class="btn btn-accent btn-sm" :disabled="busy">Confirm {{ peso(p.amount, s.currency) }}</button>
           </div>
         </div>
       </div>
@@ -99,7 +102,7 @@ require __DIR__ . '/../partials/head.php';
       <p v-if="s.status === 'settled'" class="mt-2.5 rounded-lg bg-white px-3 py-2 text-[11px] text-slate-500">
         <b class="text-slate-700">Old record</b> · settled {{ fmtDate(s.confirmed_at || s.paid_at, true) }}<span v-if="s.settle_method"> · {{ methodLabel[s.settle_method] }}</span>
         <span v-if="received(s).length" class="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-          <button v-for="p in received(s)" :key="p.id" @click="showReceipt(p.id)" class="font-bold text-brand-700">Receipt {{ peso(p.amount) }}</button>
+          <button v-for="p in received(s)" :key="p.id" @click="showReceipt(p.id)" class="font-bold text-brand-700">Receipt {{ peso(p.amount, s.currency) }}</button>
         </span>
       </p>
 
@@ -157,7 +160,7 @@ require __DIR__ . '/../partials/head.php';
             </div>
             <div class="shrink-0 text-right">
               <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Left to pay</p>
-              <p class="text-sm font-bold">{{ peso(s.remaining) }}</p>
+              <p class="text-sm font-bold">{{ peso(s.remaining, s.currency) }}</p>
             </div>
           </div>
           <div class="mt-3 flex items-center justify-end gap-3 border-t border-slate-100 pt-3">
@@ -182,7 +185,7 @@ require __DIR__ . '/../partials/head.php';
       <!-- How much: all of it, or a part -->
       <label class="field-label mt-4" for="amt">Amount</label>
       <div class="flex items-center gap-2">
-        <span class="text-slate-400">₱</span>
+        <span class="text-slate-400">{{ currencySymbol() }}</span>
         <input id="amt" data-field="amount" :value="payAmount" @input="payAmount = filterMoney($event.target.value); $event.target.value = payAmount; touch('amount')" :class="{ 'is-invalid': err('amount') }" class="input-soft flex-1" inputmode="decimal" aria-label="Amount to pay" />
       </div>
       <div class="mt-2 flex gap-2">
@@ -207,19 +210,19 @@ require __DIR__ . '/../partials/head.php';
       </label>
 
       <!-- Digital, verified: PayMongo -->
-      <div v-if="online.enabled" class="mt-4 rounded-2xl border border-brand-100 bg-brand-50/60 p-3.5">
+      <div v-if="onlineOk" class="mt-4 rounded-2xl border border-brand-100 bg-brand-50/60 p-3.5">
         <div class="flex items-center gap-2">
           <p class="flex-1 text-[13px] font-extrabold text-ink">Pay online</p>
           <span v-if="online.test" class="pill pill-draft">Demo · test mode</span>
         </div>
         <p class="mt-0.5 text-[12px] text-slate-500">GCash, Maya or card through PayMongo. Counts automatically once PayMongo confirms it. No screenshot needed.</p>
         <button type="button" @click="payOnline" class="btn btn-primary mt-3 w-full" :disabled="busy || tooSmallOnline">
-          {{ tooSmallOnline ? 'Online needs at least ' + peso(online.min / 100) : 'Pay ' + peso(money(payAmount)) + ' with PayMongo' }}
+          {{ tooSmallOnline ? 'Online needs at least ' + peso(online.min / 100, 'PHP') : 'Pay ' + peso(money(payAmount)) + ' with PayMongo' }}
         </button>
       </div>
 
       <!-- Digital, manual: ref no. / screenshot, receiver confirms -->
-      <p class="mt-5 text-[13px] font-extrabold text-ink">{{ online.enabled ? 'Already sent it another way?' : 'Mark as paid' }}</p>
+      <p class="mt-5 text-[13px] font-extrabold text-ink">{{ onlineOk ? 'Already sent it another way?' : 'Mark as paid' }}</p>
       <p class="mb-3 mt-0.5 text-xs text-slate-500">{{ paying.to.id === me ? 'You' : paying.to.first }} will be asked to confirm receiving it. A reference number or screenshot helps confirm faster.</p>
       <label class="field-label" for="ref">Reference no. <span class="font-medium text-slate-400">(optional)</span></label>
       <input id="ref" data-field="ref" v-model="payRef" @input="touch('ref')" :class="{ 'is-invalid': err('ref') }" class="input-soft" maxlength="60" placeholder="e.g. 1009 234 567 890" />
@@ -248,7 +251,7 @@ require __DIR__ . '/../partials/head.php';
       <p class="mt-0.5 text-[12px] text-slate-500">{{ peso(cashing.open) }} still to pay. Only confirm cash that's in your hands.</p>
       <label class="field-label mt-4" for="cash">Cash handed over</label>
       <div class="flex items-center gap-2">
-        <span class="text-slate-400">₱</span>
+        <span class="text-slate-400">{{ currencySymbol() }}</span>
         <input id="cash" data-field="amount" :value="payAmount" @input="payAmount = filterMoney($event.target.value); $event.target.value = payAmount; touch('amount')" :class="{ 'is-invalid': err('amount') }" class="input-soft flex-1" inputmode="decimal" aria-label="Cash amount received" />
       </div>
       <p v-if="err('amount')" class="field-error">{{ err('amount') }}</p>
@@ -363,6 +366,8 @@ Setlo.mount({
     /** Cash handed over beyond what's open (Cash sheet only). */
     cashExtra() { return this.cashing ? Math.max(0, Math.round((money(this.payAmount) - this.cashing.open) * 100) / 100) : 0; },
     leftAfter() { return this.current ? Math.round((this.current.open - money(this.payAmount)) * 100) / 100 : 0; },
+    /** PayMongo only takes pesos: other currencies are sent another way. */
+    onlineOk() { return this.online.enabled && !!this.paying && (this.paying.currency || 'PHP') === 'PHP'; },
     // PayMongo takes nothing below its minimum, even when that's all that's left.
     tooSmallOnline() { return !!this.paying && Math.round(money(this.payAmount) * 100) < this.online.min; },
   },
@@ -446,6 +451,7 @@ Setlo.mount({
     showQr(person) { Setlo.showPayQr(person); },
     setAmount(v) { this.payAmount = v.toFixed(2); this.touch('amount'); },
     openPay(s, covering) {
+      Setlo.useCurrency(s.currency); // the sheet's amounts are in this debt's currency
       this.paying = s;
       this.covering = covering;
       this.payBack = true;
@@ -456,6 +462,7 @@ Setlo.mount({
       this.clearProof();
     },
     openCash(s) {
+      Setlo.useCurrency(s.currency);
       this.cashing = s;
       this.extraMode = 'change';
       this.payAmount = s.open.toFixed(2);
@@ -477,7 +484,7 @@ Setlo.mount({
       if (s) {
         // Cash may be more than what's left (change or credit); other payments can't.
         amount = V.money(this.payAmount, { required: true, label: 'Amount' })
-          || (amt < Math.min(1, s.open) ? 'Enter at least ₱1.00.' : '')
+          || (amt < Math.min(1, s.open) ? 'Enter at least ' + this.peso(1) + '.' : '')
           || (!this.cashing && amt > s.open ? 'At most ' + this.peso(s.open) + ' — that’s all that’s left.' : '');
       }
       return { ref: V.refNo(this.payRef), amount, reason: this.rejecting ? V.reason(this.reason, 5, 500) : '' };
@@ -527,7 +534,7 @@ Setlo.mount({
         Setlo.alert('Payment received', `PayMongo confirmed the payment to ${s.to.first}. ` + (left > 0 ? `${this.peso(left)} is still to pay.` : 'This settlement is closed.'), 'success');
       }
     },
-    openReject(s, p) { this.rejecting = { s, p }; this.reason = ''; this.touched.reason = false; },
+    openReject(s, p) { Setlo.useCurrency(s.currency); this.rejecting = { s, p }; this.reason = ''; this.touched.reason = false; },
     async submitReject() {
       if (!this.validateAll(['reason'])) return;
       if (await this.act(this.rejecting.s, 'reject', { payment_id: this.rejecting.p.id, reason: this.reason.trim() })) this.rejecting = null;

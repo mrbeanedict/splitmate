@@ -17,7 +17,7 @@ require __DIR__ . '/../partials/head.php';
         <h1 class="text-[21px] font-extrabold tracking-tight">Spending</h1>
         <p class="text-[12px] font-medium text-brand-50/90">
           <template v-if="tab === 'overview'">Your share of every bill — not what the table paid</template>
-          <template v-else-if="history">{{ history.length }} closed {{ history.length === 1 ? 'bill' : 'bills' }} · {{ peso(historyTotal) }} split in total</template>
+          <template v-else-if="history">{{ history.length }} closed {{ history.length === 1 ? 'bill' : 'bills' }} · {{ historyTotal }} split in total</template>
           <template v-else>Bills that are fully settled</template>
         </p>
       </div>
@@ -43,7 +43,7 @@ require __DIR__ . '/../partials/head.php';
           <p class="truncate text-sm font-semibold text-slate-800">{{ b.name }}</p>
           <p class="text-xs text-slate-400">{{ b.members }} members · Closed {{ fmtDate(b.closed_at) }}</p>
         </div>
-        <p class="text-sm font-bold text-slate-700">{{ peso(b.total) }}</p>
+        <p class="text-sm font-bold text-slate-700">{{ peso(b.total, b.currency) }}</p>
       </a>
     </template>
   </div>
@@ -127,7 +127,7 @@ require __DIR__ . '/../partials/head.php';
       <div><p class="text-[11px] text-slate-500">You've paid friends</p><p class="text-[15px] font-extrabold text-ink">{{ peso(s.paid_out) }}</p></div>
       <div><p class="text-[11px] text-slate-500">Friends paid you back</p><p class="text-[15px] font-extrabold text-ink">{{ peso(s.received) }}</p></div>
     </div>
-    <p class="text-center text-[11px] text-slate-400 lg:col-span-2">Confirmed settlements only. Draft bills aren't counted.
+    <p class="text-center text-[11px] text-slate-400 lg:col-span-2">Confirmed settlements only. Draft bills aren't counted.<template v-if="s.estimated"> Amounts in other currencies are estimated in {{ s.currency }} at today's rate.</template>
       <button @click="show('history')" class="font-bold text-brand-700">See past bills →</button></p>
   </div>
 
@@ -135,6 +135,7 @@ require __DIR__ . '/../partials/head.php';
 </div>
 
 <script>
+Setlo.useCurrency(Setlo.homeCurrency); // spending is added up in my currency (api/stats.php)
 Setlo.mount({
   data: () => ({
     loading: true, s: null, hover: null, asTable: false,
@@ -148,7 +149,12 @@ Setlo.mount({
       if (!this.s.last_month) return null;
       return Math.round(((this.s.this_month - this.s.last_month) / this.s.last_month) * 100);
     },
-    historyTotal() { return (this.history || []).reduce((sum, b) => sum + b.total, 0); },
+    /** Closed bills can be in different currencies: one sum per currency. */
+    historyTotal() {
+      const by = {};
+      for (const b of this.history || []) by[b.currency || 'PHP'] = (by[b.currency || 'PHP'] || 0) + b.total;
+      return Object.entries(by).map(([c, v]) => this.peso(v, c)).join(' + ') || this.peso(0);
+    },
     historyGroups() {
       const out = [];
       for (const b of this.history || []) {

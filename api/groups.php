@@ -60,7 +60,7 @@ if (method() === 'GET') {
         $bills = q("SELECT b.* FROM bills b WHERE b.group_id = ? AND $mine ORDER BY b.created_at DESC", [$g['id'], $me['id']])->fetchAll();
         // The trail: every payment on those bills, newest first.
         $trail = q(
-            "SELECT p.*, s.from_user_id, s.to_user_id, b.name AS bill_name, b.id AS bill_id,
+            "SELECT p.*, s.from_user_id, s.to_user_id, s.currency, b.name AS bill_name, b.id AS bill_id,
                     fu.full_name AS from_name, fu.avatar_color AS from_color, fu.role AS from_role,
                     tu.full_name AS to_name, tu.avatar_color AS to_color,
                     pu.full_name AS payer_name, pu.avatar_color AS payer_color
@@ -69,19 +69,26 @@ if (method() === 'GET') {
              WHERE b.group_id = ? AND $mine AND p.status <> 'started' ORDER BY p.created_at DESC, p.id DESC LIMIT 200",
             [$g['id'], $me['id']]
         )->fetchAll();
-        $open = q(
-            "SELECT COALESCE(SUM(s.amount - s.paid_amount), 0) FROM settlements s JOIN bills b ON b.id = s.bill_id WHERE b.group_id = ? AND $mine AND s.status <> 'settled'",
+        // Still unpaid on the group's bills, in my currency (others at today's market rate)
+        $home = user_currency($me['id']);
+        $open = 0;
+        foreach (q(
+            "SELECT s.currency, COALESCE(SUM(s.amount - s.paid_amount), 0) AS left_ FROM settlements s JOIN bills b ON b.id = s.bill_id WHERE b.group_id = ? AND $mine AND s.status <> 'settled' GROUP BY s.currency",
             [$g['id'], $me['id']]
-        )->fetchColumn();
+        ) as $r) {
+            $open += $r['currency'] === $home ? cents($r['left_']) : (fx_estimate(cents($r['left_']), $r['currency'], $home)['cents'] ?? 0);
+        }
         json_ok([
             'group'   => ['id' => $g['id'], 'name' => $g['name'], 'owner_id' => $g['owner_id'], 'is_owner' => $g['owner_id'] === $me['id'], 'fun_mode' => (bool) $g['fun_mode'], 'created_at' => $g['created_at']],
             'members' => group_members($g['id']),
             'bills'   => array_map(fn ($b) => bill_card($b) + ['link' => bill_link($b, $me['id'])], $bills),
-            'open'    => round((float) $open, 2),
+            'open'    => pesos($open),
+            'currency' => $home,
             'trail'   => array_map(fn ($p) => [
                 'id'          => (int) $p['id'],
                 'receipt_no'  => $p['status'] === 'confirmed' ? receipt_no((int) $p['id']) : null,
                 'amount'      => (float) $p['amount'],
+                'currency'    => $p['currency'],
                 'method'      => $p['method'],
                 'online_via'  => $p['online_via'],
                 'status'      => $p['status'],

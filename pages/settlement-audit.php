@@ -39,6 +39,10 @@ require __DIR__ . '/../partials/head.php';
       <div v-if="s.interest_added > 0" class="flex justify-between"><span class="text-slate-500">Interest added ({{ s.interest_rate }}% per partial payment)</span><span class="font-semibold text-amber-700">+{{ peso(s.interest_added) }}</span></div>
       <div class="flex justify-between"><span class="text-slate-500">Paid</span><span class="font-semibold text-emerald-700">{{ peso(s.paid_amount) }}</span></div>
       <div class="flex justify-between border-t border-slate-100 pt-1"><span class="font-bold text-ink">Left to pay</span><span class="font-extrabold">{{ peso(s.remaining) }}</span></div>
+      <p v-if="s.local" class="pt-1 text-[11.5px] text-slate-500">
+        Settled in {{ s.currency }} · {{ s.from.first }}'s {{ s.local.currency }}: <b class="text-ink">{{ peso(s.local.amount, s.local.currency) }}</b>
+        at {{ fmtRate(s.local.rate, s.currency, s.local.currency) }} ({{ s.local.source }}, {{ fmtDateTime(s.local.at) }})
+      </p>
     </div>
 
     <template v-if="s.payments.length">
@@ -112,6 +116,7 @@ Setlo.mount({
   }),
   async mounted() {
     await Setlo.load(this, 'settlements.php', { id: this.id }, (r) => {
+      Setlo.useCurrency(r.settlement.currency); // every amount here is in the debt's currency
       this.s = r.settlement;
       this.events = r.events;
       this.others = r.others;

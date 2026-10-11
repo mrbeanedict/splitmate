@@ -128,7 +128,7 @@ function current_user(): ?array
     if ($user === false) {
         $user = null;
         if (!empty($_SESSION['user_id'])) {
-            $row = q('SELECT id, full_name, email, payment_method, avatar_color, avatar, role, status FROM users WHERE id = ?', [$_SESSION['user_id']])->fetch();
+            $row = q('SELECT id, full_name, email, payment_method, currency, avatar_color, avatar, role, status FROM users WHERE id = ?', [$_SESSION['user_id']])->fetch();
             if ($row && $row['status'] === 'active') {
                 $row['id'] = (int) $row['id'];
                 $user = $row;
