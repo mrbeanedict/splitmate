@@ -913,7 +913,9 @@
     const form = e.target.closest('form[action="logout"]');
     if (!form || !e.target.closest('button')) return;
     e.preventDefault();
+    // If the styled dialog can't be shown (e.g. SweetAlert failed to load), log why and ask with the browser's own prompt.
     confirmDialog({ title: 'Sign out?', text: 'You can log back in anytime.', confirmText: 'Sign out' })
+      .catch((err) => { console.error('Sign-out dialog failed:', err); return window.confirm('Sign out?'); })
       .then((ok) => { if (ok) form.submit(); });
   }, true);
 
