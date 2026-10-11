@@ -583,10 +583,19 @@
 
   /* Roulette */
   /* Seats grow only a little when highlighted, so they stay inside the card's padding and clear of the title */
-  .roulette-seat { @apply flex flex-col items-center justify-center gap-1.5 rounded-2xl px-2 py-3 transition duration-500; }
-  .roulette-seat.hot { @apply scale-105 bg-fuchsia-100 ring-2 ring-fuchsia-400; }
-  .roulette-seat.out { @apply scale-95 opacity-40 grayscale; }
-  .roulette-seat.payer { @apply scale-105 bg-amber-100 ring-[3px] ring-amber-400; }
+  /* Spin the wheel: the slices are a conic-gradient set inline (pages/game.php); labels are rotated to each slice's middle */
+  .wheel-wrap { @apply relative mx-auto aspect-square w-full max-w-[300px]; }
+  .wheel { @apply absolute inset-[10px] rounded-full ring-[6px] ring-white; box-shadow: 0 14px 30px -10px rgb(0 0 0 / .45), inset 0 0 0 2px rgb(0 0 0 / .08); will-change: transform; }
+  .wheel-label { @apply absolute inset-0 flex flex-col items-center gap-1 pt-[9%] text-white transition-opacity duration-500; text-shadow: 0 1px 3px rgb(0 0 0 / .55); }
+  .wheel-label > span { @apply max-w-[4.5rem] truncate text-[11px] font-extrabold; }
+  .wheel-label .av { box-shadow: 0 0 0 2px rgb(255 255 255 / .9); }
+  .wheel.landed .wheel-label:not(.win) { opacity: .5; }
+  .wheel-label.win .av { box-shadow: 0 0 0 3px #fde047, 0 0 16px 4px rgb(253 224 71 / .8); }
+  .wheel-hub { @apply absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white text-[26px] shadow-lg ring-4 ring-fuchsia-500; }
+  .wheel-pointer { @apply absolute left-1/2 top-0 z-10 -translate-x-1/2; width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent; border-top: 26px solid #f59e0b; filter: drop-shadow(0 3px 2px rgb(0 0 0 / .35)); }
+  .wheel-pointer.flick { animation: wheel-flick .16s ease-in-out infinite; transform-origin: 50% 0; }
+  @keyframes wheel-flick { 0%, 100% { transform: translateX(-50%) rotate(-7deg); } 50% { transform: translateX(-50%) rotate(7deg); } }
+  @media (prefers-reduced-motion: reduce) { .wheel-pointer.flick { animation: none; } }
 
   .pop-in { animation: popin .5s cubic-bezier(.2, 1.6, .4, 1) both; }
   @keyframes popin { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -867,8 +876,8 @@ html.dark .row-qty { background-color: rgb(244 63 94 / .14); border-color: rgb(2
 html.dark .status-badge { background-color: rgb(139 92 246 / .16); color: rgb(var(--tx-violet)); --tw-ring-color: rgb(139 92 246 / .4); }
 html.dark .fun-badge { background-color: rgb(217 70 239 / .16); color: rgb(var(--tx-fuchsia)); --tw-ring-color: rgb(217 70 239 / .4); }
 html.dark .game-slide.on { background-color: rgb(217 70 239 / .14); }
-html.dark .roulette-seat.hot { background-color: rgb(217 70 239 / .2); }
-html.dark .roulette-seat.payer { background-color: rgb(245 158 11 / .2); }
+html.dark .wheel { --tw-ring-color: rgb(var(--slate-300)); }
+html.dark .wheel-hub { background-color: rgb(var(--surface)); }
 html.dark .mcard-front { --tw-ring-color: rgb(217 70 239 / .45); }
 html.dark .progress-muted > span { background-color: rgb(var(--slate-300)); }
 html.dark .ring-fuchsia-200, html.dark .ring-fuchsia-300, html.dark .ring-violet-200 { --tw-ring-color: rgb(255 255 255 / .14); }

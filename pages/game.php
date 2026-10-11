@@ -216,20 +216,23 @@ require __DIR__ . '/../partials/head.php';
       </div>
     </template>
 
-    <!-- ===== Roulette ===== -->
+    <!-- ===== Roulette: spin the wheel ===== -->
     <template v-else-if="(view === 'playing' || view === 'done') && game.game === 'roulette'">
       <div class="tile p-5">
-        <p class="text-center text-[13px] font-semibold text-slate-500">{{ view === 'done' ? 'The roulette has spoken' : 'Spinning… one by one, players are safe' }}</p>
-        <div class="mt-5 grid grid-cols-3 gap-4 px-1 py-2 sm:grid-cols-4">
-          <div v-for="(p, i) in game.players" :key="p.user.id" class="roulette-seat"
-            :class="{ out: knocked.includes(p.user.id), hot: view === 'playing' && hot === p.user.id && !knocked.includes(p.user.id), payer: view === 'done' && result && result.payer === p.user.id }">
-            <avatar :user="p.user" :size="46"></avatar>
-            <span class="max-w-full truncate text-[12px] font-bold text-ink">{{ who(p.user) }}</span>
-            <span v-if="knocked.includes(p.user.id)" class="text-[10.5px] font-bold text-emerald-600">Safe ✓</span>
+        <p class="text-center text-[13px] font-semibold text-slate-500">{{ landed ? 'The wheel has spoken' : 'Spinning… 🎡' }}</p>
+        <div class="wheel-wrap mt-4">
+          <div class="wheel-pointer" :class="{ flick: spinning }"></div>
+          <div class="wheel" :class="{ landed }" :style="wheelStyle">
+            <div v-for="(p, i) in game.players" :key="p.user.id" class="wheel-label" :class="{ win: landed && result && result.payer === p.user.id }"
+                 :style="{ transform: 'rotate(' + sliceCenter(i) + 'deg)' }">
+              <avatar :user="p.user" :size="34"></avatar>
+              <span>{{ who(p.user) }}</span>
+            </div>
           </div>
+          <div class="wheel-hub">🎡</div>
         </div>
       </div>
-      <div v-if="view === 'done' && result" class="pop-in tile !border-amber-300 !bg-amber-50 p-5 text-center">
+      <div v-if="view === 'done' && result && landed" class="pop-in tile !border-amber-300 !bg-amber-50 p-5 text-center">
         <p class="text-[44px]">💸</p>
         <p class="text-[18px] font-extrabold text-ink">{{ result.payer === me.id ? 'Your wallet has been selected!' : nameOf(result.payer) + '’s wallet has been selected!' }}</p>
         <p class="mt-1 text-[13px] text-slate-600">{{ result.payer === me.id ? 'You pay' : nameOf(result.payer) + ' pays' }} the whole bill. 🌟 Main Character unlocked.</p>
@@ -390,7 +393,8 @@ Setlo.mount({
     billId: <?= $billId ?>, loading: true, busy: false,
     bill: null, me: { id: <?= (int) $user['id'] ?>, is_creator: false }, members: [], games: {}, cards: {}, game: null, shares: null,
     pick: { game: 'roulette', mode: 'screen' }, gameArt: <?= json_encode(url('assets/games/')) ?>, scrollFrame: null,
-    offset: 0, now: Date.now(), poller: null, ticker: null, hot: null,
+    offset: 0, now: Date.now(), poller: null, ticker: null,
+    angle: 0, spinning: false, landed: false, wheelRaf: null,
     answerInput: '', basket: {}, revealed: false, replaying: false, lastNudge: 0, reveal: null,
   }),
   computed: {
@@ -420,7 +424,17 @@ Setlo.mount({
     turnLimit() { return Math.round((this.game.turn_limit_ms || 90000) / 1000); },
     validAnswer() { const v = parseFloat(this.answerInput); return v >= 0 && this.answerInput.trim() !== '' && v <= 1000000; },
     basketCount() { return Object.values(this.basket).reduce((a, b) => a + b, 0); },
-    knocked() { return (this.game && this.game.knocked) || []; },
+    /** 'playing' while the wheel spins, 'done' once the payer is known; anything else is not a roulette on screen. */
+    wheelPhase() {
+      if (!this.game || this.game.game !== 'roulette') return 'none';
+      return this.game.status === 'done' && this.result ? 'done' : this.game.status === 'playing' ? 'playing' : 'none';
+    },
+    wheelStyle() {
+      const n = this.game ? this.game.players.length : 0;
+      const colors = ['#d946ef', '#f97316', '#8b5cf6', '#10b981', '#0ea5e9', '#f59e0b', '#f43f5e', '#14b8a6'];
+      const stops = Array.from({ length: n }, (_, i) => `${colors[i % colors.length]} ${i * 360 / n}deg ${(i + 1) * 360 / n}deg`);
+      return { background: `conic-gradient(${stops.join(', ')})`, transform: `rotate(${this.angle}deg)` };
+    },
     /** Correct answers by time, then wrong ones, then no answer. */
     raceRanking() {
       const ok = (p) => this.result.correct.includes(p.user.id);
@@ -458,11 +472,13 @@ Setlo.mount({
   watch: {
     'actor.user.id'() { this.revealed = false; this.answerInput = ''; this.basket = {}; },
     // The carousel is (re)drawn: start it on the current pick, e.g. after "Play another game".
+    wheelPhase(now, before) { this.syncWheel(before !== 'playing'); },
     view(v) { if (v === 'options') this.$nextTick(() => this.scrollToGame(this.pick.game, false)); },
   },
   async mounted() {
     await this.load();
     this.loading = false;
+    this.syncWheel(true);
     if (this.view === 'options') this.$nextTick(() => this.scrollToGame(this.pick.game, false));
     this.ticker = setInterval(this.tick, 250);
     this.schedule();
@@ -471,6 +487,7 @@ Setlo.mount({
   unmounted() {
     clearInterval(this.ticker);
     clearTimeout(this.poller);
+    cancelAnimationFrame(this.wheelRaf);
     document.removeEventListener('visibilitychange', this.schedule);
   },
   methods: {
@@ -499,6 +516,39 @@ Setlo.mount({
         /* a dropped poll: the next one catches up */
       }
     },
+    // ----- Roulette wheel -----
+    sliceCenter(i) { return (i + 0.5) * 360 / this.game.players.length; },
+    /** Spin freely while the game plays; once the server names the payer, ease to a stop with their slice under the pointer. */
+    syncWheel(snap) {
+      cancelAnimationFrame(this.wheelRaf);
+      const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const phase = this.wheelPhase;
+      this.spinning = false;
+      if (phase === 'playing') {
+        this.landed = false;
+        if (calm) return;
+        this.spinning = true;
+        let last = performance.now();
+        const step = (t) => { this.angle = (this.angle + 720 * (t - last) / 1000) % 360; last = t; this.wheelRaf = requestAnimationFrame(step); };
+        this.wheelRaf = requestAnimationFrame(step);
+      } else if (phase === 'done') {
+        const slice = 360 / this.game.players.length;
+        const idx = this.game.players.findIndex((p) => p.user.id === this.result.payer);
+        // anywhere inside the slice, not always dead centre
+        const target = (((-(this.sliceCenter(idx) + (Math.random() - 0.5) * slice * 0.6)) % 360) + 360) % 360;
+        if (snap || calm) { this.angle = target; this.landed = true; return; }
+        const from = ((this.angle % 360) + 360) % 360, to = from + 360 * 4 + (((target - from) % 360) + 360) % 360, ms = 3600, t0 = performance.now();
+        const ease = (x) => 1 - Math.pow(1 - x, 3);
+        const step = (t) => {
+          const k = Math.min(1, (t - t0) / ms);
+          this.angle = from + (to - from) * ease(k);
+          if (k < 1) { this.wheelRaf = requestAnimationFrame(step); } else { this.angle = to % 360; this.landed = true; }
+        };
+        this.wheelRaf = requestAnimationFrame(step);
+      } else {
+        this.landed = false;
+      }
+    },
     /** Poll fast while a game is on (faster during roulette), slowly otherwise; never while the tab is hidden. */
     schedule() {
       clearTimeout(this.poller);
@@ -509,11 +559,6 @@ Setlo.mount({
     },
     tick() {
       this.now = Date.now();
-      // Roulette: a highlight hops around the players still in (just for show; the server decides who's out).
-      if (this.game && this.game.game === 'roulette' && this.game.status === 'playing') {
-        const left = this.game.players.filter((p) => !this.knocked.includes(p.user.id));
-        if (left.length) this.hot = left[Math.floor(Math.random() * left.length)].user.id;
-      }
       // A deadline just passed: ask the server to move on rather than wait for the next poll.
       if (this.secondsLeft === 0 && !this.busy && this.now - this.lastNudge > 1500) { this.lastNudge = this.now; this.load(); }
     },

@@ -5,4 +5,4 @@ $user = current_user();
 if (!$user) {
     redirect('pages/login');
 }
-redirect($user['role'] === 'admin' ? 'pages/admin-dashboard' : 'pages/dashboard');
+redirect($user['role'] === 'admin' ? 'pages/admin-dashboard' : 'pages/dashboard'); 
