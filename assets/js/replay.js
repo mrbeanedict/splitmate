@@ -361,6 +361,7 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linejoin="round" d="M10 8.5v7l5.5-3.5z"/></svg>
         Replay the bill
       </button>
+      <Teleport to="body">
       <div v-if="open" class="sheet-backdrop" @click.self="close">
         <div class="sheet rp-sheet" role="dialog" aria-label="Bill replay">
           <div class="sheet-grip"></div>
@@ -430,6 +431,7 @@
           </div>
         </div>
       </div>
+      </Teleport>
     </div>`,
   };
   global.BillReplay = BillReplay;

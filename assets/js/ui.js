@@ -672,6 +672,7 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v14"/></svg>
         Share summary
       </button>
+      <Teleport to="body">
       <div v-if="open" class="sheet-backdrop" @click.self="open = false">
         <div class="sheet">
           <div class="sheet-grip"></div>
@@ -690,6 +691,7 @@
           </div>
         </div>
       </div>
+      </Teleport>
     </div>`,
   };
 
