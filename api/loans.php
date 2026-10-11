@@ -21,6 +21,7 @@ function loan_row(array $b, array $me): array
         'id'            => (int) $b['id'],
         'purpose'       => $b['name'],
         'amount'        => (float) $b['loan_amount'],
+        'currency'      => $b['currency'],
         'interest_rate' => $b['interest_rate'] === null ? null : (float) $b['interest_rate'],
         'status'        => $b['status'],
         'i_lent'        => $lender === $me['id'],
@@ -58,7 +59,23 @@ if (method() === 'GET') {
          ORDER BY FIELD(b.status, 'draft', 'settling', 'closed'), b.created_at DESC",
         [$me['id']]
     )->fetchAll();
-    json_ok(['loans' => array_map(fn ($b) => loan_row($b, $me), $rows)]);
+    $loans = array_map(fn ($b) => loan_row($b, $me), $rows);
+    // What's still out each way, in my currency (others at today's market rate: 'estimated')
+    $home = user_currency($me['id']);
+    $totals = ['lent' => 0, 'borrowed' => 0];
+    $estimated = false;
+    foreach ($loans as $l) {
+        if ($l['status'] !== 'settling' || !$l['settlement']) {
+            continue;
+        }
+        $c = cents($l['settlement']['remaining']);
+        if ($l['currency'] !== $home && $c) {
+            $estimated = true;
+            $c = fx_estimate($c, $l['currency'], $home)['cents'] ?? 0;
+        }
+        $totals[$l['i_lent'] ? 'lent' : 'borrowed'] += $c;
+    }
+    json_ok(['loans' => $loans, 'totals' => ['lent' => pesos($totals['lent']), 'borrowed' => pesos($totals['borrowed']), 'currency' => $home, 'estimated' => $estimated]]);
 }
 
 if (method() !== 'POST') {
@@ -81,21 +98,23 @@ switch (input('action', '')) {
         $purpose = trim(str_input('purpose', 120));
         require_valid(valid_bill_name($purpose), 'purpose');
         $cents = cents(input('amount', 0));
+        // The money's currency: as sent, else the lender's own
+        $lender = $direction === 'lent' ? $me['id'] : $otherId;
+        $cur = input('currency') ? currency_param() : user_currency($lender);
         if ($cents < 100 || $cents > 100000000) {
-            fail('Enter an amount from ₱1.00.', 422, ['fields' => ['amount' => 'Enter an amount from ₱1.00.']]);
+            fail('Enter an amount from ' . money_str(100, $cur) . '.', 422, ['fields' => ['amount' => 'Enter an amount from ' . money_str(100, $cur) . '.']]);
         }
         // Installment interest is the lender's call, from the fixed INSTALLMENT_RATES.
         $rate = $direction === 'lent' ? installment_rate(input('interest_rate')) : null;
-        $lender = $direction === 'lent' ? $me['id'] : $otherId;
         $pdo = db();
         $pdo->beginTransaction();
-        q("INSERT INTO bills (name, kind, loan_amount, creator_id, payer_id, status, interest_rate) VALUES (?, 'loan', ?, ?, ?, 'draft', ?)",
-            [$purpose, pesos($cents), $me['id'], $lender, $rate]);
+        q("INSERT INTO bills (name, kind, loan_amount, creator_id, payer_id, status, interest_rate, currency) VALUES (?, 'loan', ?, ?, ?, 'draft', ?, ?)",
+            [$purpose, pesos($cents), $me['id'], $lender, $rate, $cur]);
         $billId = (int) $pdo->lastInsertId();
         q('INSERT INTO bill_members (bill_id, user_id) VALUES (?, ?), (?, ?)', [$billId, $me['id'], $billId, $otherId]);
         notify($otherId, 'added', $direction === 'lent'
-            ? "$myName says they lent you " . peso_str($cents) . " ($purpose). Confirm it on the Utang page."
-            : "$myName says they borrowed " . peso_str($cents) . " from you ($purpose). Confirm it on the Utang page.", 'utang');
+            ? "$myName says they lent you " . money_str($cents, $cur) . " ($purpose). Confirm it on the Utang page."
+            : "$myName says they borrowed " . money_str($cents, $cur) . " from you ($purpose). Confirm it on the Utang page.", 'utang');
         $pdo->commit();
         json_ok(['loan' => loan_row(q('SELECT * FROM bills WHERE id = ?', [$billId])->fetch(), $me)]);
 
@@ -113,13 +132,13 @@ switch (input('action', '')) {
         $lender = $b['payer_id'];
         $borrower = (int) q('SELECT user_id FROM bill_members WHERE bill_id = ? AND user_id <> ?', [$b['id'], $lender])->fetchColumn();
         $names = first_names([$lender, $borrower]);
-        q('INSERT INTO settlements (bill_id, from_user_id, to_user_id, principal, amount, interest_rate) VALUES (?, ?, ?, ?, ?, ?)',
-            [$b['id'], $borrower, $lender, $b['loan_amount'], $b['loan_amount'], $b['interest_rate']]);
+        q('INSERT INTO settlements (bill_id, from_user_id, to_user_id, currency, principal, amount, interest_rate) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [$b['id'], $borrower, $lender, $b['currency'], $b['loan_amount'], $b['loan_amount'], $b['interest_rate']]);
         $sid = (int) $pdo->lastInsertId();
-        log_event($sid, $me['id'], 'created', "{$names[$lender]} lent {$names[$borrower]} " . peso_str(cents($b['loan_amount'])) . " ({$b['name']}). Confirmed by $myName.");
-        apply_credits($borrower, $lender, $me['id']);
+        log_event($sid, $me['id'], 'created', "{$names[$lender]} lent {$names[$borrower]} " . money_str(cents($b['loan_amount']), $b['currency']) . " ({$b['name']}). Confirmed by $myName.");
+        apply_credits($borrower, $lender, $me['id'], $b['currency']);
         maybe_close_bill($b['id']);
-        notify($b['creator_id'], 'confirmed', "$myName confirmed the " . peso_str(cents($b['loan_amount'])) . " utang ({$b['name']}).", 'utang');
+        notify($b['creator_id'], 'confirmed', "$myName confirmed the " . money_str(cents($b['loan_amount']), $b['currency']) . " utang ({$b['name']}).", 'utang');
         $pdo->commit();
         break;
 
@@ -131,7 +150,7 @@ switch (input('action', '')) {
         }
         $reason = trim(str_input('reason', 200, false));
         q("DELETE FROM bills WHERE id = ? AND status = 'draft'", [$b['id']]);
-        notify($b['creator_id'], 'disputed', "$myName declined the " . peso_str(cents($b['loan_amount'])) . " utang ({$b['name']})" . ($reason !== '' ? ": “{$reason}”" : '.'), 'utang');
+        notify($b['creator_id'], 'disputed', "$myName declined the " . money_str(cents($b['loan_amount']), $b['currency']) . " utang ({$b['name']})" . ($reason !== '' ? ": “{$reason}”" : '.'), 'utang');
         break;
 
     case 'cancel':

@@ -9,7 +9,7 @@ const PAYMENT_METHODS = ['GCash', 'Maya', 'Bank Transfer', 'Cash'];
 
 function profile_of(int $userId): array
 {
-    $u = q('SELECT id, full_name, email, payment_method, payment_account, pay_code, avatar_color, avatar, featured_achievement, google_sub FROM users WHERE id = ?', [$userId])->fetch();
+    $u = q('SELECT id, full_name, email, payment_method, payment_account, currency, pay_code, avatar_color, avatar, featured_achievement, google_sub FROM users WHERE id = ?', [$userId])->fetch();
     if ($u['pay_code'] === null) {
         // Safety net: every account has its own Pay-me code.
         $u['pay_code'] = new_pay_code();
@@ -19,6 +19,7 @@ function profile_of(int $userId): array
         'email'           => $u['email'],
         'payment_method'  => $u['payment_method'],
         'payment_account' => $u['payment_account'],
+        'currency'        => $u['currency'],
         'pay_code'        => $u['pay_code'],
         'google_linked'   => $u['google_sub'] !== null,
         'avatar'          => $u['avatar'], // 'pfp/<file>', 'up/<file>' or null: which picker choice is selected
@@ -41,25 +42,50 @@ function set_avatar(int $userId, ?string $avatar): void
  */
 function money_stats(int $userId): array
 {
-    $people = q(
-        "SELECT u.id, u.full_name, u.avatar_color, u.role,
+    // Debts in other currencies count at today's market rate, in my own currency ('estimated' says when that happened)
+    $home = user_currency($userId);
+    $estimated = false;
+    $inHome = function ($amount, string $cur) use ($home, &$estimated): int {
+        if ($cur === $home) {
+            return cents($amount);
+        }
+        $estimated = true;
+        return fx_estimate(cents($amount), $cur, $home)['cents'] ?? 0;
+    };
+    $rows = q(
+        "SELECT u.id, u.full_name, u.avatar_color, u.role, s.currency,
                 SUM(s.amount - s.paid_amount) AS owed,
                 SUM(s.paid_amount > 0 OR s.interest_rate IS NOT NULL) AS installments,
                 SUM(CASE WHEN s.paid_amount > 0 OR s.interest_rate IS NOT NULL THEN s.amount - s.paid_amount ELSE 0 END) AS installment_owed
          FROM settlements s JOIN users u ON u.id = s.from_user_id
-         WHERE s.to_user_id = ? AND s.status <> 'settled' GROUP BY u.id ORDER BY owed DESC",
+         WHERE s.to_user_id = ? AND s.status <> 'settled' GROUP BY u.id, s.currency",
         [$userId]
     )->fetchAll();
-    $iOwe = (float) q("SELECT COALESCE(SUM(amount - paid_amount), 0) FROM settlements WHERE from_user_id = ? AND status <> 'settled'", [$userId])->fetchColumn();
+    $people = [];
+    foreach ($rows as $r) {
+        $p = &$people[(int) $r['id']];
+        $p ??= $r + ['owed_c' => 0, 'inst_c' => 0, 'n' => 0];
+        $p['owed_c'] += $inHome($r['owed'], $r['currency']);
+        $p['inst_c'] += $inHome($r['installment_owed'], $r['currency']);
+        $p['n'] += (int) $r['installments'];
+        unset($p);
+    }
+    usort($people, fn ($a, $b) => $b['owed_c'] <=> $a['owed_c']);
+    $iOwe = 0;
+    foreach (q("SELECT currency, SUM(amount - paid_amount) AS left_ FROM settlements WHERE from_user_id = ? AND status <> 'settled' GROUP BY currency", [$userId]) as $r) {
+        $iOwe += $inHome($r['left_'], $r['currency']);
+    }
     return [
-        'owed_to_me'       => pesos(array_sum(array_map(fn ($p) => cents($p['owed']), $people))),
-        'installment_owed' => pesos(array_sum(array_map(fn ($p) => cents($p['installment_owed']), $people))),
-        'installments'     => (int) array_sum(array_column($people, 'installments')),
-        'i_owe'            => round($iOwe, 2),
+        'currency'         => $home,
+        'estimated'        => $estimated,
+        'owed_to_me'       => pesos(array_sum(array_column($people, 'owed_c'))),
+        'installment_owed' => pesos(array_sum(array_column($people, 'inst_c'))),
+        'installments'     => (int) array_sum(array_column($people, 'n')),
+        'i_owe'            => pesos($iOwe),
         'people'           => array_map(fn ($p) => public_user($p) + [
-            'owed'             => (float) $p['owed'],
-            'installments'     => (int) $p['installments'],
-            'installment_owed' => (float) $p['installment_owed'],
+            'owed'             => pesos($p['owed_c']),
+            'installments'     => $p['n'],
+            'installment_owed' => pesos($p['inst_c']),
         ], $people),
     ];
 }
@@ -87,6 +113,7 @@ switch (input('action', '')) {
         $name = str_input('full_name', 100);
         $method = str_input('payment_method', 30);
         $account = str_input('payment_account', 60, false);
+        $cur = input('currency') ? currency_param() : user_currency($me['id']);
         $errors = array_filter([
             'full_name'       => valid_name($name, 'Full name'),
             'payment_method'  => in_array($method, PAYMENT_METHODS, true) ? '' : 'Choose a payment method.',
@@ -99,8 +126,13 @@ switch (input('action', '')) {
         if ($errors) {
             fail(reset($errors), 422, ['fields' => $errors]);
         }
-        q('UPDATE users SET full_name = ?, payment_method = ?, payment_account = ? WHERE id = ?',
-            [trim($name), $method, $method === 'Cash' ? null : (trim($account) ?: null), $me['id']]);
+        q('UPDATE users SET full_name = ?, payment_method = ?, payment_account = ?, currency = ? WHERE id = ?',
+            [trim($name), $method, $method === 'Cash' ? null : (trim($account) ?: null), $cur, $me['id']]);
+        json_ok(['profile' => profile_of($me['id'])]);
+
+    case 'set_currency':
+        // My home currency (first-run page and Profile). Bills I pay from now on settle in it; existing bills keep theirs.
+        q('UPDATE users SET currency = ? WHERE id = ?', [currency_param(), $me['id']]);
         json_ok(['profile' => profile_of($me['id'])]);
 
     case 'set_avatar':

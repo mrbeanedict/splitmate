@@ -52,7 +52,7 @@ require __DIR__ . '/../partials/head.php';
       <p v-if="err('members')" class="field-error">{{ err('members') }}</p>
       <div v-if="results.length" class="tile mt-2 divide-y divide-slate-100 overflow-hidden">
         <button v-for="u in results" :key="u.id" type="button" @click="add(u)" class="flex w-full items-center gap-3 px-3.5 py-2.5 text-left hover:bg-slate-50">
-          <avatar :user="u" :size="28"></avatar><span class="flex-1 text-[13px] font-bold">{{ u.name }}</span><span class="text-[12px] font-bold text-brand-700">Add</span>
+          <person-result :user="u" :size="28"></person-result><span class="text-[12px] font-bold text-brand-700">Add</span>
         </button>
       </div>
       <div class="mt-3 flex flex-wrap gap-2">

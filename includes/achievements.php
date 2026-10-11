@@ -116,8 +116,10 @@ function achievements_after_settling(array $bill, array $calc): void
     }
 
     $shares = array_filter($calc['shares'], fn ($c) => $c > 0);
+    // The ₱1,000 bar, in the bill's currency (no rate known: no Glutton on this bill)
+    $toPeso = ($calc['currency'] ?? 'PHP') === 'PHP' ? 1.0 : (fx_rate($calc['currency'], 'PHP')['rate'] ?? 0.0);
     foreach ($shares as $uid => $c) {
-        if ($c >= GLUTTON_CENTS) {
+        if ($toPeso > 0 && $c * $toPeso >= GLUTTON_CENTS) {
             award((int) $uid, 'glutton', $billId);
         }
     }

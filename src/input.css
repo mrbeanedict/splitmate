@@ -225,6 +225,19 @@
   .input-icon { @apply absolute right-4 top-1/2 -translate-y-1/2 text-slate-600; }
   .field-error { @apply mt-1.5 text-[12px] font-semibold text-rose-500; }
 
+  /* Currency dropdown (assets/js/ui.js CurrencySelect): a plain bordered box showing "¥ JPY"; the real <select> is
+     stretched invisibly over it, so opening it gives the browser's default list with the full names. */
+  .cur-select { @apply relative flex h-11 w-full cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-surface pl-3 pr-8 text-sm text-ink; }
+  .cur-select:hover { @apply border-slate-400; }
+  .cur-select:focus-within { @apply border-brand-500 ring-2 ring-brand-500/20; }
+  .cur-compact { @apply h-9 w-auto min-w-[5.5rem]; }
+  .cur-disabled { @apply cursor-not-allowed opacity-60; }
+  .cur-sym { @apply text-[1.05em] font-extrabold text-brand-600; }
+  .cur-code { @apply font-bold; }
+  .cur-name { @apply min-w-0 truncate text-slate-500; }
+  .cur-chev { @apply pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500; }
+  .cur-native { @apply absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed; }
+
   .input { @apply w-full rounded-[.65rem] border-[1.5px] border-slate-200 bg-surface px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none; }
 
   /* Review-items editable row */
@@ -361,6 +374,7 @@
   .step.done, .step.current { @apply text-ink; }
   .step.current { @apply font-bold; }
   .step.done .dot, .step.current .dot { @apply bg-brand-600 text-white; }
+  .step-link { @apply rounded-full underline decoration-dotted underline-offset-4 hover:text-brand-700; }
   .step-line { @apply h-0.5 flex-1 rounded-sm bg-slate-200; }
   .step-line.done { @apply bg-brand-500; }
 
@@ -627,6 +641,67 @@
 @keyframes pp-shake { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
 @media (prefers-reduced-motion: reduce) { .pp-panel, .pp-trigger.shake { animation: none; } .pp-chev { transition: none; } }
 
+/* ---------- Bill replay (bill-replay, assets/js/replay.js) ----------
+   Members sit round the receipt by their picture; amounts fly between them as tokens (Web Animations). */
+.rp-stage { position: relative; width: 100%; max-width: 380px; margin: 0 auto; border-radius: 24px; background: radial-gradient(circle at 50% 50%, rgb(var(--brand-500) / .12), transparent 60%), rgb(var(--slate-50)); }
+.rp-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rp-orbit { fill: none; stroke: rgb(var(--slate-200)); stroke-width: 1.5; stroke-dasharray: 2 7; stroke-linecap: round; }
+.rp-trail { fill: none; stroke: rgb(var(--brand-500) / .6); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 5 7; animation: rp-dash .9s linear infinite, rp-fade .25s ease-out both; }
+.rp-trail.ok { stroke: rgb(16 185 129 / .65); }
+.rp-trail.dashed { stroke: rgb(var(--slate-400) / .7); }
+@keyframes rp-dash { to { stroke-dashoffset: -24; } }
+@keyframes rp-fade { from { opacity: 0; } }
+.rp-center { position: absolute; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translate(-50%, -50%); border-radius: 999px; background: rgb(var(--surface)); box-shadow: 0 10px 28px -10px rgb(var(--brand-700) / .5), 0 0 0 5px rgb(var(--brand-500) / .14); text-align: center; }
+.rp-center-ico { font-size: 18px; line-height: 1; }
+.rp-center-label { max-width: 80%; margin-top: 2px; color: rgb(var(--slate-400)); font-size: 8.5px; font-weight: 800; letter-spacing: .05em; line-height: 1.15; text-transform: uppercase; }
+.rp-center b { color: rgb(var(--ink)); font-size: 12.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.rp-node { position: absolute; z-index: 2; width: 0; height: 0; transition: opacity .3s; animation: rp-in .5s cubic-bezier(.2, 1.5, .4, 1) both; animation-delay: calc(var(--i, 0) * 70ms); }
+.rp-node.dim { opacity: .38; }
+@keyframes rp-in { from { opacity: 0; scale: .3; } }
+.rp-face { position: absolute; left: 0; top: 0; display: flex; transform: translate(-50%, -50%); border-radius: 999px; }
+.rp-face .av { box-shadow: 0 0 0 3px rgb(var(--surface)), 0 6px 14px -6px rgb(0 0 0 / .4) !important; }
+.rp-node.pulse .rp-face { animation: rp-pulse .55s ease-out; }
+@keyframes rp-pulse { 35% { scale: 1.2; } }
+.rp-label { position: absolute; left: 0; top: calc(var(--av) / 2 + 5px); display: flex; flex-direction: column; align-items: center; gap: 2px; transform: translateX(-50%); white-space: nowrap; pointer-events: none; }
+.rp-name { max-width: 78px; overflow: hidden; text-overflow: ellipsis; color: rgb(var(--slate-600)); font-size: 11px; font-weight: 700; line-height: 1.1; }
+.rp-chip { border-radius: 999px; background: rgb(var(--slate-100)); padding: 1px 7px; color: rgb(var(--ink)); font-size: 10.5px; font-weight: 800; font-variant-numeric: tabular-nums; transition: background .25s, color .25s; }
+.rp-chip.pay { background: rgb(var(--brand-600)); color: #fff; }
+.rp-chip.share { background: var(--tint, rgb(var(--brand-50))); color: rgb(var(--brand-700)); }
+.rp-chip.up { background: rgb(16 185 129 / .16); color: #059669; }
+.rp-chip.down { background: rgb(244 63 94 / .14); color: #e11d48; }
+.rp-chip.even { color: rgb(var(--slate-400)); }
+.rp-token { position: absolute; left: 0; top: 0; z-index: 5; display: flex; align-items: center; gap: 5px; border-radius: 999px; background: linear-gradient(135deg, rgb(var(--brand-500)), rgb(var(--brand-700))); padding: 3px 9px 3px 5px; box-shadow: 0 8px 18px -6px rgb(var(--brand-700) / .7); color: #fff; font-size: 11.5px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; opacity: 0; pointer-events: none; }
+.rp-token::before { content: ""; width: 11px; height: 11px; border-radius: 999px; background: radial-gradient(circle at 35% 35%, #fef08a, #eab308); box-shadow: 0 0 0 1.5px rgb(255 255 255 / .55); }
+.rp-token.ok { background: linear-gradient(135deg, #34d399, #059669); box-shadow: 0 8px 18px -6px rgb(5 150 105 / .7); }
+.rp-token.dashed { border: 1.5px dashed rgb(var(--brand-500)); background: rgb(var(--surface)); box-shadow: none; color: rgb(var(--brand-700)); }
+.rp-caption { min-height: 66px; margin-top: 14px; text-align: center; animation: rp-cap .35s ease-out both; }
+@keyframes rp-cap { from { opacity: 0; transform: translateY(6px); } }
+.rp-title { color: rgb(var(--ink)); font-size: 15px; font-weight: 800; line-height: 1.25; }
+.rp-math { margin-top: 3px; color: rgb(var(--slate-500)); font-size: 12.5px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.rp-caption.warn .rp-math { color: #e11d48; font-weight: 600; }
+.rp-ledger { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.rp-ledger th { padding: 0 4px 4px; color: rgb(var(--slate-400)); font-size: 10.5px; font-weight: 800; text-align: right; text-transform: uppercase; letter-spacing: .04em; }
+.rp-ledger td { border-top: 1px solid var(--line, rgb(var(--slate-100))); padding: 5px 4px; color: rgb(var(--ink)); font-weight: 600; text-align: right; }
+.rp-ledger td:first-child { max-width: 120px; text-align: left; }
+.rp-ledger td.up { color: #059669; font-weight: 800; }
+.rp-ledger td.down { color: #e11d48; font-weight: 800; }
+.rp-bar { display: flex; gap: 3px; margin-top: 14px; }
+.rp-bar button { height: 5px; flex: 1; border-radius: 999px; background: rgb(var(--slate-200)); transition: background .25s; }
+.rp-bar button.on { background: rgb(var(--brand-500)); }
+.rp-controls { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
+.rp-btn { display: flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: 999px; background: rgb(var(--slate-100)); color: rgb(var(--slate-600)); font-size: 12px; font-weight: 800; transition: background .15s; }
+.rp-btn:hover:not(:disabled) { background: rgb(var(--slate-200)); }
+.rp-btn:disabled { opacity: .4; }
+.rp-btn.main { width: 52px; height: 52px; background: rgb(var(--brand-600)); box-shadow: 0 10px 22px -10px rgb(var(--brand-700) / .8); color: #fff; }
+.rp-btn.main:hover { background: rgb(var(--brand-700)); }
+html.dark .rp-chip.up, html.dark .rp-ledger td.up { color: rgb(var(--tx-emerald)); }
+html.dark .rp-chip.down, html.dark .rp-ledger td.down, html.dark .rp-caption.warn .rp-math { color: rgb(var(--tx-rose)); }
+/* Accent 700 text would vanish on the dark tint / surface */
+html.dark .rp-chip.share, html.dark .rp-token.dashed { color: rgb(var(--brand-200)); }
+@media (prefers-reduced-motion: reduce) {
+  .rp-node, .rp-node.pulse .rp-face, .rp-trail, .rp-caption { animation: none; }
+}
+
 /* ---------- Dark mode (html.dark) ----------
    Neutrals follow the --slate-* / --surface / --ink variables (tailwind.config.js), so only plain white,
    the pastel status colors and a few fixed hex fills need an override here. */
@@ -757,3 +832,43 @@ html.dark .text-brand-700, html.dark .text-brand-600, html.dark .initials, html.
 html.dark .mchip.on, html.dark .btn-outline, html.dark .btn-pill-outline, html.dark .tab-btn.active, html.dark .nav2 a.active,
 html.dark .nav-drawer > a.active, html.dark .field-ok, html.dark .pp-count, html.dark .pp-tag, html.dark .pp-tools button { color: rgb(var(--brand-300)); }
 html.dark .btn-outline:hover, html.dark .btn-pill-outline:hover { background-color: var(--tint); }
+
+/* Pale accent fills and borders (brand-50…300): a dark tint instead of near-white, which would hide the light text. */
+html.dark .bg-brand-50, html.dark .bg-brand-100, html.dark [class~="bg-brand-50/40"], html.dark [class~="bg-brand-50/50"], html.dark [class~="bg-brand-50/60"],
+html.dark [class~="bg-brand-50/70"], html.dark [class~="bg-brand-100/60"], html.dark [class~="bg-brand-100/70"], html.dark [class~="bg-brand-200/40"],
+html.dark .hover\:bg-brand-50:hover, html.dark .btn-pill-outline:hover { background-color: var(--tint); }
+html.dark .bg-brand-200 { background-color: var(--tint-2); }
+html.dark .border-brand-100, html.dark .border-brand-200, html.dark .border-brand-300, html.dark .btn-pill-outline { border-color: rgb(var(--brand-500) / .4); }
+html.dark a.tile:hover, html.dark button.tile:hover { border-color: rgb(var(--brand-500) / .55); }
+html.dark .ring-brand-50, html.dark .ring-brand-100, html.dark .landing-feature-icon { --tw-ring-color: rgb(var(--brand-500) / .3); }
+/* Dark accent text (800/900, and !/hover/faded variants of 600/700) would vanish on dark surfaces */
+html.dark .text-brand-800, html.dark .text-brand-900, html.dark [class~="!text-brand-600"], html.dark [class~="!text-brand-700"],
+html.dark .hover\:text-brand-600:hover, html.dark .hover\:text-brand-700:hover { color: rgb(var(--brand-200)) !important; }
+html.dark [class~="text-brand-700/80"] { color: rgb(var(--brand-300) / .85); }
+html.dark .cur-sym { color: rgb(var(--brand-300)); }
+/* The "Unlocked!" tag sits on the badge's bright artwork, which stays bright in dark mode: keep it white with dark text */
+html.dark .badge-tag { background-color: rgb(255 255 255 / .92); color: #0f172a; }
+
+/* States set with !important (a tapped card, a flagged row, an invalid field): dark tints with !important too,
+   otherwise the pastel fill wins and the card turns near-white with near-white text. */
+html.dark .flagged, html.dark [class*="!bg-amber-50"] { background-color: rgb(245 158 11 / .12) !important; }
+html.dark .flagged, html.dark [class*="!border-amber-"] { border-color: rgb(245 158 11 / .45) !important; }
+html.dark [class*="!bg-rose-50"], html.dark .is-invalid { background-color: rgb(244 63 94 / .12) !important; }
+html.dark [class*="!border-rose-"], html.dark [class*="!border-red-"] { border-color: rgb(244 63 94 / .45) !important; }
+html.dark [class*="!bg-emerald-50"] { background-color: rgb(16 185 129 / .12) !important; }
+html.dark [class*="!bg-fuchsia-50"] { background-color: rgb(217 70 239 / .12) !important; }
+html.dark [class*="!border-fuchsia-"] { border-color: rgb(217 70 239 / .45) !important; }
+html.dark [class*="!border-brand-200"] { border-color: rgb(var(--brand-500) / .6) !important; }
+html.dark .hover\:bg-rose-50:hover, html.dark .btn-pill-danger:hover, html.dark .nav-drawer-out:hover { background-color: rgb(244 63 94 / .12); }
+html.dark .hover\:bg-red-50:hover, html.dark .btn-danger:hover { background-color: rgb(239 68 68 / .12); }
+
+/* Components with pastel colors built in */
+html.dark .row-qty { background-color: rgb(244 63 94 / .14); border-color: rgb(244 63 94 / .4); color: rgb(var(--tx-rose)); }
+html.dark .status-badge { background-color: rgb(139 92 246 / .16); color: rgb(var(--tx-violet)); --tw-ring-color: rgb(139 92 246 / .4); }
+html.dark .fun-badge { background-color: rgb(217 70 239 / .16); color: rgb(var(--tx-fuchsia)); --tw-ring-color: rgb(217 70 239 / .4); }
+html.dark .game-slide.on { background-color: rgb(217 70 239 / .14); }
+html.dark .roulette-seat.hot { background-color: rgb(217 70 239 / .2); }
+html.dark .roulette-seat.payer { background-color: rgb(245 158 11 / .2); }
+html.dark .mcard-front { --tw-ring-color: rgb(217 70 239 / .45); }
+html.dark .progress-muted > span { background-color: rgb(var(--slate-300)); }
+html.dark .ring-fuchsia-200, html.dark .ring-fuchsia-300, html.dark .ring-violet-200 { --tw-ring-color: rgb(255 255 255 / .14); }

@@ -191,6 +191,44 @@ $steps = [
        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, INDEX (user_id)
      ) ENGINE=InnoDB',
+    // Currencies: a home currency per user, an agreed settlement currency per bill, receipts in any currency
+    // converted at a recorded rate (includes/currency.php)
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS currency CHAR(3) NOT NULL DEFAULT 'PHP' AFTER payment_account",
+    "ALTER TABLE bills ADD COLUMN IF NOT EXISTS currency CHAR(3) NOT NULL DEFAULT 'PHP' AFTER invite_code",
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS receipt_currency CHAR(3) NULL AFTER currency',
+    "ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_mode ENUM('market','actual','manual') NOT NULL DEFAULT 'market' AFTER receipt_currency",
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_market_rate DECIMAL(20,10) NULL AFTER fx_mode',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_market_source VARCHAR(60) NULL AFTER fx_market_rate',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_market_at DATETIME NULL AFTER fx_market_source',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_actual_total DECIMAL(12,2) NULL AFTER fx_market_at',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_manual_rate DECIMAL(20,10) NULL AFTER fx_actual_total',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_fees DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER fx_manual_rate',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_fees_note VARCHAR(80) NULL AFTER fx_fees',
+    "ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_rounding ENUM('exact','nearest','up') NOT NULL DEFAULT 'exact' AFTER fx_fees_note",
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_set_at DATETIME NULL AFTER fx_rounding',
+    'ALTER TABLE receipts ADD COLUMN IF NOT EXISTS currency CHAR(3) NULL AFTER total',
+    'ALTER TABLE receipts ADD COLUMN IF NOT EXISTS currency_detected CHAR(3) NULL AFTER currency',
+    'ALTER TABLE receipts ADD COLUMN IF NOT EXISTS currency_clues VARCHAR(120) NULL AFTER currency_detected',
+    "ALTER TABLE settlements ADD COLUMN IF NOT EXISTS currency CHAR(3) NOT NULL DEFAULT 'PHP' AFTER to_user_id",
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS local_currency CHAR(3) NULL AFTER paid_amount',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS local_amount DECIMAL(14,2) NULL AFTER local_currency',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS local_rate DECIMAL(20,10) NULL AFTER local_amount',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS local_rate_source VARCHAR(60) NULL AFTER local_rate',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS local_rate_at DATETIME NULL AFTER local_rate_source',
+    'CREATE TABLE IF NOT EXISTS fx_rates (
+       quote CHAR(3) NOT NULL PRIMARY KEY, per_usd DECIMAL(24,10) NOT NULL, source VARCHAR(60) NOT NULL,
+       rate_time DATETIME NOT NULL, fetched_at DATETIME NOT NULL
+     ) ENGINE=InnoDB',
+    "CREATE TABLE IF NOT EXISTS bill_fx_log (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, bill_id INT UNSIGNED NOT NULL, actor_id INT UNSIGNED NULL,
+       receipt_currency CHAR(3) NOT NULL, currency CHAR(3) NOT NULL, mode ENUM('market','actual','manual') NOT NULL,
+       market_rate DECIMAL(20,10) NULL, market_source VARCHAR(60) NULL, market_at DATETIME NULL,
+       actual_total DECIMAL(12,2) NULL, manual_rate DECIMAL(20,10) NULL, fees DECIMAL(10,2) NOT NULL DEFAULT 0,
+       fees_note VARCHAR(80) NULL, rounding ENUM('exact','nearest','up') NOT NULL, note VARCHAR(255) NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE CASCADE,
+       FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL, INDEX (bill_id)
+     ) ENGINE=InnoDB",
 ];
 foreach ($steps as $sql) {
     db()->exec($sql);

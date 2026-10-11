@@ -27,7 +27,9 @@ function game_reply(int $billId, ?array $g, array $me): array
             'status'       => $bill['status'],
             'fun_mode'     => bill_fun_mode($bill),
             'has_items'    => (bool) $items,
-            'total_cents'  => $calc['total'],
+            'total_cents'  => $calc['native_total'], // games play on the receipt's amounts, in its currency
+            'receipt_currency' => $calc['receipt_currency'],
+            'currency'     => $calc['currency'],     // ...the result ('shares') is in the settlement currency
             'split_mode'   => $calc['split_mode'],
             'payer_id'     => $bill['payer_id'],
             'next'         => ($creator ? 'assign-items?bill=' : 'bill-items?bill=') . $bill['id'],

@@ -2,8 +2,94 @@
 (function (global) {
   const { createApp } = global.Vue;
 
-  const peso = (n) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const pesoShort = (n) => '₱' + Math.round(Number(n || 0)).toLocaleString('en-PH');
+  // ---------- Money in any currency (includes/currency.php CURRENCIES, put on the page by partials/head.php) ----------
+  const CURRENCIES = Object.fromEntries((global.SETLO_CURRENCIES || [{ code: 'PHP', symbol: '₱', name: 'Philippine peso', decimals: 2 }]).map((c) => [c.code, c]));
+  // What peso() formats in when no currency is given: PHP, or the bill's once a bill page calls Setlo.useCurrency()
+  let pageCurrency = 'PHP';
+  const cinfo = (code) => CURRENCIES[code] || { code, symbol: code + ' ', name: code, decimals: 2 };
+  const sym = (code) => { const s = cinfo(code).symbol; return /^[A-Z]{2,}$/.test(s) ? s + ' ' : s; };
+  /** "₱1,234.50", "¥6,000", "AED 12.00". cur: a currency code (default: the page's). */
+  const peso = (n, cur) => {
+    const c = cinfo(cur || pageCurrency);
+    const v = Number(n || 0);
+    return (v < 0 ? '-' : '') + sym(c.code) + Math.abs(v).toLocaleString('en-PH', { minimumFractionDigits: c.decimals, maximumFractionDigits: c.decimals });
+  };
+  const pesoShort = (n, cur) => sym(cur || pageCurrency) + Math.round(Number(n || 0)).toLocaleString('en-PH');
+  const currencySymbol = (cur) => cinfo(cur || pageCurrency).symbol;
+  const currencyLabel = (cur) => { const c = cinfo(cur); return c.code + ' · ' + c.name; };
+  /** "1 JPY = ₱0.4100" */
+  const fmtRate = (rate, from, to) => '1 ' + from + ' = ' + sym(to) + Number(rate).toLocaleString('en-PH', { maximumFractionDigits: Number(rate) < 1 ? 6 : 4 });
+  /** Format everything on this page in `code` unless told otherwise (a bill page: its agreed currency). */
+  const useCurrency = (code) => { pageCurrency = CURRENCIES[code] ? code : 'PHP'; };
+
+  // ---------- Converting shares: mirrors allocate(), round_shares() and convert_calc() in PHP ----------
+  // BigInt, because weight × total can pass 2^53 cents.
+  const floorDiv = (a, b) => { const q = a / b; return (a % b !== 0n && a < 0n) ? q - 1n : q; };
+  /** Share `total` cents in proportion to weights { id: cents }, largest remainder; adds up exactly. */
+  function allocate(total, weights) {
+    const ids = Object.keys(weights).map(Number).sort((a, b) => a - b);
+    const sum = ids.reduce((s, id) => s + BigInt(weights[id]), 0n);
+    if (sum === 0n) {
+      if (!total || !ids.length) return Object.fromEntries(ids.map((id) => [id, 0]));
+      const base = Math.floor(total / ids.length);
+      return Object.fromEntries(ids.map((id, i) => [id, base + (i < total - base * ids.length ? 1 : 0)]));
+    }
+    const sign = sum < 0n ? -1n : 1n;
+    const out = {}; const rem = {};
+    let given = 0;
+    for (const id of ids) {
+      const num = BigInt(weights[id]) * BigInt(total) * sign;
+      const q = floorDiv(num, sum * sign);
+      out[id] = Number(q);
+      rem[id] = num - q * sum * sign;
+      given += out[id];
+    }
+    let left = total - given;
+    const order = [...ids].sort((a, b) => (rem[b] > rem[a] ? 1 : rem[b] < rem[a] ? -1 : a - b));
+    for (const id of order) { if (left <= 0) break; out[id]++; left--; }
+    return out;
+  }
+  /** Rounding policy: every share but the payer's to a whole unit (nearest / up); the payer's absorbs the difference. */
+  function roundShares(shares, policy, currency, payerId) {
+    if (policy === 'exact' && cinfo(currency).decimals > 0) return shares;
+    const out = { ...shares };
+    const ids = Object.keys(out).map(Number);
+    const payer = ids.includes(payerId) ? payerId : ids[0];
+    let diff = 0;
+    for (const id of ids) {
+      if (id === payer) continue;
+      const c = out[id];
+      const r = policy === 'up' ? Math.ceil(c / 100) * 100 : Math.floor((c + 50) / 100) * 100;
+      diff += r - c;
+      out[id] = r;
+    }
+    out[payer] -= diff;
+    return out;
+  }
+  /**
+   * Receipt-currency shares (cents) → the bill's settlement currency, as the server's convert_calc() does.
+   * fx: bills.php bill.fx; nativeTotal: whole bill in receipt cents. Returns { shares, total }.
+   */
+  function convertShares(native, nativeTotal, fx, payerId) {
+    if (!fx || !fx.foreign) return { shares: roundShares(native, 'exact', fx ? fx.currency : 'PHP', payerId), total: nativeTotal };
+    const c = (v) => Math.round(Number(v || 0) * 100);
+    // in the settlement currency's smallest unit (whole yen, won…), as bill_fx() does
+    const unit = cinfo(fx.currency).decimals === 0 ? 100 : 1;
+    const conv = (v) => Math.round(v / unit) * unit;
+    let converted;
+    if (fx.missing) converted = 0;
+    else if (fx.mode === 'actual' && fx.actual_total !== null) converted = conv(c(fx.actual_total));
+    else converted = conv(nativeTotal * Number(fx.mode === 'manual' && fx.manual_rate ? fx.manual_rate : (fx.market ? fx.market.rate : 0)));
+    const ids = Object.keys(native).map(Number);
+    const assigned = ids.reduce((s, id) => s + native[id], 0);
+    const shares = nativeTotal > 0 ? allocate(converted, { ...native, 0: nativeTotal - assigned }) : Object.fromEntries([...ids, 0].map((id) => [id, 0]));
+    delete shares[0];
+    const fees = conv(c(fx.fees));
+    const sorted = [...ids].sort((a, b) => a - b);
+    const base = sorted.length ? Math.floor(fees / sorted.length) : 0;
+    sorted.forEach((id, i) => { shares[id] += base + (i < fees - base * sorted.length ? 1 : 0); });
+    return { shares: roundShares(shares, fx.rounding, fx.currency, payerId), total: converted + fees };
+  }
 
   const parseDate = (s) => (s instanceof Date ? s : new Date(String(s).replace(' ', 'T')));
 
@@ -54,7 +140,7 @@
   async function confirmDialog({ title, text = '', confirmText = 'Yes', cancelText = 'Cancel', danger = false, icon }) {
     const r = await swal({
       title, text, icon: icon || (danger ? 'warning' : 'question'), showCancelButton: true,
-      confirmButtonText: confirmText, cancelButtonText: cancelText, confirmButtonColor: danger ? '#e11d48' : BRAND, focusCancel: danger,
+      confirmButtonText: confirmText, cancelButtonText: cancelText, confirmButtonColor: danger ? '#e11d48' : (global.SetloTheme ? global.SetloTheme.color(600) : '#0d9488'), focusCancel: danger,
     });
     return r.isConfirmed;
   }
@@ -281,6 +367,22 @@
     template: `<span v-if="badge" class="status-badge" :title="'Title: ' + badge.title">{{ badge.emoji }} {{ badge.title }}</span>`,
   };
 
+  /**
+   * One person in a member search (api/users.php): picture, name with their featured achievement tag, and email
+   * underneath, so people with the same name can be told apart. Sits inside the result's flex button.
+   */
+  const PersonResult = {
+    props: { user: { type: Object, required: true }, size: { type: Number, default: 30 } },
+    template: `<avatar :user="user" :size="size"></avatar>
+      <span class="min-w-0 flex-1">
+        <span class="flex min-w-0 items-center gap-1.5">
+          <span class="truncate text-[13px] font-bold text-ink">{{ user.name }}</span>
+          <status-badge :badge="user.badge" class="max-w-[55%] shrink-0"></status-badge>
+        </span>
+        <span v-if="user.email" class="block truncate text-[11.5px] text-slate-400">{{ user.email }}</span>
+      </span>`,
+  };
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
@@ -404,6 +506,36 @@
         <span class="mt-0.5 block text-[10.5px] leading-tight text-slate-400">{{ r.hint }}</span>
       </button>
     </div>`,
+  };
+
+  /**
+   * Currency dropdown (v-model: a code). Closed, it shows the symbol (bold, in the accent colour) and the code, e.g.
+   * "¥ JPY" (plus the name in grey unless `compact`); open, it's the browser's own plain list with every currency in
+   * full. A transparent native <select> sits over the label, so the list, keyboard and phone pickers are the default ones.
+   * props: modelValue, label (aria), disabled, compact.
+   */
+  const CurrencySelect = {
+    props: { modelValue: String, label: { type: String, default: 'Currency' }, disabled: Boolean, compact: Boolean },
+    emits: ['update:modelValue'],
+    computed: {
+      current() { return cinfo(this.modelValue || 'PHP'); },
+      groups() {
+        const all = Object.values(CURRENCIES);
+        const top = ['PHP', 'USD', 'JPY', 'KRW', 'SGD', 'HKD', 'EUR'].map((c) => CURRENCIES[c]).filter(Boolean);
+        return [{ label: 'Common', list: top }, { label: 'All currencies', list: all.filter((c) => !top.includes(c)).sort((a, b) => a.name.localeCompare(b.name)) }];
+      },
+    },
+    template: `<label class="cur-select" :class="{ 'cur-compact': compact, 'cur-disabled': disabled }">
+      <span class="cur-sym">{{ current.symbol }}</span>
+      <span class="cur-code">{{ current.code }}</span>
+      <span v-if="!compact" class="cur-name">{{ current.name }}</span>
+      <svg class="cur-chev" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+      <select :value="modelValue" @change="$emit('update:modelValue', $event.target.value)" :disabled="disabled" :aria-label="label" class="cur-native">
+        <optgroup v-for="g in groups" :key="g.label" :label="g.label">
+          <option v-for="c in g.list" :key="c.code" :value="c.code">{{ c.symbol }} {{ c.code }} — {{ c.name }}</option>
+        </optgroup>
+      </select>
+    </label>`,
   };
 
   /** Where to go after Google or email sign-in: a brand-new account picks a profile picture first. */
@@ -683,7 +815,7 @@
     </div>`,
   };
 
-  const helpers = { peso, onlineVia, methodWithVia, pesoShort, timeAgo, fmtDate, fmtDateTime, fmtMonth, toast, receiptLabel, statusLabel: (s) => STATUS_LABELS[s] || s };
+  const helpers = { peso, onlineVia, methodWithVia, pesoShort, currencySymbol, currencyLabel, fmtRate, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', timeAgo, fmtDate, fmtDateTime, fmtMonth, toast, receiptLabel, statusLabel: (s) => STATUS_LABELS[s] || s };
 
   /** Create and mount a page's Vue app with the shared components and helpers. */
   function mount(options, selector) {
@@ -692,12 +824,16 @@
     app.component('avatar-picker', AvatarPicker);
     app.component('payer-picker', PayerPicker);
     app.component('rate-choice', RateChoice);
+    app.component('currency-select', CurrencySelect);
     app.component('status-pill', StatusPill);
     app.component('spinner', Spinner);
     app.component('notif-bell', NotifBell);
     app.component('notif-icon', NotifIcon);
     app.component('share-summary', ShareSummary);
     app.component('status-badge', StatusBadge);
+    app.component('person-result', PersonResult);
+    // Pages that load assets/js/replay.js
+    if (global.BillReplay) app.component('bill-replay', global.BillReplay);
     Object.assign(app.config.globalProperties, helpers);
     app.config.errorHandler = (err) => { console.error(err); toast(err.message || 'Something went wrong.'); };
     return app.mount(selector || '#app');
@@ -779,5 +915,5 @@
       .then((ok) => { if (ok) form.submit(); });
   }, true);
 
-  global.Setlo = { mount, run, load, confirm: confirmDialog, alert: alertDialog, promptText, showCopy, escapeHtml, payLink, qrSvg, qrPng, showPayQr, groupByReceipt, toggleArchive, afterSignUp, showAchievements, showAchievement: (a) => achievementModal(a, { reopened: true }), ...helpers };
+  global.Setlo = { mount, run, load, useCurrency, allocate, roundShares, convertShares, currencies: CURRENCIES, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', confirm: confirmDialog, alert: alertDialog, promptText, showCopy, escapeHtml, payLink, qrSvg, qrPng, showPayQr, groupByReceipt, toggleArchive, afterSignUp, showAchievements, showAchievement: (a) => achievementModal(a, { reopened: true }), ...helpers };
 })(window);

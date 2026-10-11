@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/payments.php'; // apply_credits(), used as new debts are created
 require_once __DIR__ . '/achievements.php';
+require_once __DIR__ . '/currency.php';
 
 function cents($amount): int
 {
@@ -78,11 +79,12 @@ function public_user(array $u): array
 function bill_members(int $billId): array
 {
     $rows = q(
-        'SELECT u.id, u.full_name, u.avatar_color, u.role, u.featured_achievement, u.payment_method, u.payment_account, m.discount_type, m.percent, m.game_weight, m.game_share FROM bill_members m
+        'SELECT u.id, u.full_name, u.avatar_color, u.role, u.featured_achievement, u.payment_method, u.payment_account, u.currency, m.discount_type, m.percent, m.game_weight, m.game_share FROM bill_members m
          JOIN users u ON u.id = m.user_id WHERE m.bill_id = ? ORDER BY m.joined_at, u.id',
         [$billId]
     )->fetchAll();
     return array_map(fn ($u) => public_user($u) + [
+        'currency'        => $u['currency'],
         'payment_method'  => $u['payment_method'],
         'payment_account' => $u['payment_account'],
         'discount_type'   => $u['discount_type'],
@@ -187,7 +189,46 @@ function tax_included(array $bill, int $subtotal): bool
 }
 
 /**
- * Per-member share in cents:
+ * Per-member share in the bill's settlement currency: worked out on the receipt amounts (compute_native_shares()),
+ * then converted at the bill's settlement rate with any recorded fees and the rounding policy (convert_calc()).
+ * subtotal / extras / discount / discount_by / unassigned stay in the receipt currency; shares and total are in
+ * calc['currency']; native_shares and native_total are the same before conversion.
+ */
+function compute_shares(array $bill, array $members, array $items): array
+{
+    return convert_calc($bill, compute_native_shares($bill, $members, $items));
+}
+
+/**
+ * Receipt-currency shares → settlement currency. The converted total (market or manual rate × receipt total, or the
+ * actual amount charged) is shared in proportion to each member's receipt share (largest remainder, so it adds up
+ * exactly); anything not yet assigned keeps its part aside. Recorded fees are shared equally, then rounding applies.
+ * Mirrored by Setlo.convertShares() in assets/js/ui.js.
+ */
+function convert_calc(array $bill, array $calc): array
+{
+    $fx = bill_fx($bill, $calc['total']);
+    $calc += ['currency' => $fx['currency'], 'receipt_currency' => $fx['receipt_currency'], 'native_total' => $calc['total'],
+              'native_shares' => $calc['shares'], 'fx' => $fx, 'fx_missing' => $fx['missing']];
+    if (!$fx['foreign']) {
+        $calc['shares'] = round_shares($calc['shares'], 'exact', $fx['currency'], (int) $bill['payer_id']);
+        return $calc;
+    }
+    $ids = array_keys($calc['shares']);
+    // uid 0 holds what isn't shared out yet (unassigned items, percentages short of 100), so it isn't spread on the others
+    $weights = $calc['shares'] + [0 => $calc['total'] - array_sum($calc['shares'])];
+    $shares = $calc['total'] > 0 ? allocate($fx['converted'], $weights) : array_fill_keys(array_keys($weights), 0);
+    unset($shares[0]);
+    foreach (split_evenly($fx['fees'], $ids) as $uid => $c) {
+        $shares[$uid] += $c;
+    }
+    $calc['shares'] = round_shares($shares, $fx['rounding'], $fx['currency'], (int) $bill['payer_id']);
+    $calc['total'] = $fx['converted'] + $fx['fees'];
+    return $calc;
+}
+
+/**
+ * Per-member share in cents of the receipt currency:
  *  - each item is split equally among the members assigned to it;
  *  - tax + service charge are split equally among all members (tax only when it isn't already
  *    included in the prices — see tax_included());
@@ -195,7 +236,7 @@ function tax_included(array $bill, int $subtotal): bool
  *    up to their item total); anything left — or a promo discount with nobody flagged — is shared by
  *    everyone in proportion to their remaining (undiscounted) items.
  */
-function compute_shares(array $bill, array $members, array $items): array
+function compute_native_shares(array $bill, array $members, array $items): array
 {
     if (($bill['split_mode'] ?? 'items') === 'percent') {
         return compute_percent_shares($bill, $members, $items);
@@ -379,6 +420,12 @@ function settlement_row(array $s): array
     $paid = cents($s['paid_amount'] ?? 0);
     return [
         'id'             => (int) $s['id'],
+        'currency'       => $s['currency'] ?? 'PHP',
+        // Settled: what it came to in the debtor's own currency, at that day's rate (null when the same currency)
+        'local'          => ($s['local_currency'] ?? null) ? [
+            'currency' => $s['local_currency'], 'amount' => (float) $s['local_amount'], 'rate' => (float) $s['local_rate'],
+            'source'   => $s['local_rate_source'], 'at' => $s['local_rate_at'],
+        ] : null,
         'principal'      => pesos($principal),
         'paid_amount'    => pesos($paid),
         'remaining'      => pesos(max(0, $amount - $paid)),
@@ -417,9 +464,9 @@ function bill_card(array $bill): array
     $members = (int) q('SELECT COUNT(*) FROM bill_members WHERE bill_id = ?', [$id])->fetchColumn();
     $sub = (int) q('SELECT COALESCE(SUM(ROUND(qty * unit_price * 100)), 0) FROM receipt_items WHERE bill_id = ?', [$id])->fetchColumn();
     $tax = tax_included($bill, $sub) ? 0 : cents($bill['tax']);
-    $total = ($bill['kind'] ?? 'bill') === 'loan'
-        ? cents($bill['loan_amount'] ?? 0)
-        : $sub + $tax + cents($bill['service_charge']) - cents($bill['discount'] ?? 0);
+    $native = $sub + $tax + cents($bill['service_charge']) - cents($bill['discount'] ?? 0);
+    $fx = bill_fx($bill, $native);
+    $total = ($bill['kind'] ?? 'bill') === 'loan' ? cents($bill['loan_amount'] ?? 0) : $fx['converted'] + $fx['fees'];
 
     switch ($bill['status']) {
         case 'closed':
@@ -447,6 +494,9 @@ function bill_card(array $bill): array
         'status'     => $bill['status'],
         'members'    => $members,
         'total'      => pesos($total),
+        'currency'   => $fx['currency'],
+        // The receipt's own currency and total, when it differs (e.g. ¥6,000 shown under ₱2,460)
+        'receipt'    => $fx['foreign'] ? ['currency' => $fx['receipt_currency'], 'total' => pesos($native)] : null,
         'progress'   => $progress,
         'created_at' => $bill['created_at'],
         'closed_at'  => $bill['closed_at'] ?? null,
@@ -549,7 +599,7 @@ function settlement_plan(array $bill, array $members, array $calc): array
     $mismatch = min(0, $paidTotal - $calc['total']);
 
     $transfers = [];
-    if ($mismatch === 0 && $calc['unassigned_count'] === 0 && in_array($calc['percent_total'] ?? null, [null, 10000], true)) {
+    if ($mismatch === 0 && $calc['unassigned_count'] === 0 && empty($calc['fx_missing']) && in_array($calc['percent_total'] ?? null, [null, 10000], true)) {
         $bal = $balances;
         while (true) {
             $debtor = $creditor = null;
@@ -587,16 +637,20 @@ function start_settling(array $bill, array $actor, ?float $interestRate = null):
         fail('Add the receipt items before settling.', 422);
     }
     $calc = compute_shares($bill, $members, $items);
+    $cur = $calc['currency'];
     if ($calc['unassigned_count'] > 0) {
-        fail('Assign every item first — ' . peso_str($calc['unassigned']) . ' is still unassigned.', 422);
+        fail('Assign every item first — ' . money_str($calc['unassigned'], $calc['receipt_currency']) . ' is still unassigned.', 422);
     }
     if ($calc['split_mode'] === 'percent' && $calc['percent_total'] !== 10000) {
         fail('The percentages add up to ' . rtrim(rtrim(number_format($calc['percent_total'] / 100, 2), '0'), '.') . '% — make them 100% first.', 422);
     }
+    if ($calc['fx_missing']) {
+        fail("The receipt is in {$calc['receipt_currency']} but there's no exchange rate to $cur yet. Refresh the rate, or enter what was actually charged, on Bill Detail.", 422);
+    }
     $plan = settlement_plan($bill, $members, $calc);
     if ($plan['mismatch'] !== 0) {
-        fail('The payments entered (' . peso_str($plan['paid_total']) . ') don’t cover the bill total ('
-            . peso_str($calc['total']) . '). Fix “Who paid the restaurant” first.', 422);
+        fail('The payments entered (' . money_str($plan['paid_total'], $cur) . ') don’t cover the bill total ('
+            . money_str($calc['total'], $cur) . '). Fix “Who paid the restaurant” first.', 422);
     }
     $names = array_column($members, 'first', 'id');
 
@@ -604,12 +658,17 @@ function start_settling(array $bill, array $actor, ?float $interestRate = null):
     $pdo->beginTransaction();
     try {
         q("UPDATE bills SET status = 'settling', settling_at = NOW(), interest_rate = ? WHERE id = ? AND status IN ('draft','active')", [$interestRate, $bill['id']]);
+        if ($calc['fx']['foreign']) {
+            $fx = $calc['fx'];
+            fx_log($bill['id'], (int) $actor['id'], 'Settling started: ' . money_str($fx['native_total'], $fx['receipt_currency']) . ' → ' . money_str($fx['converted'], $cur)
+                . ' at ' . rtrim(rtrim(number_format($fx['rate'], 6), '0'), '.') . " ($fx[source])" . ($fx['fees'] ? ' + ' . money_str($fx['fees'], $cur) . ' fees' : '') . '.');
+        }
         foreach ($plan['transfers'] as [$from, $to, $c]) {
-            q('INSERT INTO settlements (bill_id, from_user_id, to_user_id, principal, amount, interest_rate) VALUES (?, ?, ?, ?, ?, ?)', [$bill['id'], $from, $to, pesos($c), pesos($c), $interestRate]);
+            q('INSERT INTO settlements (bill_id, from_user_id, to_user_id, currency, principal, amount, interest_rate) VALUES (?, ?, ?, ?, ?, ?, ?)', [$bill['id'], $from, $to, $cur, pesos($c), pesos($c), $interestRate]);
             $sid = (int) $pdo->lastInsertId();
             log_event($sid, $actor['id'], 'created', 'Generated from ' . $bill['name'] . ' balances.');
-            apply_credits($from, $to, (int) $actor['id']);
-            notify($from, 'settling', "You owe {$names[$to]} " . peso_str($c) . " for {$bill['name']}."
+            apply_credits($from, $to, (int) $actor['id'], $cur);
+            notify($from, 'settling', "You owe {$names[$to]} " . money_str($c, $cur) . " for {$bill['name']}."
                 . ($interestRate ? ' Paying in parts adds ' . (0 + $interestRate) . "% of what's left each time." : ''), 'my-settlements');
         }
         foreach (array_unique(array_column($plan['transfers'], 1)) as $to) {

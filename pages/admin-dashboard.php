@@ -72,7 +72,7 @@ require __DIR__ . '/../partials/admin-top.php';
         <tbody class="divide-y divide-slate-100">
           <tr v-for="b in d.recent" :key="b.id">
             <td class="py-2.5 font-medium">{{ b.name }}</td><td class="text-slate-500">{{ b.creator }}</td><td class="text-slate-500">{{ b.members }}</td>
-            <td class="font-medium">{{ peso(b.total) }}</td><td><status-pill :status="b.status"></status-pill></td>
+            <td class="font-medium">{{ peso(b.total, b.currency) }}</td><td><status-pill :status="b.status"></status-pill></td>
           </tr>
         </tbody>
       </table>

@@ -37,26 +37,27 @@ require __DIR__ . '/../partials/head.php';
       <div class="grid grid-cols-2 gap-3">
         <div class="rounded-2xl bg-emerald-50 px-3.5 py-3">
           <p class="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Owed to you</p>
-          <p class="mt-0.5 text-[20px] font-extrabold tabular-nums text-emerald-800">{{ peso(money.owed_to_me) }}</p>
+          <p class="mt-0.5 text-[20px] font-extrabold tabular-nums text-emerald-800">{{ peso(money.owed_to_me, money.currency) }}</p>
           <p class="text-[11.5px] text-emerald-700/80">{{ money.people.length ? 'from ' + money.people.length + (money.people.length > 1 ? ' people' : ' person') : 'nobody owes you' }}</p>
         </div>
         <div class="rounded-2xl bg-slate-50 px-3.5 py-3">
           <p class="text-[11px] font-bold uppercase tracking-wide text-slate-500">You owe</p>
-          <p class="mt-0.5 text-[20px] font-extrabold tabular-nums text-ink">{{ peso(money.i_owe) }}</p>
+          <p class="mt-0.5 text-[20px] font-extrabold tabular-nums text-ink">{{ peso(money.i_owe, money.currency) }}</p>
           <a href="my-settlements" class="text-[11.5px] font-semibold text-brand-700">Settle up →</a>
         </div>
       </div>
+      <p v-if="money.estimated" class="mt-2 text-[11.5px] text-slate-400">≈ Includes debts in other currencies, estimated in {{ money.currency }} at today's rate.</p>
       <p v-if="money.installments" class="mt-3 rounded-xl bg-amber-50 px-3.5 py-2.5 text-[12.5px] text-amber-800">
-        <b>{{ peso(money.installment_owed) }}</b> still unpaid on {{ money.installments }} installment{{ money.installments > 1 ? 's' : '' }} owed to you.
+        <b>{{ peso(money.installment_owed, money.currency) }}</b> still unpaid on {{ money.installments }} installment{{ money.installments > 1 ? 's' : '' }} owed to you.
       </p>
       <div v-if="money.people.length" class="mt-3 divide-y divide-slate-100">
         <button v-for="u in money.people" :key="u.id" @click="showPerson(u.id)" class="flex w-full items-center gap-3 py-2.5 text-left">
           <avatar :user="u" :size="32"></avatar>
           <span class="min-w-0 flex-1">
             <span class="block truncate text-[13.5px] font-semibold text-ink">{{ u.name }}</span>
-            <span v-if="u.installments" class="text-[11.5px] font-semibold text-amber-700">{{ u.installments }} unfinished installment{{ u.installments > 1 ? 's' : '' }} · {{ peso(u.installment_owed) }}</span>
+            <span v-if="u.installments" class="text-[11.5px] font-semibold text-amber-700">{{ u.installments }} unfinished installment{{ u.installments > 1 ? 's' : '' }} · {{ peso(u.installment_owed, money.currency) }}</span>
           </span>
-          <span class="text-[14px] font-extrabold tabular-nums text-ink">{{ peso(u.owed) }}</span>
+          <span class="text-[14px] font-extrabold tabular-nums text-ink">{{ peso(u.owed, money.currency) }}</span>
           <svg class="h-4 w-4 text-slate-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </button>
       </div>
@@ -124,6 +125,13 @@ require __DIR__ . '/../partials/head.php';
       <div class="seg seg-light" role="radiogroup" aria-label="Light or dark mode">
         <button v-for="m in modes" :key="m.key" type="button" role="radio" :aria-checked="theme.mode === m.key" :class="{ on: theme.mode === m.key }" @click="setTheme({ mode: m.key })">{{ m.label }}</button>
       </div>
+    </div>
+
+    <!-- Home currency (saved on change): bills I pay settle in it; other currencies are estimated in it -->
+    <div class="tile p-4">
+      <p class="text-[15px] font-extrabold text-ink">Currency</p>
+      <p class="mt-0.5 text-[12px] text-slate-400">New bills you pay for settle in it unless the group agrees on another. Bills already started keep theirs.</p>
+      <div class="mt-3"><currency-select :model-value="p.currency" @update:model-value="setCurrency" :disabled="busy" label="Your currency"></currency-select></div>
     </div>
 
     <!-- Payment details -->
@@ -256,6 +264,14 @@ Setlo.mount({
       if (r) { this.ach = r; Setlo.toast(r.featured ? 'Title set' : 'Title removed', 'ok'); }
     },
     showPerson(id) { Setlo.showPerson(id); },
+    async setCurrency(code) {
+      const r = await Setlo.run(this, () => api.post('profile.php', { action: 'set_currency', currency: code }));
+      if (!r) return;
+      this.p = r.profile;
+      Setlo.toast('Currency set to ' + code, 'ok');
+      // Totals owed are shown in it: fetch them again
+      try { this.money = (await api.get('profile.php')).money || null; } catch (e) { /* the old totals stay until the next visit */ }
+    },
     setTheme(patch) { this.theme = SetloTheme.set(patch); },
     /** Typing a hex code: applies once it is a full #rrggbb (the "#" is added if left out). */
     onHex() {

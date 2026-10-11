@@ -93,6 +93,22 @@ q(
     "UPDATE bills SET status = 'active', tax = ?, service_charge = ?, discount = ?, receipt_total = ? WHERE id = ?",
     [$tax, $svc, $discount, $receiptTotal, $bill['id']]
 );
+// Several payers: how much each put in, entered here once the receipt total is known ("if known": blank = 0, fill
+// in later on Bill Detail). Only people already ticked as payers; the biggest contributor becomes the main payer.
+$paid = input('payments');
+if (is_array($paid)) {
+    $payers = array_map('intval', q('SELECT user_id FROM bill_payments WHERE bill_id = ?', [$bill['id']])->fetchAll(PDO::FETCH_COLUMN));
+    $amounts = [];
+    foreach ($payers as $uid) {
+        $v = $paid[$uid] ?? $paid[(string) $uid] ?? null;
+        $amounts[$uid] = is_numeric($v) && (float) $v > 0 && (float) $v <= 1000000 ? round((float) $v, 2) : 0.0;
+        q('UPDATE bill_payments SET amount = ? WHERE bill_id = ? AND user_id = ?', [$amounts[$uid], $bill['id'], $uid]);
+    }
+    if ($amounts && max($amounts) > 0) {
+        arsort($amounts);
+        q('UPDATE bills SET payer_id = ? WHERE id = ?', [array_key_first($amounts), $bill['id']]);
+    }
+}
 if ($bill['split_mode'] === 'game' && $receiptKey() !== $before) {
     // The receipt changed after a game decided the split: replay it on the corrected bill.
     require_once __DIR__ . '/../includes/games.php';

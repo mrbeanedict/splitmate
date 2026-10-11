@@ -69,6 +69,7 @@ switch ($action) {
             'available'      => gemini_available(),
             'found'          => array_sum(array_map(fn ($r) => count($r['items']), $receipts)),
             'receipts_found' => count($receipts),
+            'currencies'     => array_values(array_unique(array_filter(array_column($receipts, 'currency')))),
             'duplicates'     => $stored['duplicates'],
             'receipt_ids'    => $stored['ids'], // so a scan cancelled on the page can remove what it saved
             'error'          => $error,
@@ -86,6 +87,22 @@ switch ($action) {
             fail('The title can’t contain < or >.', 422, ['fields' => ['title' => 'No < or > please.']]);
         }
         q('UPDATE receipts SET title = ? WHERE id = ? AND bill_id = ?', [$title === '' ? null : $title, int_param('receipt_id'), $bill['id']]);
+        json_ok(['receipts' => bill_receipts($bill['id'])]);
+
+    case 'set_currency':
+        // Correct the currency the receipts are in (the scanner's reading stays in currency_detected). Prices aren't
+        // touched — they're as printed; only how they're converted to the settlement currency changes.
+        $cur = currency_param();
+        $pdo = db();
+        $pdo->beginTransaction();
+        q('UPDATE bills SET receipt_currency = ? WHERE id = ?', [$cur === $bill['currency'] ? null : $cur, $bill['id']]);
+        q('UPDATE receipts SET currency = ? WHERE bill_id = ?', [$cur, $bill['id']]);
+        if (($bill['receipt_currency'] ?: $bill['currency']) !== $cur) {
+            // An actual amount charged was for the old reading; start again from the market rate
+            q("UPDATE bills SET fx_mode = 'market', fx_actual_total = NULL, fx_manual_rate = NULL, fx_set_at = NULL WHERE id = ?", [$bill['id']]);
+            fx_capture_market($bill['id'], $me['id'], first_name($me['full_name']) . " corrected the receipt currency to $cur.");
+        }
+        $pdo->commit();
         json_ok(['receipts' => bill_receipts($bill['id'])]);
 
     case 'keep_receipt':

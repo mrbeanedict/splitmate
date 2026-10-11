@@ -3,7 +3,8 @@
   const W = 720;
   const PAD = 44;
   const FONT = '"Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif';
-  const peso = (n) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Amounts are in the bill's settlement currency (data.currency)
+  const fmt = (data, n) => global.Setlo.peso(n, data.currency || 'PHP');
   const STATUS = { pending: ['Pending', '#a16207', '#fef9c3'], awaiting: ['Awaiting', '#1d4ed8', '#dbeafe'], settled: ['Settled', '#15803d', '#dcfce7'], disputed: ['Disputed', '#b91c1c', '#fee2e2'] };
 
   /**
@@ -69,10 +70,10 @@
     text(ctx, 'setlo', PAD, 46, { size: 26, weight: 800, color: '#fff' });
     text(ctx, data.date, W - PAD, 46, { size: 18, weight: 600, color: 'rgba(255,255,255,.85)', align: 'right' });
     text(ctx, data.name, PAD, 100, { size: 34, weight: 800, color: '#fff', max: W - PAD * 2 });
-    text(ctx, peso(data.total), PAD, 150, { size: 40, weight: 800, color: '#fff' });
+    text(ctx, fmt(data, data.total), PAD, 150, { size: 40, weight: 800, color: '#fff' });
     const bits = [data.members.length + ' people'];
-    if (data.extras > 0) bits.push('incl. ' + peso(data.extras) + (data.tax_included ? ' service' : ' tax & service'));
-    if (data.discount > 0) bits.push(peso(data.discount) + ' discount');
+    if (data.extras > 0) bits.push('incl. ' + global.Setlo.peso(data.extras, data.receipt_currency) + (data.tax_included ? ' service' : ' tax & service'));
+    if (data.discount > 0) bits.push(global.Setlo.peso(data.discount, data.receipt_currency) + ' discount');
     text(ctx, bits.join(' · '), W - PAD, 150, { size: 17, weight: 600, color: 'rgba(255,255,255,.9)', align: 'right', max: 330 });
 
     // Card
@@ -86,8 +87,8 @@
         const m = row.m;
         avatar(ctx, m, PAD + 26, row.y + 16, 20);
         text(ctx, m.name + (m.is_guest ? ' (guest)' : ''), PAD + 60, row.y + (m.paid > 0 ? 8 : 16), { size: 21, weight: 700, max: 380 });
-        if (m.paid > 0) text(ctx, 'paid ' + peso(m.paid), PAD + 60, row.y + 32, { size: 15, weight: 600, color: window.SetloTheme ? SetloTheme.color(700) : '#0f766e' });
-        text(ctx, peso(m.share), W - PAD - 6, row.y + 16, { size: 22, weight: 800, align: 'right' });
+        if (m.paid > 0) text(ctx, 'paid ' + fmt(data, m.paid), PAD + 60, row.y + 32, { size: 15, weight: 600, color: window.SetloTheme ? SetloTheme.color(700) : '#0f766e' });
+        text(ctx, fmt(data, m.share), W - PAD - 6, row.y + 16, { size: 22, weight: 800, align: 'right' });
       } else if (row.type === 'transfer') {
         const t = row.t;
         const from = byId[t.from] || { name: '?' };
@@ -103,7 +104,7 @@
           text(ctx, label, right - w / 2, row.y + 17, { size: 13, weight: 800, color: fg, align: 'center' });
           right -= w + 14;
         }
-        text(ctx, peso(t.amount), right, row.y + 17, { size: 20, weight: 800, align: 'right' });
+        text(ctx, fmt(data, t.amount), right, row.y + 17, { size: 20, weight: 800, align: 'right' });
       } else if (row.type === 'payto') {
         const m = row.m;
         text(ctx, m.name.split(' ')[0] + ':', PAD + 6, row.y + 10, { size: 18, weight: 700 });
@@ -116,13 +117,13 @@
 
   function asText(data) {
     const byId = Object.fromEntries(data.members.map((m) => [m.id, m]));
-    const lines = [`🧾 ${data.name} — ${peso(data.total)} (${data.date})`, ''];
-    for (const m of data.members) lines.push(`• ${m.name}: ${peso(m.share)}${m.paid > 0 ? ` (paid ${peso(m.paid)})` : ''}`);
+    const lines = [`🧾 ${data.name} — ${fmt(data, data.total)} (${data.date})`, ''];
+    for (const m of data.members) lines.push(`• ${m.name}: ${fmt(data, m.share)}${m.paid > 0 ? ` (paid ${fmt(data, m.paid)})` : ''}`);
     if (data.transfers.length) {
       lines.push('', 'Who pays whom:');
       for (const t of data.transfers) {
         const st = t.status && STATUS[t.status] ? ` [${STATUS[t.status][0]}]` : '';
-        lines.push(`• ${byId[t.from].name.split(' ')[0]} → ${byId[t.to].name.split(' ')[0]}: ${peso(t.amount)}${st}`);
+        lines.push(`• ${byId[t.from].name.split(' ')[0]} → ${byId[t.to].name.split(' ')[0]}: ${fmt(data, t.amount)}${st}`);
       }
       const receivers = [...new Set(data.transfers.map((t) => t.to))].map((id) => byId[id]).filter((m) => m.payment_account);
       if (receivers.length) {
@@ -142,7 +143,9 @@
     return {
       name: d.bill.name,
       date: new Date(d.bill.created_at.replace(' ', 'T')).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }),
-      total: d.total, extras: d.extras, tax_included: d.bill.tax_included, discount: d.bill.discount,
+      total: d.total, extras: d.extras, tax_included: d.bill.tax_included, discount: d.bill.discount, currency: d.bill.currency || 'PHP',
+      // extras and discount are on the receipt, in its own currency
+      receipt_currency: d.bill.receipt_currency || d.bill.currency || 'PHP',
       members: d.members.map((m) => ({ ...m, share: d.shares[m.id] || 0, paid: (d.payments && d.payments.paid[m.id]) || 0 })),
       transfers,
       note: d.settlements.length ? null : 'Proposed split — final once the bill starts settling.',

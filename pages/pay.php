@@ -59,12 +59,12 @@ require __DIR__ . '/../partials/head.php';
               <p class="truncate text-[13px] font-semibold text-slate-700">{{ s.bill_name }}</p>
               <status-pill :status="s.status"></status-pill>
             </div>
-            <p class="shrink-0 text-[14px] font-extrabold text-ink">{{ peso(s.amount) }}</p>
+            <p class="shrink-0 text-[14px] font-extrabold text-ink">{{ peso(s.amount, s.currency) }}</p>
           </div>
         </div>
         <div class="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
           <span class="text-[13px] font-bold text-slate-600">Total</span>
-          <span class="text-[17px] font-extrabold text-rose-500">{{ peso(oweTotal) }}</span>
+          <span class="text-[17px] font-extrabold text-rose-500">{{ Object.entries(oweTotals).map(([c, v]) => peso(v, c)).join(" + ") }}</span>
         </div>
         <a href="my-settlements" class="btn btn-primary mt-4 w-full">Mark as paid in My Settlements</a>
       </template>
@@ -78,14 +78,14 @@ require __DIR__ . '/../partials/head.php';
 
 <script>
 Setlo.mount({
-  data: () => ({ code: <?= json_encode($code) ?>, loading: true, error: '', p: null, isMe: false, owe: [], oweTotal: 0 }),
+  data: () => ({ code: <?= json_encode($code) ?>, loading: true, error: '', p: null, isMe: false, owe: [], oweTotals: {} }),
   async mounted() {
     try {
       const r = await api.get('pay.php', { u: this.code });
       this.p = r.person;
       this.isMe = r.is_me;
       this.owe = r.owe;
-      this.oweTotal = r.owe_total;
+      this.oweTotals = r.owe_totals || {};
     } catch (e) {
       this.error = e.message;
     } finally {

@@ -42,12 +42,12 @@ require __DIR__ . '/../partials/head.php';
     <div class="tile grid grid-cols-2 divide-x divide-slate-100 py-4 shadow-lg shadow-slate-900/5">
       <a href="my-settlements" class="px-4">
         <p class="text-[12px] font-medium text-slate-500">You owe</p>
-        <p class="mt-0.5 text-[22px] font-extrabold tracking-tight text-rose-500">{{ peso(d.owe.total) }}</p>
+        <p class="mt-0.5 text-[22px] font-extrabold tracking-tight text-rose-500">{{ (d.owe.estimated ? "≈ " : "") + peso(d.owe.total, d.owe.currency) }}</p>
         <p class="mt-1 text-[11px] text-slate-400">{{ d.owe.count }} open</p>
       </a>
       <a href="my-settlements?tab=owed" class="px-4">
         <p class="text-[12px] font-medium text-slate-500">You're owed</p>
-        <p class="mt-0.5 text-[22px] font-extrabold tracking-tight text-brand-600">{{ peso(d.owed.total) }}</p>
+        <p class="mt-0.5 text-[22px] font-extrabold tracking-tight text-brand-600">{{ (d.owed.estimated ? "≈ " : "") + peso(d.owed.total, d.owed.currency) }}</p>
         <p class="mt-1 text-[11px] text-slate-400">{{ d.owed.count }} open</p>
       </a>
     </div>
@@ -109,7 +109,7 @@ require __DIR__ . '/../partials/head.php';
           <div class="initials">{{ b.initials }}</div>
           <div class="min-w-0 flex-1">
             <p class="truncate text-[14px] font-bold text-ink">{{ b.name }}</p>
-            <p class="mt-0.5 text-[12px] text-slate-400">{{ b.members }} members · {{ peso(b.total) }}</p>
+            <p class="mt-0.5 text-[12px] text-slate-400">{{ b.members }} members · {{ peso(b.total, b.currency) }}<template v-if="b.receipt"> · from {{ peso(b.receipt.total, b.receipt.currency) }}</template></p>
             <div class="progress mt-2 w-full max-w-[150px]"><span :style="{ width: b.progress + '%' }"></span></div>
           </div>
           <status-pill :status="b.status"></status-pill>
@@ -157,7 +157,7 @@ Setlo.mount({
       } catch (e) { /* badges are non-critical */ }
     },
     describe(a) {
-      const amt = this.peso(a.amount);
+      const amt = this.peso(a.amount, a.currency);
       switch (a.event) {
         case 'marked_paid': return `marked ${amt} as paid to ${a.to}`;
         case 'confirmed': return `confirmed receiving ${amt}`;

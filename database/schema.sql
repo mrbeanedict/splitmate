@@ -5,7 +5,7 @@ CREATE DATABASE IF NOT EXISTS setlo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicod
 USE setlo;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS game_players, game_sessions, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
+DROP TABLE IF EXISTS fx_rates, bill_fx_log, game_players, game_sessions, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
 SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE users (
@@ -17,6 +17,7 @@ CREATE TABLE users (
   pay_code        CHAR(12) NULL UNIQUE,           -- personal "Pay me" QR code (pages/pay.php?u=…); NULL for guests
   payment_method  ENUM('GCash','Maya','Bank Transfer','Cash') NOT NULL DEFAULT 'GCash',
   payment_account VARCHAR(60) NULL,               -- e.g. GCash number / account name, shown to people who owe you
+  currency        CHAR(3) NOT NULL DEFAULT 'PHP', -- home currency (includes/currency.php CURRENCIES): new bills they pay settle in it
   avatar_color    CHAR(7) NOT NULL DEFAULT '#0d9488',
   avatar          VARCHAR(120) NULL,              -- profile picture: 'pfp/<file>' (assets/pfp) or 'up/<file>' (uploads/avatars); NULL = initials
   featured_achievement VARCHAR(30) NULL,          -- badge shown next to their name (user_achievements.code)
@@ -48,6 +49,20 @@ CREATE TABLE bills (
   ocr_raw         MEDIUMTEXT NULL,                -- text of the first receipt (its first line names the place in Stats)
   ocr_status      ENUM('none','ok','failed','skipped') NOT NULL DEFAULT 'none',
   invite_code     CHAR(12) NULL UNIQUE,           -- join-by-link code; NULL when the link is off
+  -- Currencies (includes/currency.php). Settlements are in `currency`, agreed by the group: the payer's when the bill
+  -- starts, changeable until settling. Receipt amounts stay in receipt_currency and are converted at the settlement rate.
+  currency         CHAR(3) NOT NULL DEFAULT 'PHP',
+  receipt_currency CHAR(3) NULL,                  -- NULL = same as currency
+  fx_mode          ENUM('market','actual','manual') NOT NULL DEFAULT 'market',  -- which settlement rate is used
+  fx_market_rate   DECIMAL(20,10) NULL,           -- estimate: units of currency per 1 receipt_currency, from fx_market_source
+  fx_market_source VARCHAR(60) NULL,
+  fx_market_at     DATETIME NULL,                 -- when the provider published that rate
+  fx_actual_total  DECIMAL(12,2) NULL,            -- actual: what the payer was really charged, in currency
+  fx_manual_rate   DECIMAL(20,10) NULL,           -- manual: a rate typed by the creator
+  fx_fees          DECIMAL(10,2) NOT NULL DEFAULT 0, -- recorded separately (e.g. foreign-transaction fee), in currency, shared equally
+  fx_fees_note     VARCHAR(80) NULL,
+  fx_rounding      ENUM('exact','nearest','up') NOT NULL DEFAULT 'exact', -- how converted shares are rounded (the payer keeps the difference)
+  fx_set_at        DATETIME NULL,                 -- when the actual amount / manual rate was last set
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   settling_at     DATETIME NULL,
   closed_at       DATETIME NULL,
@@ -95,6 +110,9 @@ CREATE TABLE receipts (
   service_charge  DECIMAL(10,2) NOT NULL DEFAULT 0,
   discount        DECIMAL(10,2) NOT NULL DEFAULT 0,
   total           DECIMAL(10,2) NULL,
+  currency        CHAR(3) NULL,                   -- the currency its amounts are in (as corrected on Review)
+  currency_detected CHAR(3) NULL,                 -- what the scanner read, kept even after a correction; NULL = not printed
+  currency_clues  VARCHAR(120) NULL,              -- why, e.g. "¥ sign, Japanese text"
   ocr_raw         MEDIUMTEXT NULL,
   ocr_status      ENUM('ok','failed') NOT NULL DEFAULT 'ok',
   dup_note        VARCHAR(200) NULL,              -- looks like the same transaction as another receipt
@@ -154,9 +172,16 @@ CREATE TABLE settlements (
   bill_id         INT UNSIGNED NOT NULL,
   from_user_id    INT UNSIGNED NOT NULL,
   to_user_id      INT UNSIGNED NOT NULL,
+  currency        CHAR(3) NOT NULL DEFAULT 'PHP', -- all amounts below and its payments are in this (the bill's agreed currency)
   principal       DECIMAL(10,2) NULL,             -- what was owed when settling started (NULL on old rows: = amount)
   amount          DECIMAL(10,2) NOT NULL,         -- what is owed in all: principal + interest added so far
   paid_amount     DECIMAL(10,2) NOT NULL DEFAULT 0, -- confirmed payments so far
+  -- Once settled, what it came to in the debtor's own currency (when different), at that day's market rate
+  local_currency    CHAR(3) NULL,
+  local_amount      DECIMAL(14,2) NULL,
+  local_rate        DECIMAL(20,10) NULL,
+  local_rate_source VARCHAR(60) NULL,
+  local_rate_at     DATETIME NULL,
   interest_rate   DECIMAL(5,2) NULL,              -- % of what's left, added after each partial payment
   status          ENUM('pending','awaiting','settled','disputed') NOT NULL DEFAULT 'pending',
   settle_method   ENUM('online','transfer','cash','credit','mixed') NULL, -- how it was paid: online = PayMongo, transfer = ref/screenshot, cash = receiver settled in person
@@ -249,6 +274,39 @@ CREATE TABLE user_group_members (
 ) ENGINE=InnoDB;
 
 ALTER TABLE bills ADD FOREIGN KEY (group_id) REFERENCES user_groups(id) ON DELETE SET NULL;
+
+-- Market exchange rates as last fetched (includes/currency.php): units of each currency per 1 USD.
+CREATE TABLE fx_rates (
+  quote       CHAR(3) NOT NULL PRIMARY KEY,
+  per_usd     DECIMAL(24,10) NOT NULL,
+  source      VARCHAR(60) NOT NULL,
+  rate_time   DATETIME NOT NULL,                  -- when the provider published it
+  fetched_at  DATETIME NOT NULL
+) ENGINE=InnoDB;
+
+-- Every change to a bill's currencies or settlement rate, with the full settings at that moment. Append-only, so the
+-- rate a bill was estimated, charged and settled at can always be traced; receipts and items are never converted.
+CREATE TABLE bill_fx_log (
+  id               INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  bill_id          INT UNSIGNED NOT NULL,
+  actor_id         INT UNSIGNED NULL,
+  receipt_currency CHAR(3) NOT NULL,
+  currency         CHAR(3) NOT NULL,
+  mode             ENUM('market','actual','manual') NOT NULL,
+  market_rate      DECIMAL(20,10) NULL,
+  market_source    VARCHAR(60) NULL,
+  market_at        DATETIME NULL,
+  actual_total     DECIMAL(12,2) NULL,
+  manual_rate      DECIMAL(20,10) NULL,
+  fees             DECIMAL(10,2) NOT NULL DEFAULT 0,
+  fees_note        VARCHAR(80) NULL,
+  rounding         ENUM('exact','nearest','up') NOT NULL,
+  note             VARCHAR(255) NULL,
+  created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (bill_id)  REFERENCES bills(id) ON DELETE CASCADE,
+  FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX (bill_id)
+) ENGINE=InnoDB;
 
 -- Failed sign-in attempts, for throttling password guessing (see api/auth.php).
 CREATE TABLE login_attempts (

@@ -370,7 +370,7 @@ require __DIR__ . '/../partials/head.php';
         <div v-for="m in members" :key="m.id" class="flex items-center gap-3 py-1.5">
           <avatar :user="m" :size="26"></avatar>
           <span class="flex-1 text-[13px] font-semibold">{{ who(m) }}</span>
-          <span class="text-[13.5px] font-extrabold tabular-nums" :class="shares[m.id] < 0 ? 'text-emerald-600' : shares[m.id] === 0 ? 'text-slate-400' : 'text-ink'">{{ shares[m.id] < 0 ? '+' + peso(-shares[m.id]) : peso(shares[m.id] || 0) }}</span>
+          <span class="text-[13.5px] font-extrabold tabular-nums" :class="shares[m.id] < 0 ? 'text-emerald-600' : shares[m.id] === 0 ? 'text-slate-400' : 'text-ink'">{{ shares[m.id] < 0 ? '+' + peso(-shares[m.id], bill.currency) : peso(shares[m.id] || 0, bill.currency) }}</span>
         </div>
         <p v-if="result && game.game === 'roulette' && result.payer === bill.payer_id" class="mt-2 rounded-xl bg-emerald-50 p-2.5 text-[12px] font-semibold text-emerald-700">{{ nameOf(bill.payer_id) }} already paid the restaurant, so nobody owes anything!</p>
       </div>
@@ -476,6 +476,7 @@ Setlo.mount({
   methods: {
     apply(r) {
       if (r.unchanged) return;
+      Setlo.useCurrency(r.bill.receipt_currency || r.bill.currency); // the games use the receipt's prices
       this.bill = r.bill;
       this.me = r.me;
       this.members = r.members;

@@ -25,16 +25,28 @@ require __DIR__ . '/../partials/head.php';
     <div v-else-if="p" class="tile p-4">
       <avatar-picker :profile="p" :presets="presets" @saved="p = $event"></avatar-picker>
     </div>
+    <!-- Home currency: bills you pay settle in it, and amounts in other currencies are estimated in it -->
+    <div v-if="p" class="tile p-4">
+      <p class="text-[15px] font-extrabold text-ink">Your currency</p>
+      <p class="mt-0.5 text-[12px] text-slate-400">Bills you pay for are settled in it, and totals from other currencies are estimated in it.</p>
+      <div class="mt-3"><currency-select :model-value="p.currency" @update:model-value="setCurrency" :disabled="savingCur" label="Your currency"></currency-select></div>
+    </div>
     <a :href="done" class="btn-pill btn-pill-primary">{{ p && p.avatar ? 'Continue' : 'Skip for now' }}</a>
-    <p class="text-center text-[12px] text-slate-400">You can change it any time in Profile.</p>
+    <p class="text-center text-[12px] text-slate-400">You can change both any time in Profile.</p>
   </div>
 </div>
 
 <script>
 Setlo.mount({
-  data: () => ({ loading: true, p: null, presets: [], done: <?= json_encode($next ?: 'dashboard') ?> }),
+  data: () => ({ loading: true, savingCur: false, p: null, presets: [], done: <?= json_encode($next ?: 'dashboard') ?> }),
   async mounted() {
     await Setlo.load(this, 'profile.php', { avatars: 1 }, (r) => { this.p = r.profile; this.presets = r.presets; });
+  },
+  methods: {
+    async setCurrency(code) {
+      const r = await Setlo.run(this, () => api.post('profile.php', { action: 'set_currency', currency: code }), 'savingCur');
+      if (r) { this.p = r.profile; Setlo.toast('Currency set to ' + code, 'ok'); }
+    },
   },
 });
 </script>

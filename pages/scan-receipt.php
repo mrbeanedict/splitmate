@@ -7,7 +7,8 @@ $nav = 'scan';
 $step = 1;
 $billId = (int) ($_GET['bill'] ?? 0);
 $adding = $billId && !empty($_GET['add']); // "+ Add another receipt" from the Review screen
-$back = $adding ? 'review-items.php?bill=' . $billId : 'my-bills.php';
+// Back from the first scan is step 0: the Create Bill form again, filled in with this bill's details
+$back = $adding ? 'review-items.php?bill=' . $billId : ($billId ? 'my-bills?edit=' . $billId : 'my-bills.php');
 $headExtra = ['assets/js/docscan-core.js', 'assets/js/docscan.js'];
 require __DIR__ . '/../partials/head.php';
 ?>

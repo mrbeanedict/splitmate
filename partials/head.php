@@ -33,6 +33,12 @@ header('Cache-Control: no-store');
 <script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.prod.js" integrity="sha384-W/1Fp/LgAYO/oTn9Gs+PbeWuMuq1eQCnUMPCeg8POmMYchhzxctjEqtbiCIxDOON" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js" integrity="sha384-YB/DdIkloKoRpclWB8bNcYXWakt57USgtQPDzvnIDHYU0lasD5eWlXVo1S4ODukY" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" integrity="sha384-8FWZA6BGMXhsfO+BLtrJK0We6gg5o1JyO8xQm6peWDEUs17ACA5ziE/NIAkl9z2k" crossorigin="anonymous"></script>
+<?php require_once __DIR__ . '/../includes/currency.php'; ?>
+<script>
+  // Currencies the app knows (includes/currency.php) and the signed-in user's own: assets/js/ui.js formats money with them.
+  window.SETLO_CURRENCIES = <?= json_encode(currency_list(), JSON_UNESCAPED_UNICODE) ?>;
+  window.SETLO_HOME_CURRENCY = <?= json_encode(is_currency(current_user()['currency'] ?? null) ? current_user()['currency'] : 'PHP') ?>;
+</script>
 <script src="<?= h(url('assets/js/api.js')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/js/api.js') ?>"></script>
 <script src="<?= h(url('assets/js/ui.js')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/js/ui.js') ?>"></script>
 <script src="<?= h(url('assets/js/validate.js')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/js/validate.js') ?>"></script>

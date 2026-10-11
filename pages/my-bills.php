@@ -23,7 +23,7 @@ require __DIR__ . '/../partials/head.php';
     <spinner v-if="loading"></spinner>
     <template v-else>
       <div class="mb-3 flex items-baseline justify-between gap-2">
-        <p class="text-[12px] font-medium text-slate-500"><b v-if="archivedView" class="text-ink">Archived · </b>{{ shown.length }} {{ shown.length === 1 ? 'bill' : 'bills' }} · {{ peso(shownTotal) }} total</p>
+        <p class="text-[12px] font-medium text-slate-500"><b v-if="archivedView" class="text-ink">Archived · </b>{{ shown.length }} {{ shown.length === 1 ? 'bill' : 'bills' }} · {{ shownTotal }} total</p>
         <button v-if="archivedView" @click="archivedView = false" class="text-[12px] font-bold text-brand-700">← Back to bills</button>
         <button v-else-if="archivedCount" @click="openArchived" class="text-[12px] font-bold text-slate-500 hover:text-brand-700">Archived · {{ archivedCount }}</button>
       </div>
@@ -40,7 +40,7 @@ require __DIR__ . '/../partials/head.php';
             <div class="progress mt-2" :class="{ 'progress-muted': b.status === 'closed' }"><span :style="{ width: b.progress + '%' }"></span></div>
           </div>
           <div class="flex shrink-0 flex-col items-end gap-1.5">
-            <span class="text-[14px] font-extrabold" :class="b.status === 'closed' ? 'text-slate-500' : 'text-ink'">{{ pesoShort(b.total) }}</span>
+            <span class="text-[14px] font-extrabold" :class="b.status === 'closed' ? 'text-slate-500' : 'text-ink'">{{ pesoShort(b.total, b.currency) }}</span>
             <status-pill :status="b.status"></status-pill>
           </div>
         </a>
@@ -57,12 +57,15 @@ require __DIR__ . '/../partials/head.php';
   <?php require __DIR__ . '/../partials/nav.php'; ?>
 
   <!-- Create Bill bottom sheet -->
-  <div v-if="creating" class="sheet-backdrop" @click.self="creating = false">
+  <div v-if="creating" class="sheet-backdrop" @click.self="closeSheet">
     <form class="sheet" @submit.prevent="create">
       <div class="sheet-grip"></div>
       <div class="mb-5 flex items-center justify-between">
-        <h2 class="text-[18px] font-extrabold text-ink">Create Bill</h2>
-        <button type="button" @click="creating = false" class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500" aria-label="Close">
+        <div>
+          <h2 class="text-[18px] font-extrabold text-ink">{{ editingId ? 'Bill details' : 'Create Bill' }}</h2>
+          <p v-if="editingId" class="text-[12px] text-slate-400">Step 1 · change anything, then carry on where you were</p>
+        </div>
+        <button type="button" @click="closeSheet" class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500" aria-label="Close">
           <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
       </div>
@@ -87,12 +90,12 @@ require __DIR__ . '/../partials/head.php';
           </div>
           <div v-if="results.length" class="mt-2 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
             <button v-for="u in results" :key="u.id" type="button" @click="addMember(u)" class="flex w-full items-center gap-3 px-3.5 py-2.5 text-left hover:bg-slate-50">
-              <avatar :user="u" :size="30"></avatar>
-              <div class="min-w-0 flex-1"><p class="text-[13px] font-bold text-ink">{{ u.name }}</p><p class="truncate text-[11px] text-slate-400">{{ u.email }}</p></div>
+              <person-result :user="u"></person-result>
               <span class="text-[12px] font-bold text-brand-700">Add</span>
             </button>
           </div>
-          <p v-if="!form.members.length && !form.guests.length" class="mt-2 text-[12px] text-slate-400">Friends not on Setlo yet? Share an invite link from the bill page, or add them as a guest below.</p>
+          <p v-if="err('people')" class="field-error" data-field="people">{{ err('people') }}</p>
+          <p v-else-if="!form.members.length && !form.guests.length" class="mt-2 text-[12px] text-slate-400">Add at least one member or guest. Friends not on Setlo yet? Add them as a guest below, or share an invite link from the bill page.</p>
           <div class="mt-3 flex flex-wrap gap-2">
             <span class="pill pill-active !px-3 !py-1.5 !text-[12px]">You (Creator)</span>
             <button v-for="m in form.members" :key="m.id" type="button" @click="removeMember(m)" class="pill bg-slate-100 !px-3 !py-1.5 !text-[12px] text-slate-600">{{ m.first }} ✕</button>
@@ -108,25 +111,10 @@ require __DIR__ . '/../partials/head.php';
         <div>
           <label class="field-label">Who paid the restaurant?</label>
           <payer-picker v-model="form.payer_ids" :people="payerOptions" :me="me"></payer-picker>
-          <p v-if="form.payer_ids.length < 2" class="mt-1.5 text-[12px] text-slate-400">Everyone else settles with this person. The amount comes from the scanned receipt.</p>
-          <div v-else class="mt-3 rounded-2xl border border-slate-200 p-3">
-            <p class="text-[12.5px] font-bold text-ink">How much did each person put in?</p>
-            <div class="mt-2 space-y-2">
-              <label v-for="p in payerRows" :key="p.id" class="flex items-center gap-3">
-                <avatar :user="p" :size="28"></avatar>
-                <span class="min-w-0 flex-1 truncate text-[13px] font-semibold">{{ p.id === me ? 'You' : p.name }}</span>
-                <span class="text-slate-400">₱</span>
-                <input :data-field="'pay' + p.id" :value="form.pay[p.id]" @input="form.pay[p.id] = filterMoney($event.target.value); $event.target.value = form.pay[p.id]; touch('pay' + p.id)" inputmode="decimal" placeholder="0.00" autocomplete="off"
-                       class="row-in !h-9 w-28 text-right" :class="{ 'is-invalid': err('pay' + p.id) }" :aria-label="'Amount paid by ' + p.name" />
-              </label>
-            </div>
-            <p v-for="p in payerRows" :key="'e' + p.id" v-show="err('pay' + p.id)" class="field-error">{{ p.first }}: {{ err('pay' + p.id) }}</p>
-            <p class="mt-2 text-[12px] font-semibold" :class="contributed ? 'text-brand-600' : 'text-slate-400'">{{ peso(contributed) }} put in so far</p>
-            <p class="mt-1 text-[11.5px] leading-snug text-slate-400">Leave a name blank to fill it in later. After the scan these are the cash handed to the cashier and must cover the receipt total (change goes back to the biggest payer); you can adjust them on the bill. Who ordered what is set separately, then settling works out who owes whom.</p>
-          </div>
+          <p class="mt-1.5 text-[12px] text-slate-400">{{ form.payer_ids.length < 2 ? 'Everyone else settles with this person. The amount comes from the scanned receipt.' : 'You can enter how much each one put in on the Review step, once the receipt total is known.' }}</p>
           <p v-if="form.guests.length" class="mt-1 text-[11.5px] text-slate-400">Guests can’t be payers — they have no account to confirm payments.</p>
         </div>
-        <button class="btn-pill btn-pill-primary" :disabled="busy">{{ busy ? 'Creating…' : 'Create & Scan Receipt' }}</button>
+        <button class="btn-pill btn-pill-primary" :disabled="busy || loadingEdit">{{ busy ? 'Saving…' : editingId ? (editScanned ? 'Save & back to Review' : 'Save & Scan Receipt') : 'Create & Scan Receipt' }}</button>
       </div>
     </form>
   </div>
@@ -139,10 +127,12 @@ Setlo.mount({
     me: <?= (int) $user['id'] ?>,
     loading: true, busy: false, bills: [], archived: [], archivedCount: 0, archivedView: false,
     filters: ['all', 'active', 'settling', 'closed'], filter: 'all',
-    // ?new=1 opens the Create Bill sheet in the very first paint (no pop-in on refresh)
-    creating: new URLSearchParams(location.search).has('new'), search: '', results: [], timer: null,
+    // ?new=1 opens the Create Bill sheet in the very first paint (no pop-in on refresh); ?edit=ID opens it filled in
+    // with that bill's details (step 0, from Scan / Review / Assign)
+    creating: new URLSearchParams(location.search).has('new') || new URLSearchParams(location.search).has('edit'), search: '', results: [], timer: null,
+    editingId: Number(new URLSearchParams(location.search).get('edit')) || null, editScanned: false, loadingEdit: false,
     meUser: <?= json_encode(public_user($user)) ?>,
-    form: { name: '', members: [], guests: [], payer_ids: [<?= (int) $user['id'] ?>], pay: {}, group_id: null },
+    form: { name: '', members: [], guests: [], payer_ids: [<?= (int) $user['id'] ?>], group_id: null },
     groups: [],
     guestName: '',
   }),
@@ -156,12 +146,16 @@ Setlo.mount({
     /** Everyone who can have paid: you first, then the members added so far (guests can't confirm payments). */
     payerOptions() { return [this.meUser, ...this.form.members]; },
     /** The ticked payers, in the dropdown's order (one amount row each when there are several). */
-    payerRows() { return this.payerOptions.filter((p) => this.form.payer_ids.includes(p.id)); },
-    contributed() { return Math.round(this.payerRows.reduce((s, p) => s + (parseFloat(this.form.pay[p.id]) || 0), 0) * 100) / 100; },
-    shownTotal() { return this.shown.reduce((s, b) => s + b.total, 0); },
+    /** Bills can settle in different currencies: one sum per currency, e.g. "₱4,200.00 + ¥6,000". */
+    shownTotal() {
+      const by = {};
+      for (const b of this.shown) by[b.currency || "PHP"] = (by[b.currency || "PHP"] || 0) + b.total;
+      return Object.keys(by).length ? Object.entries(by).map(([c, v]) => this.peso(v, c)).join(" + ") : this.peso(0, Setlo.homeCurrency);
+    },
   },
   async mounted() {
-    if (this.creating) this.openCreate();
+    if (this.editingId) this.openEdit();
+    else if (this.creating) this.openCreate();
     await Setlo.load(this, 'bills.php', null, (r) => { this.bills = r.bills; this.archivedCount = r.archived_count || 0; });
   },
   methods: {
@@ -169,6 +163,37 @@ Setlo.mount({
     async openArchived() {
       this.archivedView = true;
       await Setlo.load(this, 'bills.php', { scope: 'archived' }, (r) => { this.archived = r.bills; });
+    },
+    /** Step 1 (Details) again: the form filled in from the bill as it is now (only its creator, before settling). */
+    async openEdit() {
+      this.creating = true;
+      this.loadingEdit = true;
+      try {
+        const [r, g] = await Promise.all([api.get('bills.php', { id: this.editingId }), api.get('groups.php').catch(() => ({ groups: [] }))]);
+        if (!r.me.is_creator || r.bill.locked) { location.replace('bill-detail?bill=' + this.editingId); return; }
+        this.groups = g.groups;
+        const multi = r.payments.multi;
+        this.form = {
+          name: r.bill.name,
+          members: r.members.filter((m) => !m.is_guest && m.id !== this.me),
+          guests: r.members.filter((m) => m.is_guest).map((m) => m.name),
+          payer_ids: multi ? r.payments.payer_ids : [r.bill.payer_id],
+          group_id: r.bill.group_id,
+        };
+        this.editScanned = r.items.length > 0 || (r.receipts || []).length > 0;
+        this.$nextTick(() => this.$refs.name && this.$refs.name.focus());
+      } catch (e) {
+        Setlo.toast(e.message);
+        this.editingId = null;
+        this.creating = false;
+      } finally {
+        this.loadingEdit = false;
+      }
+    },
+    /** Close the sheet; when editing a bill's details, go back to the step it came from. */
+    closeSheet() {
+      if (this.editingId) { history.length > 1 ? history.back() : (location.href = 'scan-receipt?bill=' + this.editingId); return; }
+      this.creating = false;
     },
     async openCreate() {
       this.creating = true;
@@ -207,10 +232,8 @@ Setlo.mount({
       this.results = [];
     },
     validators() {
-      const pay = {};
-      if (this.form.payer_ids.length > 1) for (const p of this.payerRows) pay['pay' + p.id] = V.money(this.form.pay[p.id], { label: 'Amount' });
       return {
-        ...pay,
+        people: this.form.members.length || this.form.guests.length ? '' : 'Add at least one member or guest to split with.',
         name: V.billName(this.form.name),
         guest: V.name(this.guestName, 'Guest name') || (this.form.guests.some((g) => g.toLowerCase() === this.guestName.trim().toLowerCase()) ? 'You already added this guest.' : ''),
       };
@@ -231,13 +254,11 @@ Setlo.mount({
       const ids = [this.me, ...this.form.members.map((m) => m.id)];
       const kept = this.form.payer_ids.filter((id) => ids.includes(id));
       this.form.payer_ids = kept.length ? kept : [this.me];
-      for (const id of Object.keys(this.form.pay)) if (!this.form.payer_ids.includes(Number(id))) delete this.form.pay[id];
     },
     async create() {
-      const multi = this.form.payer_ids.length > 1;
-      if (!this.validateAll(['name', ...(multi ? this.payerRows.map((p) => 'pay' + p.id) : [])])) return;
+      if (!this.validateAll(['name', 'people'])) return;
       const r = await Setlo.run(this, () => api.post('bills.php', {
-        action: 'create', name: this.form.name.trim(), payer_ids: this.form.payer_ids, payments: multi ? this.form.pay : {}, member_ids: this.form.members.map((m) => m.id), guest_names: this.form.guests, group_id: this.form.group_id,
+        action: this.editingId ? 'update_details' : 'create', bill_id: this.editingId, name: this.form.name.trim(), payer_ids: this.form.payer_ids, member_ids: this.form.members.map((m) => m.id), guest_names: this.form.guests, group_id: this.form.group_id,
       }));
       if (r) location.href = r.redirect;
     },

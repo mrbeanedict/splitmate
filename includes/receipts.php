@@ -21,6 +21,8 @@ function norm_key(?string $s): string
 /** Receipts on a bill, in order, for the Review screen. */
 function bill_receipts(int $billId): array
 {
+    $b = q('SELECT currency, receipt_currency FROM bills WHERE id = ?', [$billId])->fetch();
+    $billCur = $b['receipt_currency'] ?: $b['currency'];
     $rows = q('SELECT * FROM receipts WHERE bill_id = ? ORDER BY position, id', [$billId])->fetchAll();
     $photos = [];
     foreach (q('SELECT p.receipt_id, p.id FROM receipt_photos p JOIN receipts r ON r.id = p.receipt_id WHERE r.bill_id = ? ORDER BY p.position, p.id', [$billId]) as $p) {
@@ -37,6 +39,13 @@ function bill_receipts(int $billId): array
         'ocr_status' => $r['ocr_status'],
         'dup_note'   => $r['dup_note'],
         'photos'     => $photos[(int) $r['id']] ?? [],
+        // As scanned (kept when corrected), why, and a warning when it doesn't match the bill's receipt currency
+        'currency'          => $r['currency'] ?: $billCur,
+        'currency_detected' => $r['currency_detected'],
+        'currency_clues'    => $r['currency_clues'],
+        'currency_note'     => $r['currency_detected'] && $r['currency_detected'] !== $billCur
+            ? "The scanner read this receipt as {$r['currency_detected']}, but the bill’s receipts are in $billCur. Change the receipt currency, or remove this receipt and put it on its own bill."
+            : null,
     ], $rows, array_keys($rows));
 }
 
@@ -110,17 +119,30 @@ function store_receipts(array $bill, array $receipts, string $status, array $has
         $oldFiles = q('SELECT p.image FROM receipt_photos p JOIN receipts r ON r.id = p.receipt_id WHERE r.bill_id = ?', [$billId])->fetchAll(PDO::FETCH_COLUMN);
         q('DELETE FROM receipt_items WHERE bill_id = ?', [$billId]);
         q('DELETE FROM receipts WHERE bill_id = ?', [$billId]);
-        q('UPDATE bills SET tax = 0, service_charge = 0, discount = 0, receipt_total = NULL, ocr_raw = NULL, receipt_image = NULL WHERE id = ?', [$billId]);
+        // An actual amount charged or rate typed for the old receipt doesn't fit a new one
+        q("UPDATE bills SET tax = 0, service_charge = 0, discount = 0, receipt_total = NULL, ocr_raw = NULL, receipt_image = NULL,
+           receipt_currency = NULL, fx_mode = 'market', fx_actual_total = NULL, fx_manual_rate = NULL, fx_fees = 0, fx_fees_note = NULL, fx_set_at = NULL WHERE id = ?", [$billId]);
     }
     $existing = q('SELECT * FROM receipts WHERE bill_id = ? ORDER BY position, id', [$billId])->fetchAll();
     $number = count($existing);
+
+    // The receipts' currency: the first one the scanner read on a bill with no receipts yet; after that the bill's
+    // stays, and a receipt read in another currency is pointed out on Review (bill_receipts() currency_note).
+    $b = q('SELECT currency, receipt_currency FROM bills WHERE id = ?', [$billId])->fetch();
+    $before = $b['receipt_currency'] ?: $b['currency'];
+    $readAs = $before;
+    if (!$existing) {
+        $detected = array_values(array_filter(array_column($receipts, 'currency')))[0] ?? '';
+        $readAs = $detected ?: $before;
+        q('UPDATE bills SET receipt_currency = ? WHERE id = ?', [$readAs === $b['currency'] ? null : $readAs, $billId]);
+    }
     $position = (int) q('SELECT COALESCE(MAX(position) + 1, 0) FROM receipts WHERE bill_id = ?', [$billId])->fetchColumn();
     $itemPos = (int) q('SELECT COALESCE(MAX(position) + 1, 0) FROM receipt_items WHERE bill_id = ?', [$billId])->fetchColumn();
 
     // Nothing read (scan failed or found no receipt): keep the photo as an empty receipt, so it can still be viewed.
     if (!$receipts && $hashedPhotos) {
         $receipts = [['items' => [], 'subtotal' => null, 'tax' => 0.0, 'service_charge' => 0.0, 'discount' => 0.0, 'total' => null,
-                      'raw_text' => '', 'store_name' => '', 'title' => '', 'receipt_no' => '', 'txn_date' => '']];
+                      'raw_text' => '', 'store_name' => '', 'title' => '', 'receipt_no' => '', 'txn_date' => '', 'currency' => '', 'currency_clues' => '']];
     }
 
     $ids = [];
@@ -157,10 +179,11 @@ function store_receipts(array $bill, array $receipts, string $status, array $has
 
         // The scanner's suggested title is saved as the title; the user can change or clear it on Review.
         q(
-            'INSERT INTO receipts (bill_id, position, title, store_name, receipt_no, txn_date, subtotal, tax, service_charge, discount, total, ocr_raw, ocr_status, dup_note)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO receipts (bill_id, position, title, store_name, receipt_no, txn_date, subtotal, tax, service_charge, discount, total, currency, currency_detected, currency_clues, ocr_raw, ocr_status, dup_note)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [$billId, $position++, ($r['title'] ?? '') ?: null, $r['store_name'] ?: null, $r['receipt_no'] ?: null, $r['txn_date'] ?: null, $r['subtotal'], $r['tax'],
-             $r['service_charge'], $r['discount'], $total, $r['raw_text'] ?: null, $status === 'ok' ? 'ok' : 'failed', $dup]
+             $r['service_charge'], $r['discount'], $total, $readAs, ($r['currency'] ?? '') ?: null, ($r['currency_clues'] ?? '') ?: null,
+             $r['raw_text'] ?: null, $status === 'ok' ? 'ok' : 'failed', $dup]
         );
         $rid = (int) $pdo->lastInsertId();
         $ids[] = $rid;
@@ -191,6 +214,9 @@ function store_receipts(array $bill, array $receipts, string $status, array $has
     flag_repeated_items($billId);
     // A failed scan doesn't undo an earlier successful one.
     q("UPDATE bills SET status = 'active', ocr_status = IF(? = 'ok' OR ocr_status <> 'ok', ?, ocr_status) WHERE id = ?", [$status, $status, $billId]);
+    if ($readAs !== $b['currency'] && ($readAs !== $before || $replace)) {
+        fx_capture_market($billId, null, "Receipt read as $readAs; settles in {$b['currency']}.");
+    }
     $pdo->commit();
 
     foreach ($oldFiles as $f) {

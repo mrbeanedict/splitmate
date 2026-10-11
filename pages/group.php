@@ -17,7 +17,7 @@ require __DIR__ . '/../partials/head.php';
       <?php require __DIR__ . '/../partials/back.php'; ?>
       <div class="min-w-0 flex-1">
         <h1 class="flex items-center gap-2 text-[21px] font-extrabold tracking-tight"><span class="truncate">{{ g ? g.name : 'Group' }}</span><span v-if="g && g.fun_mode" class="fun-chip">🎉 Fun Mode</span></h1>
-        <p class="text-[12px] font-medium text-brand-50/90">{{ members.length }} people · {{ bills.length }} bill{{ bills.length === 1 ? '' : 's' }}<span v-if="open > 0"> · {{ peso(open) }} still unpaid</span></p>
+        <p class="text-[12px] font-medium text-brand-50/90">{{ members.length }} people · {{ bills.length }} bill{{ bills.length === 1 ? '' : 's' }}<span v-if="open > 0"> · {{ peso(open, homeCurrency) }} still unpaid</span></p>
       </div>
     </div>
     <div class="seg mt-5">
@@ -56,7 +56,7 @@ require __DIR__ . '/../partials/head.php';
               </p>
             </div>
             <div class="shrink-0 text-right">
-              <p class="text-[13.5px] font-extrabold tabular-nums">{{ peso(p.amount) }}</p>
+              <p class="text-[13.5px] font-extrabold tabular-nums">{{ peso(p.amount, p.currency) }}</p>
               <button v-if="p.receipt_no" @click="showReceipt(p.id)" class="text-[11px] font-bold text-brand-700 underline">{{ p.receipt_no }}</button>
             </div>
           </div>
@@ -71,7 +71,7 @@ require __DIR__ . '/../partials/head.php';
         <div class="initials">{{ b.initials }}</div>
         <div class="min-w-0 flex-1">
           <p class="truncate text-[14px] font-bold text-ink">{{ b.name }}</p>
-          <p class="mt-0.5 text-[12px] text-slate-400">{{ peso(b.total) }} · {{ fmtDate(b.created_at) }}</p>
+          <p class="mt-0.5 text-[12px] text-slate-400">{{ peso(b.total, b.currency) }} · {{ fmtDate(b.created_at) }}</p>
         </div>
         <status-pill :status="b.status"></status-pill>
       </a>
@@ -92,7 +92,7 @@ require __DIR__ . '/../partials/head.php';
         <input v-model="search" @input="lookup" class="input-soft !bg-white" placeholder="Add someone by name or email" aria-label="Add someone" />
         <div v-if="results.length" class="tile divide-y divide-slate-100 overflow-hidden">
           <button v-for="u in results" :key="u.id" @click="addMember(u)" class="flex w-full items-center gap-3 px-3.5 py-2.5 text-left hover:bg-slate-50">
-            <avatar :user="u" :size="28"></avatar><span class="flex-1 text-[13px] font-bold">{{ u.name }}</span><span class="text-[12px] font-bold text-brand-700">Add</span>
+            <person-result :user="u" :size="28"></person-result><span class="text-[12px] font-bold text-brand-700">Add</span>
           </button>
         </div>
         <div class="grid grid-cols-2 gap-3">

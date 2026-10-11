@@ -22,6 +22,7 @@ require __DIR__ . '/../partials/head.php';
       <div>
         <p class="text-[12px] font-medium text-brand-50/90">Total · {{ fmtDate(bill.created_at) }}</p>
         <p class="text-[30px] font-extrabold leading-tight tracking-tight">{{ peso(d.total) }}</p>
+        <p v-if="bill && bill.fx && bill.fx.foreign" class="text-[12px] font-medium text-brand-50/90">{{ peso(d.native_total, bill.receipt_currency) }} on the receipt · {{ fmtRate(bill.fx.rate, bill.receipt_currency, bill.currency) }} ({{ bill.fx.mode === 'market' ? 'estimate' : bill.fx.source }})</p>
       </div>
       <div class="mb-1.5 flex -space-x-2">
         <avatar v-for="m in d.members" :key="m.id" :user="m" :size="30" ring></avatar>
@@ -73,12 +74,12 @@ require __DIR__ . '/../partials/head.php';
         </div>
         <span v-if="!it.who.length" class="pill pill-unassigned">Unassigned</span>
         <div v-else class="flex -space-x-1.5"><avatar v-for="uid in it.who" :key="uid" :user="memberMap[uid]" :size="22" ring></avatar></div>
-        <span class="w-16 text-right text-[15px] font-extrabold text-ink">{{ pesoShort(it.line_total) }}</span>
+        <span class="w-16 text-right text-[15px] font-extrabold text-ink">{{ pesoShort(it.line_total, (bill.receipt_currency || bill.currency)) }}</span>
       </component>
       </template>
     </div>
-    <p v-if="d.extras > 0" class="mt-3 text-center text-[12px] text-slate-400">+ {{ peso(d.extras) }} {{ bill && bill.tax_included ? 'service charge' : 'tax & service charge' }}, split equally</p>
-    <p v-if="bill.discount > 0" class="mt-1 text-center text-[12px] text-emerald-600">− {{ peso(bill.discount) }} receipt discount<span v-if="d.discount_by[me]"> · yours: {{ peso(d.discount_by[me]) }}</span></p>
+    <p v-if="d.extras > 0" class="mt-3 text-center text-[12px] text-slate-400">+ {{ peso(d.extras, (bill.receipt_currency || bill.currency)) }} {{ bill && bill.tax_included ? 'service charge' : 'tax & service charge' }}, split equally</p>
+    <p v-if="bill.discount > 0" class="mt-1 text-center text-[12px] text-emerald-600">− {{ peso(bill.discount, (bill.receipt_currency || bill.currency)) }} receipt discount<span v-if="d.discount_by[me]"> · yours: {{ peso(d.discount_by[me], (bill.receipt_currency || bill.currency)) }}</span></p>
   </div>
 
   <div class="sticky bottom-[65px] z-20 px-4 pb-3 lg:bottom-4 lg:px-0 lg:pb-0">
@@ -101,7 +102,7 @@ require __DIR__ . '/../partials/head.php';
       <p class="text-[12px] font-semibold text-slate-400">Who had this?</p>
       <div class="mb-4 mt-0.5 flex items-center justify-between">
         <h2 class="text-[18px] font-extrabold text-ink">{{ editing.name }}{{ editing.qty > 1 ? ' ×' + editing.qty : '' }}</h2>
-        <span class="text-[16px] font-extrabold text-ink">{{ peso(editing.line_total) }}</span>
+        <span class="text-[16px] font-extrabold text-ink">{{ peso(editing.line_total, (bill.receipt_currency || bill.currency)) }}</span>
       </div>
       <div class="space-y-2">
         <button v-for="m in d.members" :key="m.id" @click="toggleDraft(m.id)" class="flex h-14 w-full items-center gap-3 rounded-2xl border-[1.5px] px-3.5" :class="draft.includes(m.id) ? 'border-brand-500 bg-brand-50/60' : 'border-slate-200'">
@@ -112,7 +113,7 @@ require __DIR__ . '/../partials/head.php';
           </span>
         </button>
       </div>
-      <p class="mt-4 h-4 text-center text-[12px] text-slate-500">{{ draft.length ? peso(editing.line_total / draft.length) + ' each · split ' + draft.length + ' way' + (draft.length > 1 ? 's' : '') : '' }}</p>
+      <p class="mt-4 h-4 text-center text-[12px] text-slate-500">{{ draft.length ? peso(editing.line_total / draft.length, (bill.receipt_currency || bill.currency)) + ' each · split ' + draft.length + ' way' + (draft.length > 1 ? 's' : '') : '' }}</p>
       <button @click="saveSheet" class="btn-pill btn-pill-primary mt-3" :disabled="busy">Done</button>
     </div>
   </div>
@@ -137,7 +138,7 @@ Setlo.mount({
     // Split by percentage or by a game: items don't need assigning.
     unassignedCount() { return this.byPercent || this.byGame ? 0 : this.d.items.filter((it) => !it.who.length).length; },
   },
-  async mounted() { await Setlo.load(this, 'bills.php', { id: this.billId }, (r) => { this.d = r; this.bill = r.bill; }); },
+  async mounted() { await Setlo.load(this, 'bills.php', { id: this.billId }, (r) => { Setlo.useCurrency(r.bill.currency); this.d = r; this.bill = r.bill; }); },
   methods: {
     async load() {
       this.d = await api.get('bills.php', { id: this.billId });
