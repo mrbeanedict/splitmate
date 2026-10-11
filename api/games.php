@@ -49,9 +49,8 @@ if (method() === 'GET') {
     if ($g) {
         $g = advance_game($g);
     }
-    // Nothing new since the screen's last poll: a tiny reply. Roulette counts its knock-outs off the clock, so it
-    // always gets the full one while it plays.
-    if ($g && (int) ($_GET['v'] ?? 0) === $g['version'] && !($g['game'] === 'roulette' && $g['status'] === 'playing')) {
+    // Nothing new since the screen's last poll: a tiny reply.
+    if ($g && (int) ($_GET['v'] ?? 0) === $g['version']) {
         json_ok(['unchanged' => true]);
     }
     json_ok(game_reply($bill['id'], $g, $me));

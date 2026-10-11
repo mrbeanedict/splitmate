@@ -9,7 +9,7 @@
 declare(strict_types=1);
 
 const GAMES = [
-    'roulette' => ['emoji' => '🎡', 'title' => 'Roulette',                   'description' => 'Players drop out one by one. The last one standing pays it all.'],
+    'roulette' => ['emoji' => '🎡', 'title' => 'Roulette',                   'description' => 'Spin the wheel. Wherever it stops pays it all.'],
     'race'     => ['emoji' => '🏁', 'title' => 'Receipt Race',               'description' => 'Same items for everyone. The fastest correct total pays nothing.'],
     'closest'  => ['emoji' => '🎯', 'title' => 'Closest Without Going Over', 'description' => 'Build a basket closest to the target without going over. The closest pays nothing.'],
     'cards'    => ['emoji' => '🃏', 'title' => 'Mystery Card',               'description' => 'Everyone picks a face-down card. One of them says “You Pay”.'],
@@ -32,7 +32,7 @@ const CARD_DECK_MIN = 8;                                                // at le
 const CARD_GRAB_CENTS = 1000;
 const GAME_CARD_SECONDS = 45;
 const GAME_CHOOSE_SECONDS = 30;
-const ROULETTE_STEP_MS = 2500;   // one player drops out every 2.5 s
+const ROULETTE_SPIN_MS = 3500;    // the wheel spins this long, then the screens stop it on the loser
 
 const GAME_ANSWER_SECONDS = 90;  // Receipt Race / Closest: the live clock; in a one-phone race, each turn's limit
 const RACE_TOLERANCE_CENTS = 100; // a race answer within ₱1 counts as correct (rounding)
@@ -186,7 +186,7 @@ function game_play_ms(string $game, bool $live, int $players): ?int
     return match ($game) {
         'race', 'closest' => $live ? GAME_ANSWER_SECONDS * 1000 : null,
         'cards'    => $live ? GAME_CARD_SECONDS * 1000 : null,
-        'roulette' => ($players - 1) * ROULETTE_STEP_MS + 1500,
+        'roulette' => ROULETTE_SPIN_MS,
     };
 }
 
@@ -740,13 +740,6 @@ function game_payload(array $g, array $me): array
         ], $players),
         'result'      => $done ? ($g['state']['result'] ?? null) : null,
     ];
-    if ($g['game'] === 'roulette' && in_array($g['status'], ['playing', 'done'], true)) {
-        $order = $g['state']['order'];
-        $outCount = count($order) - 1;
-        $k = $done ? $outCount : max(0, min($outCount, intdiv(($g['now_ms'] - $g['started_ms']), ROULETTE_STEP_MS)));
-        $out['knocked'] = array_slice($order, 0, $k);
-        $out['step_ms'] = ROULETTE_STEP_MS;
-    }
     if ($g['game'] === 'race') {
         $racing = $done || ($g['status'] === 'playing' && ($g['mode'] === 'live'
             || array_filter($players, fn ($p) => $p['turn_started_ms'] !== null && !$p['answered'])));
