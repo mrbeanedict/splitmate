@@ -62,6 +62,13 @@ switch ($action) {
         } catch (GeminiException $e) {
             [$receipts, $status, $error] = [[], 'failed', $e->getMessage()];
         }
+        if ($status === 'ok' && !array_sum(array_map(fn ($r) => count($r['items']), $receipts))) {
+            // The scan worked but found no items (a person, a wall, a landscape...): keep nothing and leave the bill's receipts as they are.
+            foreach ($names as $n) {
+                delete_upload('receipts', $n);
+            }
+            json_ok(['ocr' => 'ok', 'available' => true, 'not_receipt' => true, 'found' => 0, 'receipts_found' => 0, 'currencies' => [], 'duplicates' => [], 'receipt_ids' => [], 'error' => null]);
+        }
         $stored = store_receipts($bill, $receipts, $status, $photos, $replace);
 
         json_ok([

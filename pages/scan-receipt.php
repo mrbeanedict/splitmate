@@ -370,7 +370,7 @@ Setlo.mount({
         if (!ok) return;
       }
       const batches = this.partsOfOne ? [this.queue] : this.queue.map((q) => [q]);
-      let read = 0, stored = 0;
+      let read = 0, stored = 0, notReceipt = 0;
       const problems = [];
       // Receipts this run saved: removed again if it's cancelled (the server finishes a scan even then).
       const run = ++this.scanRun, saved = [];
@@ -412,6 +412,7 @@ Setlo.mount({
           if (!stored) { this.state = 'queue'; return; }
           break; // keep what was already stored and show it on Review
         }
+        if (r.not_receipt) { notReceipt++; continue; } // nothing was stored for this photo
         stored++;
         saved.push(...(r.receipt_ids || []));
         if (r.ocr === 'ok' && r.found > 0) read++;
@@ -425,6 +426,16 @@ Setlo.mount({
       } else if (stored) {
         this.state = 'failed';
         this.failMessage = problems[0];
+      } else if (notReceipt) {
+        // Every photo was read fine but held no receipt (a face, a place, a wall...): nothing was kept.
+        this.state = 'queue';
+        const another = await Setlo.confirm({
+          title: 'That doesn’t look like a receipt', icon: 'warning', confirmText: 'Try another photo', cancelText: 'Enter manually',
+          text: 'We couldn’t find any items in ' + (notReceipt > 1 ? 'these photos' : 'this photo') + '. Make sure the whole receipt is flat, well lit and in frame, or add the items yourself.',
+        });
+        if (cancelled()) return;
+        if (another) this.clearQueue();
+        else this.manual();
       } else {
         this.state = 'queue'; // every photo skipped as a duplicate
       }
