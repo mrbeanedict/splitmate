@@ -1,6 +1,6 @@
 // Setlo service worker: makes the app installable and keeps the shell usable on a flaky connection.
 // Money data (api/) is never cached — balances must always come from the server.
-const VERSION = 'setlo-v18';
+const VERSION = 'setlo-v19';
 const SHELL = [
   'offline.html',
   'assets/css/app.css',
@@ -9,6 +9,8 @@ const SHELL = [
   'assets/js/theme.js',
   'assets/js/summary.js',
   'assets/js/replay.js',
+  'assets/js/splash.js',
+  'assets/css/splash.css',
   'assets/js/validate.js',
   'assets/js/docscan-core.js',
   'assets/js/docscan.js',

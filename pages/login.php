@@ -8,7 +8,9 @@ if (current_user()) {
 $title = 'Log In';
 $bodyClass = 'landing-body';
 $headExtra = ['assets/fonts/caveat-latin.woff2', 'assets/js/google-auth.js'];
+$splash = true;
 require __DIR__ . '/../partials/head.php';
+require __DIR__ . '/../partials/splash.php';
 require __DIR__ . '/../partials/auth-landing-top.php';
 ?>
 <div id="app" class="landing-card" v-cloak>

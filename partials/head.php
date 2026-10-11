@@ -29,6 +29,16 @@ header('Cache-Control: no-store');
 <link rel="preload" href="<?= h(url('assets/fonts/jakarta-latin.woff2')) ?>" as="font" type="font/woff2" crossorigin />
 <link rel="preload" href="<?= h(url('assets/fonts/jakarta-latin-ext.woff2')) ?>" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="<?= h(url('assets/css/app.css')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/css/app.css') ?>" />
+<?php if (!empty($splash)): // login splash, once per browser session (partials/splash.php) ?>
+<link rel="stylesheet" href="<?= h(url('assets/css/splash.css')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/css/splash.css') ?>" />
+<script>
+  (function () {
+    var seen = false;
+    try { seen = !!sessionStorage.getItem('setlo-splash'); sessionStorage.setItem('setlo-splash', '1'); } catch (e) {}
+    if (!seen && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('splash-on');
+  })();
+</script>
+<?php endif; ?>
 <script src="<?= h(url('assets/js/theme.js')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/js/theme.js') ?>"></script>
 <script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.prod.js" integrity="sha384-W/1Fp/LgAYO/oTn9Gs+PbeWuMuq1eQCnUMPCeg8POmMYchhzxctjEqtbiCIxDOON" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js" integrity="sha384-YB/DdIkloKoRpclWB8bNcYXWakt57USgtQPDzvnIDHYU0lasD5eWlXVo1S4ODukY" crossorigin="anonymous"></script>

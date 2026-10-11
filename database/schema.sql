@@ -5,7 +5,7 @@ CREATE DATABASE IF NOT EXISTS setlo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicod
 USE setlo;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS fx_rates, bill_fx_log, game_players, game_sessions, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
+DROP TABLE IF EXISTS user_activity, fx_rates, bill_fx_log, game_players, game_sessions, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
 SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE users (
@@ -315,6 +315,17 @@ CREATE TABLE login_attempts (
   ip            VARCHAR(45) NOT NULL,
   attempted_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX (email, ip, attempted_at)
+) ENGINE=InnoDB;
+
+-- Days each user used the app (see record_activity() in includes/bootstrap.php): one row per user per day.
+CREATE TABLE user_activity (
+  user_id   INT UNSIGNED NOT NULL,
+  day       DATE NOT NULL,
+  first_at  DATETIME NOT NULL,                    -- first request that day
+  last_at   DATETIME NOT NULL,                    -- latest request that day (to within ~5 minutes)
+  PRIMARY KEY (user_id, day),
+  INDEX (day),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- "Forgot password?" codes emailed to users (see api/auth.php). Only a hash of the 6-digit code is stored.
