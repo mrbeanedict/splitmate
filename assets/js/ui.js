@@ -54,7 +54,7 @@
   async function confirmDialog({ title, text = '', confirmText = 'Yes', cancelText = 'Cancel', danger = false, icon }) {
     const r = await swal({
       title, text, icon: icon || (danger ? 'warning' : 'question'), showCancelButton: true,
-      confirmButtonText: confirmText, cancelButtonText: cancelText, confirmButtonColor: danger ? '#e11d48' : BRAND, focusCancel: danger,
+      confirmButtonText: confirmText, cancelButtonText: cancelText, ...(danger ? { confirmButtonColor: '#e11d48' } : {}), focusCancel: danger,
     });
     return r.isConfirmed;
   }
@@ -775,7 +775,9 @@
     const form = e.target.closest('form[action="logout"]');
     if (!form || !e.target.closest('button')) return;
     e.preventDefault();
+    // If the styled dialog can't be shown (e.g. SweetAlert failed to load), log why and ask with the browser's own prompt.
     confirmDialog({ title: 'Sign out?', text: 'You can log back in anytime.', confirmText: 'Sign out' })
+      .catch((err) => { console.error('Sign-out dialog failed:', err); return window.confirm('Sign out?'); })
       .then((ok) => { if (ok) form.submit(); });
   }, true);
 
