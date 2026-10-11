@@ -54,6 +54,17 @@ require __DIR__ . '/../partials/head.php';
         <div class="shrink-0"><currency-select compact :model-value="receiptCur" @update:model-value="setReceiptCurrency" :disabled="busy" label="Receipt currency"></currency-select></div>
       </div>
     </div>
+    <!-- A receipt in another currency: what it comes to in the settlement currency (the saved bill, at the current rate) -->
+    <div v-if="foreign && bill.fx.missing" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12.5px] leading-relaxed text-amber-800" role="alert">
+      No exchange rate is available for {{ receiptCur }} → {{ bill.currency }} right now. Try again in a moment, or enter the rate on Bill Detail.
+    </div>
+    <div v-else-if="foreign" class="tile p-3.5">
+      <p class="text-[13.5px] font-extrabold text-ink">≈ {{ peso(bill.fx.converted, bill.currency) }} in {{ bill.currency }}</p>
+      <p class="text-[11.5px] leading-snug text-slate-500">
+        {{ peso(bill.fx.native_total, receiptCur) }} on the receipt · {{ fmtRate(bill.fx.rate, receiptCur, bill.currency) }}<template v-if="bill.fx.source"> ({{ bill.fx.source }})</template>.
+        Shown for the last saved version of this bill; the exact rate or amount charged is set on Bill Detail.
+      </p>
+    </div>
     <div v-for="rc in receipts.filter((x) => x.currency_note)" :key="'cur' + rc.id" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12.5px] leading-relaxed text-amber-800" role="alert">
       <b class="text-amber-900">{{ rc.number }}. {{ receiptLabel(rc) }}:</b> {{ rc.currency_note }}
     </div>
@@ -117,7 +128,11 @@ require __DIR__ . '/../partials/head.php';
               {{ r.fixed ? 'Confirmed' : r.id ? (r.source === 'ocr' ? 'High confidence' : 'Saved') : 'Added manually' }}
             </span>
             <span class="flex shrink-0 items-center gap-2 text-slate-400">
-              Line total {{ peso(lineTotal(r)) }}
+              <span class="flex flex-col items-end leading-tight">
+                <!-- Receipt in another currency: what this line comes to in the settlement currency (estimate at the current rate) -->
+                <span v-if="foreign && !bill.fx.missing" class="font-extrabold text-brand-700" title="At today's rate; the bill's exact total is set on Bill Detail">≈ {{ peso(converted(r), bill.currency) }}</span>
+                <span>Line total {{ peso(lineTotal(r)) }}</span>
+              </span>
               <button @click="remove(r)" class="font-bold text-slate-300 hover:text-rose-500" aria-label="Remove item">✕</button>
             </span>
           </div>
@@ -306,6 +321,8 @@ Setlo.mount({
       this.photos = ids.length ? ids.map((id) => base + '&photo_id=' + id) : [base];
     },
     lineTotal(r) { return Math.round((Number(r.qty) || 0) * money(r.unit_price) * 100) / 100; },
+    /** A line's total in the settlement currency at the bill's current rate (display only; the bill's own conversion is on Bill Detail). */
+    converted(r) { return Math.round(this.lineTotal(r) * this.bill.fx.rate * 100) / 100; },
     resolve(r, useSuggestion) {
       if (useSuggestion) r.name = r.suggestion;
       r.needs_review = false;
