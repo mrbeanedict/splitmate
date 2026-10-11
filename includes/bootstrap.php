@@ -132,12 +132,34 @@ function current_user(): ?array
             if ($row && $row['status'] === 'active') {
                 $row['id'] = (int) $row['id'];
                 $user = $row;
+                if ($row['role'] === 'user') {
+                    record_activity($row['id']);
+                }
             } else {
                 unset($_SESSION['user_id']);
             }
         }
     }
     return $user;
+}
+
+/**
+ * Note that the signed-in user is using the app today (user_activity, shown on admin User Management).
+ * Writes at most once every 5 minutes per session, so last_at is accurate to about that.
+ */
+function record_activity(int $userId): void
+{
+    $today = date('Y-m-d');
+    if (($_SESSION['activity_day'] ?? '') === $today && ($_SESSION['activity_at'] ?? 0) > time() - 300) {
+        return;
+    }
+    try {
+        q('INSERT INTO user_activity (user_id, day, first_at, last_at) VALUES (?, CURDATE(), NOW(), NOW()) ON DUPLICATE KEY UPDATE last_at = NOW()', [$userId]);
+    } catch (PDOException $e) {
+        return; // database not migrated yet: never block sign-in over this
+    }
+    $_SESSION['activity_day'] = $today;
+    $_SESSION['activity_at'] = time();
 }
 
 /** Sign the user in. With $remember the cookie lasts 30 days; otherwise it ends when the browser closes. */

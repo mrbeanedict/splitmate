@@ -229,6 +229,12 @@ $steps = [
        FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE CASCADE,
        FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL, INDEX (bill_id)
      ) ENGINE=InnoDB",
+    // Days each user used the app (admin User Management)
+    'CREATE TABLE IF NOT EXISTS user_activity (
+       user_id INT UNSIGNED NOT NULL, day DATE NOT NULL, first_at DATETIME NOT NULL, last_at DATETIME NOT NULL,
+       PRIMARY KEY (user_id, day), INDEX (day),
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
 ];
 foreach ($steps as $sql) {
     db()->exec($sql);
@@ -308,5 +314,18 @@ foreach ($credits as $c) {
 }
 if ($credits) {
     echo 'Moved ' . count($credits) . " kept-change credit(s) into Utang.\n";
+}
+// Activity from before it was tracked: the days users created bills or acted on payments.
+$backfilled = q(
+    "INSERT INTO user_activity (user_id, day, first_at, last_at)
+     SELECT x.user_id, DATE(x.at), MIN(x.at), MAX(x.at) FROM (
+       SELECT b.creator_id AS user_id, b.created_at AS at FROM bills b
+       UNION ALL SELECT e.actor_id, e.created_at FROM settlement_events e WHERE e.actor_id IS NOT NULL
+     ) x JOIN users u ON u.id = x.user_id AND u.role = 'user'
+     GROUP BY x.user_id, DATE(x.at)
+     ON DUPLICATE KEY UPDATE first_at = LEAST(first_at, VALUES(first_at)), last_at = GREATEST(last_at, VALUES(last_at))"
+)->rowCount();
+if ($backfilled) {
+    echo "Filled in activity days from earlier bills and payments.\n";
 }
 echo "Database is up to date.\n";

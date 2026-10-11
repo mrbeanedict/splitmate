@@ -25,21 +25,66 @@ if (method() === 'GET') {
         case 'users':
             $term = trim((string) ($_GET['q'] ?? ''));
             $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term) . '%';
+            $order = ($_GET['sort'] ?? '') === 'active' ? 'last_active IS NULL, last_active DESC, u.created_at DESC' : 'u.created_at DESC';
             $rows = q(
                 "SELECT u.id, u.full_name, u.email, u.avatar_color, u.status, u.created_at,
                    (SELECT COUNT(*) FROM bill_members m WHERE m.user_id = u.id) AS bills,
-                   (SELECT COUNT(*) FROM settlements s WHERE s.status = 'disputed' AND (s.from_user_id = u.id OR s.to_user_id = u.id)) AS disputes
+                   (SELECT COUNT(*) FROM settlements s WHERE s.status = 'disputed' AND (s.from_user_id = u.id OR s.to_user_id = u.id)) AS disputes,
+                   (SELECT MAX(a.last_at) FROM user_activity a WHERE a.user_id = u.id) AS last_active,
+                   (SELECT COUNT(*) FROM user_activity a WHERE a.user_id = u.id AND a.day >= CURDATE() - INTERVAL 29 DAY) AS days_30
                  FROM users u WHERE u.role = 'user' AND (u.full_name LIKE ? OR u.email LIKE ?)
-                 ORDER BY u.created_at DESC LIMIT 200",
+                 ORDER BY $order LIMIT 200",
                 [$like, $like]
             )->fetchAll();
             json_ok(['users' => array_map(fn ($u) => public_user($u) + [
-                'email'      => $u['email'],
-                'status'     => $u['status'],
-                'created_at' => $u['created_at'],
-                'bills'      => (int) $u['bills'],
-                'disputes'   => (int) $u['disputes'],
+                'email'       => $u['email'],
+                'status'      => $u['status'],
+                'created_at'  => $u['created_at'],
+                'bills'       => (int) $u['bills'],
+                'disputes'    => (int) $u['disputes'],
+                'last_active' => $u['last_active'],
+                'days_30'     => (int) $u['days_30'],
             ], $rows)]);
+
+        case 'activity':
+            // One user's app usage: summary numbers and their active days over the last 90.
+            $uid = int_param('id');
+            if (!q("SELECT 1 FROM users WHERE id = ? AND role = 'user'", [$uid])->fetchColumn()) {
+                fail('User not found.', 404);
+            }
+            $sum = q(
+                'SELECT MIN(day) AS first_seen, MAX(last_at) AS last_active, COUNT(*) AS total,
+                   SUM(day >= CURDATE() - INTERVAL 6 DAY) AS d7, SUM(day >= CURDATE() - INTERVAL 29 DAY) AS d30
+                 FROM user_activity WHERE user_id = ?',
+                [$uid]
+            )->fetch();
+            $days = q(
+                'SELECT day, first_at, last_at FROM user_activity WHERE user_id = ? AND day >= CURDATE() - INTERVAL 89 DAY ORDER BY day DESC',
+                [$uid]
+            )->fetchAll();
+            // Streak: consecutive days ending today (or yesterday, if they haven't been on yet today)
+            $streak = 0;
+            $expect = new DateTime('today');
+            if ($days && $days[0]['day'] !== $expect->format('Y-m-d')) {
+                $expect->modify('-1 day');
+            }
+            foreach ($days as $d) {
+                if ($d['day'] !== $expect->format('Y-m-d')) {
+                    break;
+                }
+                $streak++;
+                $expect->modify('-1 day');
+            }
+            json_ok([
+                'first_seen'  => $sum['first_seen'],
+                'last_active' => $sum['last_active'],
+                'days_7'      => (int) $sum['d7'],
+                'days_30'     => (int) $sum['d30'],
+                'days_total'  => (int) $sum['total'],
+                'streak'      => $streak,
+                'today'       => date('Y-m-d'),
+                'days'        => $days,
+            ]);
 
         case 'bills':
             $status = $_GET['status'] ?? '';
