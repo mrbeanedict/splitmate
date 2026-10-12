@@ -13,8 +13,8 @@ return [
     'SMTP_HOST'           => 'smtp.gmail.com',
     'SMTP_PORT'           => '587',
     'SMTP_SECURE'         => 'tls',   // tls (port 587) or ssl (port 465)
-    'SMTP_USER'           => 'ivhanphiliptimbal@gmail.com',      // e.g. yourname@gmail.com
-    'SMTP_PASS'           => 'bjbd vgij raov gchn',      // the 16-character App Password
+    'SMTP_USER'           => '',      // e.g. yourname@gmail.com
+    'SMTP_PASS'           => '',      // the 16-character App Password
     'MAIL_FROM'           => '',      // leave empty to send from SMTP_USER
     'MAIL_FROM_NAME'      => 'Setlo',
 ];
