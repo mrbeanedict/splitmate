@@ -175,7 +175,7 @@ Setlo.mount({
       const r = await Setlo.run(this, () => api.post('groups.php', { action: 'set_fun_mode', id: this.groupId, on }));
       if (r) {
         this.g.fun_mode = r.fun_mode;
-        Setlo.toast(r.fun_mode ? '🎉 Fun Mode is on — new bills start with a game.' : 'Fun Mode is off.');
+        Setlo.toast(r.fun_mode ? '🎉 Fun Mode is on — new bills start with a game.' : 'Fun Mode is off.', r.fun_mode ? 'ok' : 'info');
       }
     },
     async leave() {
