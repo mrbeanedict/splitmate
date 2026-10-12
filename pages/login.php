@@ -15,8 +15,10 @@ require __DIR__ . '/../partials/auth-landing-top.php';
 ?>
 <div id="app" class="landing-card" v-cloak>
   <div class="flex flex-col items-center text-center">
-    <span class="logo-tile h-16 w-16 rounded-[20px] text-[34px]">₱</span>
-    <p class="mt-2 text-[34px] font-extrabold leading-none tracking-tight text-brand-600">setlo</p>
+    <a href="<?= h(url('')) ?>" class="flex flex-col items-center" aria-label="Back to Setlo home">
+      <span class="logo-tile h-16 w-16 rounded-[20px] text-[34px]">₱</span>
+      <p class="mt-2 text-[34px] font-extrabold leading-none tracking-tight text-brand-600">setlo</p>
+    </a>
     <h2 class="mt-4 text-[22px] font-extrabold text-slate-800">Welcome back!</h2>
     <p class="mt-1 max-w-[260px] text-[14px] leading-snug text-slate-500">Log in to your account and manage your shared expenses.</p>
   </div>

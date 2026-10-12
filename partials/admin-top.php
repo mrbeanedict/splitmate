@@ -6,6 +6,7 @@ $links = [
     'users'    => ['admin-users', 'Users', 'M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m5-6.13a4 4 0 110 8 4 4 0 010-8z'],
     'bills'    => ['admin-bills', 'Bills & Settlements', 'M6 3h12v18l-3-2-3 2-3-2-3 2V3zM9 8h6M9 12h6'],
     'disputes' => ['admin-disputes', 'Disputes', 'M12 9v3.75m0 3.75h.008M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
+    'reviews'  => ['admin-reviews', 'Reviews', 'M11.5 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8L3 9.7l5.9-.9 2.6-5.3z'],
 ];
 ?>
 <div class="flex min-h-screen bg-slate-50">

@@ -17,13 +17,13 @@
   <div class="landing-grid">
     <!-- Left: brand, headline, features -->
     <aside class="hidden flex-col lg:flex">
-      <div class="flex items-center gap-4">
+      <a href="<?= h(url('')) ?>" class="flex items-center gap-4" aria-label="Setlo home">
         <span class="logo-tile h-[72px] w-[72px] rounded-[22px] text-[40px]">₱</span>
         <div>
           <p class="text-[44px] font-extrabold leading-none tracking-tight text-brand-600">setlo</p>
           <p class="mt-1.5 text-[16px] font-medium text-slate-500">Split. Track. Stay Together.</p>
         </div>
-      </div>
+      </a>
 
       <h1 class="mt-14 text-[40px] font-extrabold leading-[1.1] tracking-tight text-slate-700 xl:text-[44px]">
         Smarter finances<br />for a better<br />

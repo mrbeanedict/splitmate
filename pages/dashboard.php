@@ -26,6 +26,7 @@ require __DIR__ . '/../partials/head.php';
               <p class="text-xs text-slate-400"><?= h($user['email']) ?> · <?= h($user['payment_method']) ?></p>
             </div>
             <a href="profile" class="block px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Profile &amp; payment QR</a>
+            <a href="landing#reviews" class="block px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Rate Setlo</a>
             <a href="stats" class="block px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Spending stats</a>
             <form method="post" action="logout" class="border-t border-slate-100">
               <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>" />

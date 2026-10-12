@@ -249,6 +249,18 @@ $steps = [
     'ALTER TABLE bills ADD COLUMN IF NOT EXISTS round_total TINYINT(1) NOT NULL DEFAULT 0 AFTER interest_rate',
     'ALTER TABLE bills ADD COLUMN IF NOT EXISTS change_holder_id INT UNSIGNED NULL AFTER round_total',
     'ALTER TABLE bills ADD CONSTRAINT bills_change_holder_fk FOREIGN KEY IF NOT EXISTS (change_holder_id) REFERENCES users(id) ON DELETE SET NULL',
+    // Landing page ratings and feedback: one per user, public once approved
+    "CREATE TABLE IF NOT EXISTS feedback (
+       id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       user_id    INT UNSIGNED NOT NULL UNIQUE,
+       rating     TINYINT UNSIGNED NOT NULL,
+       comment    VARCHAR(500) NULL,
+       status     ENUM('pending','approved','hidden') NOT NULL DEFAULT 'pending',
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       INDEX (status, created_at)
+     ) ENGINE=InnoDB",
 ];
 foreach ($steps as $sql) {
     db()->exec($sql);
