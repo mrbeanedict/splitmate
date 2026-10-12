@@ -19,6 +19,9 @@ $sections = [
         // Overview and past bills (the old Bill History) on one page
         'stats'  => ['stats', 'Spending & history', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],
     ],
+    'Social' => [
+        'community' => ['community', 'Community', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-1v3l-3-3h-5a2 2 0 01-2-2v-1M15 4H5a2 2 0 00-2 2v6a2 2 0 002 2h1v3l3-3h6a2 2 0 002-2V6a2 2 0 00-2-2z"/>'],
+    ],
     'Account' => [
         'profile'       => ['profile', 'Profile & payments', null, '<circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/>'],
         'notifications' => ['notifications', 'Notifications', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>'],

@@ -5,7 +5,7 @@ CREATE DATABASE IF NOT EXISTS setlo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicod
 USE setlo;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS feedback, settlement_payment_proofs, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
+DROP TABLE IF EXISTS community_translations, community_saves, community_comments, community_reactions, community_photos, community_posts, feedback, settlement_payment_proofs, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
 SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE users (
@@ -349,7 +349,7 @@ CREATE TABLE password_resets (
 CREATE TABLE notifications (
   id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   user_id     INT UNSIGNED NOT NULL,
-  type        ENUM('added','paid','confirmed','disputed','resent','settling','closed','nudge','admin','achievement','game') NOT NULL,
+  type        ENUM('added','paid','confirmed','disputed','resent','settling','closed','nudge','admin','achievement','game','community') NOT NULL,
   message     VARCHAR(300) NOT NULL,
   link        VARCHAR(200) NULL,
   is_read     TINYINT(1) NOT NULL DEFAULT 0,
@@ -439,4 +439,74 @@ CREATE TABLE settlement_payment_proofs (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (payment_id) REFERENCES settlement_payments(id) ON DELETE CASCADE,
   INDEX (payment_id, position)
+) ENGINE=InnoDB;
+
+-- Community feed (api/community.php): posts, their photos, reactions, comments and per-user saves.
+CREATE TABLE community_posts (
+  id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id        INT UNSIGNED NOT NULL,
+  body           VARCHAR(2000) NULL,
+  audience       ENUM('public','only_me') NOT NULL DEFAULT 'public',
+  shared_post_id INT UNSIGNED NULL,               -- a re-share points at the post it shares
+  is_share       TINYINT(1) NOT NULL DEFAULT 0,   -- stays 1 if the original is later deleted
+  edited_at      DATETIME NULL,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (shared_post_id) REFERENCES community_posts(id) ON DELETE SET NULL,
+  INDEX (audience, id),
+  INDEX (user_id, id)
+) ENGINE=InnoDB;
+
+CREATE TABLE community_photos (
+  id        INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  post_id   INT UNSIGNED NOT NULL,
+  position  SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  image     VARCHAR(255) NOT NULL,
+  FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+  INDEX (post_id, position)
+) ENGINE=InnoDB;
+
+CREATE TABLE community_reactions (
+  post_id    INT UNSIGNED NOT NULL,
+  user_id    INT UNSIGNED NOT NULL,
+  type       ENUM('like','love','haha','wow','sad','angry') NOT NULL DEFAULT 'like',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (post_id, user_id),
+  FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE community_comments (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  post_id    INT UNSIGNED NOT NULL,
+  user_id    INT UNSIGNED NOT NULL,
+  body       VARCHAR(1000) NOT NULL,
+  parent_id  INT UNSIGNED NULL,                 -- NULL = a comment on the post; set = a reply to that comment (one level)
+  edited_at  DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES community_comments(id) ON DELETE CASCADE,
+  INDEX (post_id, parent_id, id)
+) ENGINE=InnoDB;
+
+CREATE TABLE community_saves (
+  user_id    INT UNSIGNED NOT NULL,
+  post_id    INT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, post_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Gemini translations of community comments, one per comment and language, shared by everyone who asks.
+CREATE TABLE community_translations (
+  comment_id      INT UNSIGNED NOT NULL,
+  lang            VARCHAR(12) NOT NULL,
+  translation     VARCHAR(2000) NOT NULL,
+  romanization    VARCHAR(2000) NULL,              -- the original written in Latin letters (empty for Latin-script text)
+  source_language VARCHAR(60) NULL,
+  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (comment_id, lang),
+  FOREIGN KEY (comment_id) REFERENCES community_comments(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;

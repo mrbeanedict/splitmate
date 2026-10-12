@@ -150,7 +150,7 @@ $steps = [
        FOREIGN KEY (session_id) REFERENCES game_sessions(id) ON DELETE CASCADE,
        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
      ) ENGINE=InnoDB',
-    "ALTER TABLE notifications MODIFY type ENUM('added','paid','confirmed','disputed','resent','settling','closed','nudge','admin','achievement','game') NOT NULL",
+    "ALTER TABLE notifications MODIFY type ENUM('added','paid','confirmed','disputed','resent','settling','closed','nudge','admin','achievement','game','community') NOT NULL",
     // Archiving a closed bill (per member)
     'ALTER TABLE bill_members ADD COLUMN IF NOT EXISTS archived_at DATETIME NULL AFTER joined_at',
     // Guess the Bill replaced by Receipt Race and Closest Without Going Over
@@ -249,6 +249,71 @@ $steps = [
     'ALTER TABLE bills ADD COLUMN IF NOT EXISTS round_total TINYINT(1) NOT NULL DEFAULT 0 AFTER interest_rate',
     'ALTER TABLE bills ADD COLUMN IF NOT EXISTS change_holder_id INT UNSIGNED NULL AFTER round_total',
     'ALTER TABLE bills ADD CONSTRAINT bills_change_holder_fk FOREIGN KEY IF NOT EXISTS (change_holder_id) REFERENCES users(id) ON DELETE SET NULL',
+    // Community feed
+    "CREATE TABLE IF NOT EXISTS community_posts (
+       id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       user_id        INT UNSIGNED NOT NULL,
+       body           VARCHAR(2000) NULL,
+       audience       ENUM('public','only_me') NOT NULL DEFAULT 'public',
+       shared_post_id INT UNSIGNED NULL,
+       is_share       TINYINT(1) NOT NULL DEFAULT 0,
+       edited_at      DATETIME NULL,
+       created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       FOREIGN KEY (shared_post_id) REFERENCES community_posts(id) ON DELETE SET NULL,
+       INDEX (audience, id),
+       INDEX (user_id, id)
+     ) ENGINE=InnoDB",
+    'CREATE TABLE IF NOT EXISTS community_photos (
+       id        INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       post_id   INT UNSIGNED NOT NULL,
+       position  SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+       image     VARCHAR(255) NOT NULL,
+       FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+       INDEX (post_id, position)
+     ) ENGINE=InnoDB',
+    "CREATE TABLE IF NOT EXISTS community_reactions (
+       post_id    INT UNSIGNED NOT NULL,
+       user_id    INT UNSIGNED NOT NULL,
+       type       ENUM('like','love','haha','wow','sad','angry') NOT NULL DEFAULT 'like',
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (post_id, user_id),
+       FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB",
+    'CREATE TABLE IF NOT EXISTS community_comments (
+       id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       post_id    INT UNSIGNED NOT NULL,
+       user_id    INT UNSIGNED NOT NULL,
+       body       VARCHAR(1000) NOT NULL,
+       edited_at  DATETIME NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       INDEX (post_id, id)
+     ) ENGINE=InnoDB',
+    'CREATE TABLE IF NOT EXISTS community_saves (
+       user_id    INT UNSIGNED NOT NULL,
+       post_id    INT UNSIGNED NOT NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (user_id, post_id),
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
+    'CREATE TABLE IF NOT EXISTS community_translations (
+       comment_id      INT UNSIGNED NOT NULL,
+       lang            VARCHAR(12) NOT NULL,
+       translation     VARCHAR(2000) NOT NULL,
+       romanization    VARCHAR(2000) NULL,
+       source_language VARCHAR(60) NULL,
+       created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (comment_id, lang),
+       FOREIGN KEY (comment_id) REFERENCES community_comments(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
+    // Replies to community comments (one level; deleting a comment removes its replies)
+    'ALTER TABLE community_comments ADD COLUMN IF NOT EXISTS parent_id INT UNSIGNED NULL AFTER user_id',
+    'ALTER TABLE community_comments ADD CONSTRAINT community_comments_parent_fk FOREIGN KEY IF NOT EXISTS (parent_id) REFERENCES community_comments(id) ON DELETE CASCADE',
+    'ALTER TABLE community_comments ADD INDEX IF NOT EXISTS parent_idx (post_id, parent_id, id)',
     // Extra proof-of-payment photos (the first stays in settlement_payments.proof_image)
     'CREATE TABLE IF NOT EXISTS settlement_payment_proofs (
        id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

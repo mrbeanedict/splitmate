@@ -897,6 +897,7 @@
     admin: ['bg-slate-800 text-white', 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
     nudge: ['bg-amber-100 text-amber-600', 'M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5'],
     game: ['bg-fuchsia-100 text-fuchsia-600', 'M14.8 9.2a2.5 2.5 0 00-3.6 0M9 10h.01M15 10h.01M8.5 14.5a5 5 0 007 0M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
+    community: ['bg-sky-100 text-sky-600', 'M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-1v3l-3-3h-5a2 2 0 01-2-2v-1M15 4H5a2 2 0 00-2 2v6a2 2 0 002 2h1v3l3-3h6a2 2 0 002-2V6a2 2 0 00-2-2z'],
     achievement: ['bg-violet-100 text-violet-600', 'M8 21h8m-4-4v4m-5-17h10v5a5 5 0 01-10 0V4zM7 6H4v1a3 3 0 003 3m10-4h3v1a3 3 0 01-3 3'],
   };
 
