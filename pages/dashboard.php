@@ -9,7 +9,7 @@ require __DIR__ . '/../partials/head.php';
 ?>
 <div id="app" class="device" v-cloak>
 
-  <div class="app-hero px-6 pb-16 pt-8">
+  <div class="app-hero px-5 pb-16 pt-8">
     <div class="flex items-center justify-between">
       <div>
         <p class="text-[13px] font-medium text-brand-50/90"><?= h($greeting) ?></p>

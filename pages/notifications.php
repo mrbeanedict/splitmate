@@ -6,7 +6,7 @@ $nav = 'notifications';
 $back = 'dashboard.php';
 require __DIR__ . '/../partials/head.php';
 ?>
-<div id="app" class="device device-narrow" v-cloak>
+<div id="app" class="device" v-cloak>
 
   <div class="app-hero px-5 pb-5 pt-8">
     <div class="flex items-center gap-3">
@@ -16,7 +16,7 @@ require __DIR__ . '/../partials/head.php';
     </div>
   </div>
 
-  <div class="flex-1 px-5 py-3">
+  <div class="flex-1 px-5 pb-6 pt-4">
     <spinner v-if="loading"></spinner>
     <p v-else-if="!items.length" class="py-10 text-center text-[13px] text-slate-400">No notifications yet.</p>
     <div v-else class="tile divide-y divide-slate-100">
