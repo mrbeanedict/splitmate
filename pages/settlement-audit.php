@@ -56,14 +56,11 @@ require __DIR__ . '/../partials/head.php';
           </span>
           <span class="flex shrink-0 flex-col items-end gap-1">
             <button v-if="p.status === 'confirmed'" @click="showReceipt(p.id)" class="font-bold text-brand-700">Receipt</button>
-            <button v-if="p.has_proof && [s.from.id, s.to.id, p.paid_by.id].includes(me)" @click="proof = p.id" class="font-bold text-slate-500">View proof</button>
+            <button v-if="p.has_proof && [s.from.id, s.to.id, p.paid_by.id].includes(me)" @click="viewProof(p)" class="font-bold text-slate-500">View proof{{ p.proof_count > 1 ? ' (' + p.proof_count + ')' : '' }}</button>
           </span>
         </div>
       </div>
     </template>
-    <div v-if="proof" class="fixed inset-0 z-50 flex items-center justify-center bg-night/80 p-6" @click="proof = null">
-      <img :src="'<?= h(url('api/settlements.php')) ?>?payment_proof=' + proof" alt="Proof of payment" class="max-h-[80vh] max-w-full rounded-2xl bg-white shadow-2xl" />
-    </div>
 
     <ol class="relative pl-6">
       <div class="absolute bottom-2 left-[7px] top-2 w-0.5 bg-slate-200"></div>
@@ -124,6 +121,10 @@ Setlo.mount({
   },
   methods: {
     who(u) { return u.id === this.me ? 'You' : u.first; },
+    viewProof(p) {
+      const base = '<?= h(url('api/settlements.php')) ?>?payment_proof=' + p.id;
+      Setlo.photoViewer(Array.from({ length: Math.max(1, p.proof_count || 1) }, (_, n) => base + (n ? '&n=' + n : '')), { title: 'Proof of payment' });
+    },
     showReceipt(id) { Setlo.showReceipt(id); },
     showPerson(id) { Setlo.showPerson(id); },
   },

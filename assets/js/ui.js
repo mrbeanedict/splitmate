@@ -419,6 +419,219 @@
       <span v-else class="av" :style="{ background: user.color, width: size + 'px', height: size + 'px', fontSize: size * 0.36 + 'px', boxShadow: ring ? undefined : 'none' }" :title="user.name">{{ user.initials }}</span>`,
   };
 
+  /** Shrink a photo to at most maxSide px and re-save it as JPEG, so several fit in one upload. Returns the original if it can't. */
+  async function compressImage(file, maxSide = 1600, quality = 0.85) {
+    try {
+      if (!file.type.startsWith('image/') || (file.size < 900 * 1024 && file.type === 'image/jpeg')) return file;
+      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(bmp.width * scale);
+      canvas.height = Math.round(bmp.height * scale);
+      canvas.getContext('2d').drawImage(bmp, 0, 0, canvas.width, canvas.height);
+      if (bmp.close) bmp.close();
+      const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', quality));
+      if (!blob || blob.size >= file.size) return file;
+      return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+    } catch (e) { return file; }
+  }
+  /**
+   * Full-screen photo viewer for one or several images: counter and Close button on top, big ‹ › buttons on the screen
+   * edges, a thumbnail strip, and ← / → / Esc, swipe, or tapping the photo to move on. srcs: array of URLs.
+   */
+  function photoViewer(srcs, { title = 'Photo', start = 0 } = {}) {
+    srcs = [].concat(srcs).filter(Boolean);
+    if (!srcs.length) return;
+    let i = Math.min(Math.max(0, start), srcs.length - 1);
+    const many = srcs.length > 1;
+    const el = (tag, css, props) => Object.assign(document.createElement(tag), props || {}, css ? { style: css } : {});
+    const round = 'width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.92);color:#334155;font-size:26px;line-height:44px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.35);';
+
+    const root = el('div', 'position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;background:rgba(15,23,42,.92);font-family:inherit;', { role: 'dialog' });
+    root.setAttribute('aria-modal', 'true');
+    root.setAttribute('aria-label', title);
+    const bar = el('div', 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;color:#fff;');
+    const heading = el('div', 'font-size:14px;font-weight:700;');
+    const closeBtn = el('button', 'border:0;border-radius:999px;background:rgba(255,255,255,.18);color:#fff;font-weight:700;font-size:13px;padding:8px 14px;cursor:pointer;', { type: 'button', textContent: '✕ Close' });
+    bar.append(heading, closeBtn);
+    const stage = el('div', 'flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0 64px;');
+    const img = el('img', 'max-width:100%;max-height:100%;object-fit:contain;border-radius:16px;background:#fff;box-shadow:0 20px 50px rgba(0,0,0,.5);user-select:none;-webkit-user-drag:none;', { alt: title, draggable: false });
+    stage.appendChild(img);
+    const thumbs = el('div', 'display:flex;justify-content:center;gap:8px;padding:10px 16px 18px;overflow-x:auto;');
+    root.append(bar, stage);
+
+    const prev = many ? el('button', round + 'position:absolute;left:10px;top:50%;transform:translateY(-50%);', { type: 'button', textContent: '‹', ariaLabel: 'Previous photo' }) : null;
+    const next = many ? el('button', round + 'position:absolute;right:10px;top:50%;transform:translateY(-50%);', { type: 'button', textContent: '›', ariaLabel: 'Next photo' }) : null;
+    if (many) {
+      root.append(prev, next, thumbs);
+      srcs.forEach((src, n) => {
+        const b = el('button', 'flex:0 0 auto;padding:0;border:2px solid transparent;border-radius:10px;background:none;cursor:pointer;overflow:hidden;', { type: 'button', ariaLabel: 'Photo ' + (n + 1) });
+        b.appendChild(el('img', 'width:56px;height:56px;object-fit:cover;display:block;', { src, alt: '', draggable: false }));
+        b.onclick = (e) => { e.stopPropagation(); i = n; show(); };
+        thumbs.appendChild(b);
+      });
+    }
+
+    function show() {
+      img.src = srcs[i];
+      heading.textContent = title + (many ? '  ·  ' + (i + 1) + ' / ' + srcs.length : '');
+      [...thumbs.children].forEach((b, n) => { b.style.borderColor = n === i ? '#fff' : 'transparent'; b.style.opacity = n === i ? '1' : '.6'; });
+    }
+    const step = (d) => { if (many) { i = (i + d + srcs.length) % srcs.length; show(); } };
+    const close = () => { document.removeEventListener('keydown', onKey, true); root.remove(); if (opener && opener.focus) opener.focus(); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
+    };
+    const opener = document.activeElement;
+
+    closeBtn.onclick = (e) => { e.stopPropagation(); close(); };
+    if (many) {
+      prev.onclick = (e) => { e.stopPropagation(); step(-1); };
+      next.onclick = (e) => { e.stopPropagation(); step(1); };
+    }
+    img.onclick = (e) => { e.stopPropagation(); step(1); };
+    root.onclick = close; // the dark area closes it
+    let downX = null;
+    root.addEventListener('pointerdown', (e) => { downX = e.clientX; });
+    root.addEventListener('pointerup', (e) => {
+      if (downX !== null && Math.abs(e.clientX - downX) > 50) { step(e.clientX < downX ? 1 : -1); root.dataset.swiped = '1'; }
+      downX = null;
+    });
+    // a swipe ends on the backdrop too; don't let that count as a tap that closes it
+    root.addEventListener('click', (e) => { if (root.dataset.swiped) { e.stopImmediatePropagation(); delete root.dataset.swiped; } }, true);
+
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(root);
+    show();
+    closeBtn.focus();
+  }
+
+
+  /** No live camera available (plain http, no permission): the phone's own camera app via a file input. */
+  function pickFromDevice(max) {
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = max > 1;
+      input.setAttribute('capture', 'environment');
+      input.addEventListener('change', () => resolve([...input.files].slice(0, max)));
+      input.addEventListener('cancel', () => resolve([]));
+      input.click();
+    });
+  }
+
+  let camCssAdded = false;
+  function addCameraCss() {
+    if (camCssAdded) return;
+    camCssAdded = true;
+    const st = document.createElement('style');
+    st.textContent = `
+      .cam-popup { padding: 1.1rem 1rem 1rem !important; }
+      .cam-video { width: 100%; max-height: 52vh; border-radius: 16px; background: #0f172a; object-fit: cover; display: block; }
+      .cam-bar { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 12px; }
+      .cam-shot { width: 64px; height: 64px; border-radius: 50%; border: 4px solid #fff; outline: 3px solid var(--cam-accent, #0d9488); background: var(--cam-accent, #0d9488); cursor: pointer; transition: transform .1s; }
+      .cam-shot:active { transform: scale(.92); }
+      .cam-shot:disabled { opacity: .4; cursor: not-allowed; }
+      .cam-flip { border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 999px; padding: 8px 12px; font: 600 13px/1 inherit; cursor: pointer; }
+      .cam-strip { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; min-height: 58px; padding-bottom: 2px; }
+      .cam-thumb { position: relative; flex: 0 0 auto; }
+      .cam-thumb img { width: 58px; height: 58px; border-radius: 10px; object-fit: cover; display: block; }
+      .cam-thumb button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: 0; background: #0f172a; color: #fff; font-size: 13px; line-height: 20px; cursor: pointer; }
+      .cam-hint { margin: 8px 0 0; font-size: 12px; color: #64748b; }
+      @media (prefers-reduced-motion: reduce) { .cam-shot { transition: none; } }`;
+    document.head.appendChild(st);
+  }
+
+  /**
+   * Live camera that stays open between shots: tap the shutter as many times as needed (up to max), remove any
+   * thumbnail, then Done. Resolves an array of JPEG Files ([] if cancelled). Without camera access it falls back to
+   * the device's camera app / file picker.
+   */
+  async function captureCamera({ max = 5, title = 'Take photos' } = {}) {
+    if (!(global.navigator.mediaDevices && global.navigator.mediaDevices.getUserMedia)) {
+      toast('Live camera needs a secure (https) connection, so your device camera app opens instead.', 'info');
+      return pickFromDevice(max);
+    }
+    addCameraCss();
+    const shots = [];
+    let stream = null;
+    let facing = 'environment';
+    let failure = null;
+    const stop = () => { if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; } };
+    global.addEventListener('pagehide', stop);
+
+    const result = await swal({
+      title, showCancelButton: true, confirmButtonText: 'Done', cancelButtonText: 'Cancel',
+      allowOutsideClick: false, customClass: { popup: 'setlo-swal cam-popup' }, showClass: { popup: '' },
+      html: '<video class="cam-video" autoplay playsinline muted></video>'
+        + '<div class="cam-bar"><button type="button" class="cam-flip" data-flip>Flip camera</button>'
+        + '<button type="button" class="cam-shot" data-shot aria-label="Take photo"></button></div>'
+        + '<div class="cam-strip" data-strip></div><p class="cam-hint" data-hint></p>',
+      didOpen: async (el) => {
+        const video = el.querySelector('video');
+        const strip = el.querySelector('[data-strip]');
+        const shotBtn = el.querySelector('[data-shot]');
+        const hint = el.querySelector('[data-hint]');
+        el.style.setProperty('--cam-accent', global.SetloTheme ? global.SetloTheme.color(600) : '#0d9488');
+        const refresh = () => {
+          strip.innerHTML = '';
+          shots.forEach((s, i) => {
+            const t = document.createElement('div');
+            t.className = 'cam-thumb';
+            t.innerHTML = '<img alt="Photo ' + (i + 1) + '" /><button type="button" aria-label="Remove photo ' + (i + 1) + '">×</button>';
+            t.querySelector('img').src = s.url;
+            t.querySelector('button').onclick = () => { URL.revokeObjectURL(s.url); shots.splice(i, 1); refresh(); };
+            strip.appendChild(t);
+          });
+          shotBtn.disabled = shots.length >= max;
+          hint.textContent = shots.length >= max ? 'Maximum of ' + max + ' photos reached.' : shots.length + ' of ' + max + ' taken. Tap the round button to take a photo.';
+          const ok = global.Swal.getConfirmButton();
+          if (ok) ok.textContent = shots.length ? 'Done (' + shots.length + ')' : 'Done';
+        };
+        const open = async () => {
+          stop();
+          try {
+            stream = await global.navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+            video.srcObject = stream;
+          } catch (e) { failure = e; global.Swal.close(); }
+        };
+        el.querySelector('[data-flip]').onclick = () => { facing = facing === 'environment' ? 'user' : 'environment'; open(); };
+        shotBtn.onclick = () => {
+          if (!video.videoWidth || shots.length >= max) return;
+          const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(video.videoWidth * scale);
+          canvas.height = Math.round(video.videoHeight * scale);
+          canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((blob) => {
+            if (!blob) return;
+            const file = new File([blob], 'proof-' + Date.now() + '-' + (shots.length + 1) + '.jpg', { type: 'image/jpeg' });
+            shots.push({ file, url: URL.createObjectURL(file) });
+            refresh();
+          }, 'image/jpeg', 0.88);
+        };
+        refresh();
+        await open();
+      },
+      preConfirm: () => {
+        if (!shots.length) { global.Swal.showValidationMessage('Take at least one photo, or Cancel.'); return false; }
+        return true;
+      },
+      willClose: () => { stop(); global.removeEventListener('pagehide', stop); },
+    });
+
+    const files = result.isConfirmed ? shots.map((s) => s.file) : [];
+    shots.forEach((s) => URL.revokeObjectURL(s.url));
+    if (failure && !files.length) {
+      toast(failure.name === 'NotAllowedError' ? 'Camera access was blocked. Allow it in your browser, or pick photos instead.' : 'Couldn’t start the camera, so your device camera app opens instead.', 'warn');
+      return pickFromDevice(max);
+    }
+    return files;
+  }
+
   /**
    * Let the user frame a gallery photo before it's uploaded: drag to move; pinch, scroll or the slider to zoom; arrow
    * keys and +/- too. shape 'circle' (profile pictures: a round guide, saved square) or 'rect' (the whole stage, at
@@ -1106,5 +1319,5 @@
       .then((ok) => { if (ok) form.submit(); });
   }, true);
 
-  global.Setlo = { mount, run, load, useCurrency, allocate, roundShares, convertShares, currencies: CURRENCIES, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', confirm: confirmDialog, alert: alertDialog, promptText, showCopy, escapeHtml, payLink, qrSvg, qrPng, showPayQr, groupByReceipt, toggleArchive, afterSignUp, cropPhoto, showAchievements, showAchievement: (a) => achievementModal(a, { reopened: true }), ...helpers };
+  global.Setlo = { mount, run, load, useCurrency, allocate, roundShares, convertShares, currencies: CURRENCIES, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', confirm: confirmDialog, alert: alertDialog, promptText, showCopy, escapeHtml, payLink, qrSvg, qrPng, showPayQr, groupByReceipt, toggleArchive, afterSignUp, cropPhoto, captureCamera, compressImage, photoViewer, showAchievements, showAchievement: (a) => achievementModal(a, { reopened: true }), ...helpers };
 })(window);

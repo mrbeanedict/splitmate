@@ -90,7 +90,7 @@ require __DIR__ . '/../partials/head.php';
           </div>
           <div v-if="p.payment_ref || p.has_proof || p.reject_reason" class="mt-1 flex items-center justify-between gap-2">
             <span class="min-w-0 break-all opacity-80">{{ p.reject_reason ? '“' + p.reject_reason + '”' : p.payment_ref ? 'Ref no. ' + p.payment_ref : '' }}</span>
-            <button v-if="p.has_proof" @click="view('Proof of payment', proofSrc(p.id))" class="shrink-0 font-bold underline">View proof</button>
+            <button v-if="p.has_proof" @click="viewProof(p)" class="shrink-0 font-bold underline">View proof{{ p.proof_count > 1 ? ' (' + p.proof_count + ')' : '' }}</button>
           </div>
           <div v-if="tab === 'owed' && p.status === 'awaiting'" class="mt-2 flex justify-end gap-2">
             <button @click="openReject(s, p)" class="btn btn-danger btn-sm" :disabled="busy">Reject</button>
@@ -227,12 +227,19 @@ require __DIR__ . '/../partials/head.php';
       <label class="field-label" for="ref">Reference no. <span class="font-medium text-slate-400">(optional)</span></label>
       <input id="ref" data-field="ref" v-model="payRef" @input="touch('ref')" :class="{ 'is-invalid': err('ref') }" class="input-soft" maxlength="60" placeholder="e.g. 1009 234 567 890" />
       <p v-if="err('ref')" class="field-error">{{ err('ref') }}</p>
-      <p class="field-label mt-4">Proof of payment <span class="font-medium text-slate-400">(optional)</span></p>
-      <input ref="proof" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" @change="pickProof" aria-label="Proof screenshot" />
-      <div class="flex items-center gap-3">
-        <img v-if="proofPreview" :src="proofPreview" alt="Selected screenshot" class="h-16 w-16 rounded-xl object-cover" />
-        <button type="button" @click="$refs.proof.click()" class="btn btn-outline btn-sm">{{ proofFile ? 'Change photo' : 'Attach photo' }}</button>
-        <button v-if="proofFile" type="button" @click="clearProof" class="text-xs font-semibold text-slate-400">Remove</button>
+      <p class="field-label mt-4">Proof of payment <span class="font-medium text-slate-400">(optional, up to {{ maxProofs }} photos)</span></p>
+      <input ref="proof" type="file" multiple accept="image/jpeg,image/png,image/webp" class="hidden" @change="pickProofs" aria-label="Proof photos" />
+      <div v-if="proofs.length" class="mb-2 flex flex-wrap gap-2">
+        <div v-for="(f, i) in proofs" :key="f.url" class="relative">
+          <img :src="f.url" :alt="'Proof photo ' + (i + 1)" class="h-16 w-16 rounded-xl object-cover" />
+          <button type="button" @click="removeProof(i)" class="absolute -right-1.5 -top-1.5 h-5 w-5 rounded-full bg-slate-800 text-xs leading-5 text-white" :aria-label="'Remove photo ' + (i + 1)">×</button>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" @click="takePhotos" class="btn btn-outline btn-sm" :disabled="proofs.length >= maxProofs">📷 Take photo</button>
+        <button type="button" @click="$refs.proof.click()" class="btn btn-outline btn-sm" :disabled="proofs.length >= maxProofs">🖼 Choose photos</button>
+        <span class="text-xs text-slate-400">{{ proofs.length }}/{{ maxProofs }}</span>
+        <button v-if="proofs.length" type="button" @click="clearProof" class="text-xs font-semibold text-slate-400">Remove all</button>
       </div>
       <div class="mt-5 grid grid-cols-2 gap-2.5">
         <button type="button" @click="paying = null" class="btn-pill btn-pill-soft">Cancel</button>
@@ -288,12 +295,6 @@ require __DIR__ . '/../partials/head.php';
     </form>
   </div>
 
-  <div v-if="viewer" class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-night/80 p-6" @click="viewer = null">
-    <p class="text-sm font-bold text-white">{{ viewer.title }}</p>
-    <img :src="viewer.src" :alt="viewer.title" class="max-h-[75vh] max-w-full rounded-2xl bg-white shadow-2xl" />
-    <p class="text-xs text-white/60">Tap anywhere to close</p>
-  </div>
-
   <div v-if="rejecting" class="sheet-backdrop" @click.self="rejecting = null">
     <form class="sheet" @submit.prevent="submitReject">
       <div class="sheet-grip"></div>
@@ -317,7 +318,7 @@ Setlo.mount({
     me: <?= (int) $user['id'] ?>, loading: true, busy: false, tab: new URLSearchParams(location.search).get('tab') === 'owed' ? 'owed' : 'owe',
     owe: [], owed: [], cover: [], rejecting: null, reason: '',
     paying: null, covering: false, payBack: true, payAmount: '', cashing: null, extraMode: 'change',
-    payRef: '', proofFile: null, proofPreview: null, viewer: null,
+    payRef: '', proofs: [], maxProofs: 5, viewer: null,
     online: { enabled: <?= paymongo_available() ? 'true' : 'false' ?>, test: <?= paymongo_test_mode() ? 'true' : 'false' ?>, min: <?= PAYMONGO_MIN_CENTS ?> },
     methodLabel: { online: 'Paid online · verified by PayMongo', transfer: 'Paid by transfer · confirmed by receiver', cash: 'Paid in cash · settled by receiver', credit: 'Paid from kept change (extra cash)', mixed: 'Paid in parts, several ways' },
     methodName: { online: 'Online', transfer: 'Transfer', cash: 'Cash', credit: 'Kept change' },
@@ -433,8 +434,12 @@ Setlo.mount({
       if (await Setlo.toggleArchive({ id: s.bill_id, archived: false })) await this.load();
     },
     confirmPart(s, p) { return this.act(s, 'confirm', { payment_id: p.id }); },
-    proofSrc(paymentId) { return '<?= h(url('api/settlements.php')) ?>?payment_proof=' + paymentId; },
-    view(title, src) { this.viewer = { title, src }; },
+    proofSrc(paymentId, n) { return '<?= h(url('api/settlements.php')) ?>?payment_proof=' + paymentId + (n ? '&n=' + n : ''); },
+    viewProof(p) {
+      const count = Math.max(1, p.proof_count || 1);
+      Setlo.photoViewer(Array.from({ length: count }, (_, n) => this.proofSrc(p.id, n)), { title: 'Proof of payment' });
+    },
+    view(title, src) { Setlo.photoViewer([src], { title }); },
     canNudge(s) {
       if (s.from.is_guest) return false; // guests have no account to remind
       return !s.my_last_nudge || Date.now() - new Date(s.my_last_nudge.replace(' ', 'T')).getTime() > 12 * 3600 * 1000;
@@ -468,15 +473,30 @@ Setlo.mount({
       this.payAmount = s.open.toFixed(2);
       this.touched.amount = false;
     },
-    pickProof(e) {
-      const file = e.target.files[0];
-      e.target.value = '';
-      if (!file) return;
-      if (file.size > 8 * 1024 * 1024) { Setlo.toast('Screenshot is too large (max 8 MB).'); return; }
-      this.proofFile = file;
-      this.proofPreview = URL.createObjectURL(file);
+    /** Add photos to the proof list: up to maxProofs, each at most 8 MB, shrunk so they all fit in one upload. */
+    async addProofs(files) {
+      const room = this.maxProofs - this.proofs.length;
+      let added = 0;
+      for (const file of files) {
+        if (added >= room) { Setlo.toast('You can attach up to ' + this.maxProofs + ' photos.', 'warn'); break; }
+        if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { Setlo.toast(file.name + ' isn’t a JPG, PNG or WebP photo.'); continue; }
+        if (file.size > 8 * 1024 * 1024) { Setlo.toast(file.name + ' is too large (max 8 MB).'); continue; }
+        const small = await Setlo.compressImage(file);
+        this.proofs.push({ file: small, url: URL.createObjectURL(small) });
+        added++;
+      }
     },
-    clearProof() { this.proofFile = null; this.proofPreview = null; },
+    async pickProofs(e) {
+      const files = [...e.target.files];
+      e.target.value = '';
+      await this.addProofs(files);
+    },
+    async takePhotos() {
+      const files = await Setlo.captureCamera({ max: this.maxProofs - this.proofs.length, title: 'Photo of your payment' });
+      await this.addProofs(files);
+    },
+    removeProof(i) { URL.revokeObjectURL(this.proofs[i].url); this.proofs.splice(i, 1); },
+    clearProof() { this.proofs.forEach((f) => URL.revokeObjectURL(f.url)); this.proofs = []; },
     validators() {
       const s = this.current;
       const amt = money(this.payAmount);
@@ -499,7 +519,7 @@ Setlo.mount({
       fd.append('action', 'mark_paid');
       for (const [k, v] of Object.entries(this.payFields())) fd.append(k, v);
       fd.append('payment_ref', this.payRef.trim());
-      if (this.proofFile) fd.append('proof', this.proofFile);
+      this.proofs.forEach((f, i) => fd.append('proofs[]', f.file, f.file.name || 'proof-' + (i + 1) + '.jpg'));
       const r = await Setlo.run(this, () => api.post('settlements.php', fd));
       if (r) this.paying = null;
       await this.after(r, 'Marked as paid — waiting for confirmation');

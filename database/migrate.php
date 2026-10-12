@@ -249,6 +249,16 @@ $steps = [
     'ALTER TABLE bills ADD COLUMN IF NOT EXISTS round_total TINYINT(1) NOT NULL DEFAULT 0 AFTER interest_rate',
     'ALTER TABLE bills ADD COLUMN IF NOT EXISTS change_holder_id INT UNSIGNED NULL AFTER round_total',
     'ALTER TABLE bills ADD CONSTRAINT bills_change_holder_fk FOREIGN KEY IF NOT EXISTS (change_holder_id) REFERENCES users(id) ON DELETE SET NULL',
+    // Extra proof-of-payment photos (the first stays in settlement_payments.proof_image)
+    'CREATE TABLE IF NOT EXISTS settlement_payment_proofs (
+       id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       payment_id INT UNSIGNED NOT NULL,
+       position   SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+       image      VARCHAR(255) NOT NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (payment_id) REFERENCES settlement_payments(id) ON DELETE CASCADE,
+       INDEX (payment_id, position)
+     ) ENGINE=InnoDB',
     // Landing page ratings and feedback: one per user, public once approved
     "CREATE TABLE IF NOT EXISTS feedback (
        id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

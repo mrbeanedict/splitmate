@@ -48,7 +48,16 @@ if (method() === 'GET') {
         if ($me['role'] !== 'admin' && !$actsForGuest && !in_array($me['id'], $allowed, true)) {
             fail('Only the sender and receiver can view this proof.', 403);
         }
-        serve_upload('proofs', $p ? $p['proof_image'] : $s['proof_image']);
+        $file = $p ? $p['proof_image'] : $s['proof_image'];
+        $n = max(0, (int) ($_GET['n'] ?? 0));
+        if ($p && $n > 0) {
+            // Photos after the first are in settlement_payment_proofs, in the order they were attached
+            $file = q('SELECT image FROM settlement_payment_proofs WHERE payment_id = ? ORDER BY position, id LIMIT 1 OFFSET ' . ($n - 1), [$p['id']])->fetchColumn();
+            if (!$file) {
+                fail('Photo not found.', 404);
+            }
+        }
+        serve_upload('proofs', $file);
     }
 
     if (isset($_GET['receipt'])) {
@@ -166,7 +175,12 @@ switch (input('action', '')) {
         }
         $ref = trim(str_input('payment_ref', 60, false));
         require_valid(valid_ref($ref), 'payment_ref');
-        $proof = save_uploaded_image('proof', 'proofs', 'settlement' . $id, false);
+        // Up to 5 photos (proofs[]); the single "proof" field still works for older clients
+        $proofs = save_uploaded_images('proofs', 'proofs', 'settlement' . $id, MAX_PROOF_PHOTOS);
+        if (!$proofs && ($single = save_uploaded_image('proof', 'proofs', 'settlement' . $id, false))) {
+            $proofs = [$single];
+        }
+        $proof = $proofs[0] ?? null;
         $pdo->beginTransaction();
         try {
             $locked = lock_settlement($id);
@@ -175,13 +189,18 @@ switch (input('action', '')) {
             }
             $cents = part_cents($locked);
             $paidBy = $covering ? $me['id'] : (int) $s['from_user_id'];
-            add_payment($locked, $paidBy, $cents, 'transfer', 'awaiting', ['ref' => $ref ?: null, 'proof' => $proof, 'pay_back' => $covering && input('pay_back')]);
-        } catch (ApiError $e) {
+            $paymentId = add_payment($locked, $paidBy, $cents, 'transfer', 'awaiting', ['ref' => $ref ?: null, 'proof' => $proof, 'pay_back' => $covering && input('pay_back')]);
+            foreach (array_slice($proofs, 1) as $i => $extra) {
+                q('INSERT INTO settlement_payment_proofs (payment_id, position, image) VALUES (?, ?, ?)', [$paymentId, $i + 1, $extra]);
+            }
+        } catch (Throwable $e) {
             $pdo->rollBack();
-            delete_upload('proofs', $proof);
+            foreach ($proofs as $file) {
+                delete_upload('proofs', $file);
+            }
             throw $e;
         }
-        $details = array_filter([$ref ? "ref no. $ref" : null, $proof ? 'proof attached' : null]);
+        $details = array_filter([$ref ? "ref no. $ref" : null, $proofs ? (count($proofs) > 1 ? count($proofs) . ' proof photos attached' : 'proof attached') : null]);
         $who = $covering ? "$myName (for $debtorName)" : "$myName$onBehalf";
         log_event($id, $me['id'], 'marked_paid', "$who marked " . part_words($cents, $locked) . " as sent to $receiverName" . ($details ? ' (' . implode(', ', $details) . ')' : '') . '.');
         if ($covering) {

@@ -5,7 +5,8 @@
 
 declare(strict_types=1);
 
-const UPLOAD_KINDS = ['receipts', 'proofs', 'avatars', 'backgrounds'];
+const MAX_PROOF_PHOTOS = 5; // proof-of-payment photos per payment
+const UPLOAD_KINDS =['receipts', 'proofs', 'avatars', 'backgrounds'];
 
 function upload_dir(string $kind): string
 {

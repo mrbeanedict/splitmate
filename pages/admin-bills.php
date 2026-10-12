@@ -267,7 +267,7 @@ require __DIR__ . '/../partials/admin-top.php';
                 <div v-for="p in s.payments" :key="p.id" class="bd-part" style="margin-top:.4rem">
                   <span>
                     <b>{{ peso(p.amount, s.currency) }}</b> by {{ p.paid_by.name }}
-                    <span class="bd-muted">· {{ methodLabel(p) }}<span v-if="p.payment_ref"> · ref {{ p.payment_ref }}</span><span v-if="p.has_proof"> · proof attached</span></span>
+                    <span class="bd-muted">· {{ methodLabel(p) }}<span v-if="p.payment_ref"> · ref {{ p.payment_ref }}</span><span v-if="p.has_proof"> · {{ p.proof_count > 1 ? p.proof_count + " proof photos" : "proof attached" }}</span></span>
                     <span v-if="p.status === 'rejected' && p.reject_reason" class="bd-muted" style="display:block">Rejected: {{ p.reject_reason }}</span>
                   </span>
                   <span style="text-align:right; flex-shrink:0">

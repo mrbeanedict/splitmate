@@ -304,7 +304,9 @@ function settlement_parts(array $settlementIds): array
     }
     $in = implode(',', array_fill(0, count($settlementIds), '?'));
     $rows = q(
-        "SELECT p.*, u.full_name AS payer_name, u.avatar_color AS payer_color FROM settlement_payments p JOIN users u ON u.id = p.paid_by
+        "SELECT p.*, u.full_name AS payer_name, u.avatar_color AS payer_color,
+           (SELECT COUNT(*) FROM settlement_payment_proofs x WHERE x.payment_id = p.id) AS extra_proofs
+         FROM settlement_payments p JOIN users u ON u.id = p.paid_by
          WHERE p.settlement_id IN ($in) AND p.status <> 'started' ORDER BY p.id",
         array_values($settlementIds)
     )->fetchAll();
@@ -324,6 +326,7 @@ function settlement_parts(array $settlementIds): array
             'change_given'  => $p['change_given'] === null ? null : (float) $p['change_given'],
             'credit_kept'   => $p['credit_kept'] === null ? null : (float) $p['credit_kept'],
             'has_proof'     => (bool) $p['proof_image'],
+            'proof_count'   => ($p['proof_image'] ? 1 : 0) + (int) $p['extra_proofs'],
             'reject_reason' => $p['reject_reason'],
             'created_at'    => $p['created_at'],
             'confirmed_at'  => $p['confirmed_at'],

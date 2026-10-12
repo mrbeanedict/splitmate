@@ -747,6 +747,14 @@ switch ($action) {
         foreach (q('SELECT proof_image FROM settlements WHERE bill_id = ?', [$bill['id']])->fetchAll(PDO::FETCH_COLUMN) as $proof) {
             delete_upload('proofs', $proof);
         }
+        // Photos attached to payments (rows go with the bill, the files need removing here)
+        foreach (q(
+            'SELECT p.proof_image FROM settlement_payments p JOIN settlements s ON s.id = p.settlement_id WHERE s.bill_id = ? AND p.proof_image IS NOT NULL
+             UNION ALL SELECT x.image FROM settlement_payment_proofs x JOIN settlement_payments p ON p.id = x.payment_id JOIN settlements s ON s.id = p.settlement_id WHERE s.bill_id = ?',
+            [$bill['id'], $bill['id']]
+        )->fetchAll(PDO::FETCH_COLUMN) as $proof) {
+            delete_upload('proofs', $proof);
+        }
         $guests = q("SELECT u.id FROM bill_members m JOIN users u ON u.id = m.user_id WHERE m.bill_id = ? AND u.role = 'guest'", [$bill['id']])->fetchAll(PDO::FETCH_COLUMN);
         q('DELETE FROM bills WHERE id = ?', [$bill['id']]);
         delete_unused_receipt_files($photos);

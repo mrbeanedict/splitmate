@@ -5,7 +5,7 @@ CREATE DATABASE IF NOT EXISTS setlo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicod
 USE setlo;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS feedback, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
+DROP TABLE IF EXISTS feedback, settlement_payment_proofs, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
 SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE users (
@@ -428,4 +428,15 @@ CREATE TABLE feedback (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX (status, created_at)
+) ENGINE=InnoDB;
+
+-- Extra proof-of-payment photos for one payment (the first photo stays in settlement_payments.proof_image).
+CREATE TABLE settlement_payment_proofs (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  payment_id INT UNSIGNED NOT NULL,
+  position   SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+  image      VARCHAR(255) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (payment_id) REFERENCES settlement_payments(id) ON DELETE CASCADE,
+  INDEX (payment_id, position)
 ) ENGINE=InnoDB;
