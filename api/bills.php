@@ -146,6 +146,10 @@ if (method() === 'GET') {
                 'interest_rate'  => $bill['interest_rate'] === null ? null : (float) $bill['interest_rate'],
                 'invite_code'    => $creator ? $bill['invite_code'] : null,
                 'receipt_total'  => $bill['receipt_total'] === null ? null : (float) $bill['receipt_total'],
+                // "Round to whole pesos": total is rounded, exact_total is what was really charged
+                'round_total'    => (bool) $bill['round_total'],
+                'exact_total'    => pesos($calc['exact_total']),
+                'round_diff'     => pesos($calc['round_diff']),
                 // Agreed settlement currency, the receipt's own, and how one becomes the other (includes/currency.php)
                 'currency'         => $calc['currency'],
                 'receipt_currency' => $calc['receipt_currency'],
@@ -198,6 +202,10 @@ if (method() === 'GET') {
                 'total'    => pesos($plan['paid_total']),
                 'mismatch' => pesos($plan['mismatch']),
                 'change'   => pesos($plan['change']),
+                // Who physically got the change: named by the creator, or null until they are (a guess is not shown)
+                'change_holder' => $plan['holder_named'] ? $plan['holder'] : null,
+                // Per member: paid − share, the change due back to them (+) or what they still have to put in (−)
+                'expected' => array_map('pesos', $plan['expected']),
             ],
             'balances'    => array_map('pesos', $plan['balances']),
             'plan'        => array_map(fn ($t) => ['from' => $t[0], 'to' => $t[1], 'amount' => pesos($t[2])], $plan['transfers']),
@@ -399,10 +407,18 @@ switch ($action) {
             fail('Enter how much at least one person paid.', 422);
         }
         arsort($payments);
+        // change_holder_id (optional): who physically received the change, when these come to more than the bill
+        $holder = input('change_holder_id');
+        if ($holder !== null && $holder !== '' && (int) $holder && !is_member($bill['id'], (int) $holder)) {
+            fail('Pick someone on this bill as the one who got the change.', 422);
+        }
         $pdo = db();
         $pdo->beginTransaction();
         q('DELETE FROM bill_payments WHERE bill_id = ?', [$bill['id']]);
         q('UPDATE bills SET payer_id = ? WHERE id = ?', [array_key_first($payments), $bill['id']]);
+        if ($holder !== null) {
+            q('UPDATE bills SET change_holder_id = ? WHERE id = ?', [(int) $holder ?: null, $bill['id']]);
+        }
         // These amounts were typed in the bill's currency, so it stays put even if the main payer changed.
         if (count($payments) > 1) {
             foreach ($payments as $uid => $amount) {
@@ -410,6 +426,24 @@ switch ($action) {
             }
         }
         $pdo->commit();
+        json_ok();
+
+    case 'set_change_holder':
+        // Who physically received the change (any member), or none (user_id 0).
+        require_creator($bill, $me);
+        require_editable($bill);
+        $uid = (int) input('user_id', 0);
+        if ($uid && !is_member($bill['id'], $uid)) {
+            fail('Pick someone on this bill.', 422);
+        }
+        q('UPDATE bills SET change_holder_id = ? WHERE id = ?', [$uid ?: null, $bill['id']]);
+        json_ok();
+
+    case 'set_round_total':
+        // Round the total (and every share) to whole pesos, or back to the exact amount.
+        require_creator($bill, $me);
+        require_editable($bill);
+        q('UPDATE bills SET round_total = ? WHERE id = ?', [in_array(input('on'), [true, 1, '1'], true) ? 1 : 0, $bill['id']]);
         json_ok();
 
     case 'set_payer':
@@ -425,7 +459,8 @@ switch ($action) {
         $pdo = db();
         $pdo->beginTransaction();
         q('DELETE FROM bill_payments WHERE bill_id = ?', [$bill['id']]);
-        q('UPDATE bills SET payer_id = ? WHERE id = ?', [$uid, $bill['id']]);
+        // One payer covered exactly the total: there's no change to hold
+        q('UPDATE bills SET payer_id = ?, change_holder_id = NULL WHERE id = ?', [$uid, $bill['id']]);
         // The agreed currency follows the person who paid, unless the creator sends keep_currency
         if ($uid !== $bill['payer_id'] && !input('keep_currency')) {
             set_bill_currency($bill, user_currency($uid), $me, 'the payer’s currency');

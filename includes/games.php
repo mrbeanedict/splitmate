@@ -629,7 +629,7 @@ function game_winners_pay_nothing(array $bill, array $ids, array $winners, array
         apply_game_result($bill, array_map(fn ($uid) => in_array($uid, $winners, true) ? 0 : 1, array_combine($ids, $ids)));
     }
     foreach ($winners as $uid) {
-        award($uid, $badge, $bill['id']);
+        progress($uid, $badge, $bill['id'], $bill['id']);
     }
 }
 

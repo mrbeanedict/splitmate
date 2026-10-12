@@ -5,7 +5,7 @@ CREATE DATABASE IF NOT EXISTS setlo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicod
 USE setlo;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS user_activity, fx_rates, bill_fx_log, game_players, game_sessions, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
+DROP TABLE IF EXISTS user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
 SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE users (
@@ -21,6 +21,8 @@ CREATE TABLE users (
   avatar_color    CHAR(7) NOT NULL DEFAULT '#0d9488',
   avatar          VARCHAR(120) NULL,              -- profile picture: 'pfp/<file>' (assets/pfp) or 'up/<file>' (uploads/avatars); NULL = initials
   featured_achievement VARCHAR(30) NULL,          -- badge shown next to their name (user_achievements.code)
+  bg_mode         ENUM('badges','plain','photo') NOT NULL DEFAULT 'badges', -- page backdrop: floating badges, none, or their photo
+  bg_image        VARCHAR(255) NULL,              -- their backdrop photo (uploads/backgrounds), kept while another mode is picked
   role            ENUM('user','admin','guest') NOT NULL DEFAULT 'user',  -- guest: name-only bill member, cannot sign in
   status          ENUM('active','suspended') NOT NULL DEFAULT 'active',
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -44,6 +46,8 @@ CREATE TABLE bills (
   discount        DECIMAL(10,2) NOT NULL DEFAULT 0,  -- discount printed on the receipt (Senior/PWD, promo), deducted from the total
   split_mode      ENUM('items','percent','game') NOT NULL DEFAULT 'items',  -- percent: each member pays bill_members.percent of the total; game: set by a Fun Mode game
   interest_rate   DECIMAL(5,2) NULL,              -- set by the creator at settling: % added to what's left after each partial payment
+  round_total     TINYINT(1) NOT NULL DEFAULT 0,  -- the total and every share rounded to whole units (the payer keeps the difference)
+  change_holder_id INT UNSIGNED NULL,             -- several payers handed over more than the total: who physically got the change
   receipt_total   DECIMAL(10,2) NULL,             -- total printed on the receipt, for the match check
   receipt_image   VARCHAR(255) NULL,              -- legacy single photo; photos now live in receipt_photos
   ocr_raw         MEDIUMTEXT NULL,                -- text of the first receipt (its first line names the place in Stats)
@@ -68,6 +72,7 @@ CREATE TABLE bills (
   closed_at       DATETIME NULL,
   FOREIGN KEY (creator_id) REFERENCES users(id),
   FOREIGN KEY (payer_id)   REFERENCES users(id),
+  FOREIGN KEY (change_holder_id) REFERENCES users(id) ON DELETE SET NULL,
   INDEX (status)
 ) ENGINE=InnoDB;
 
@@ -364,6 +369,17 @@ CREATE TABLE user_achievements (
   PRIMARY KEY (user_id, code),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- Progress towards badges that take several occurrences (ACHIEVEMENT_TARGETS): one row per occurrence.
+CREATE TABLE achievement_progress (
+  user_id    INT UNSIGNED NOT NULL,
+  code       VARCHAR(30) NOT NULL,
+  ref_id     INT UNSIGNED NOT NULL,               -- the bill or settlement it happened on, so it counts once
+  amount     INT UNSIGNED NOT NULL DEFAULT 1,     -- what it adds (big_spender: share in centavos, in pesos)
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, code, ref_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- Fun Mode games (includes/games.php). The server holds the true state; screens only draw it and poll for changes.

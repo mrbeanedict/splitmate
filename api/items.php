@@ -109,6 +109,18 @@ if (is_array($paid)) {
         q('UPDATE bills SET payer_id = ? WHERE id = ?', [array_key_first($amounts), $bill['id']]);
     }
 }
+// Asked once the items are in: round the total (and every share) to whole pesos?
+if (input('round_total') !== null) {
+    q('UPDATE bills SET round_total = ? WHERE id = ?', [in_array(input('round_total'), [true, 1, '1'], true) ? 1 : 0, $bill['id']]);
+}
+// Several payers handed over more than the bill: who physically got the change (0 = not said yet)
+if (input('change_holder_id') !== null) {
+    $holder = (int) input('change_holder_id');
+    if ($holder && !is_member($bill['id'], $holder)) {
+        fail('Pick someone on this bill as the one who got the change.', 422);
+    }
+    q('UPDATE bills SET change_holder_id = ? WHERE id = ?', [$holder ?: null, $bill['id']]);
+}
 if ($bill['split_mode'] === 'game' && $receiptKey() !== $before) {
     // The receipt changed after a game decided the split: replay it on the corrected bill.
     require_once __DIR__ . '/../includes/games.php';

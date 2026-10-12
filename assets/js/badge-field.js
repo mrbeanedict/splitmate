@@ -1,9 +1,12 @@
-// The user's earned badges, repeated and scattered over a jittered grid, drifting behind the page (see badge-bg.css).
+// The page backdrop chosen on the Profile (body[data-bg], set by head.php): the user's shown badges, repeated and
+// scattered over a jittered grid, drifting behind the page (see badge-bg.css); plain; or their own photo.
 // Added to <body> (not #app) so it never fights Vue's rendering. Decoration only: any failure just shows nothing.
 (function () {
   const rnd = (min, max) => min + Math.random() * (max - min);
 
   function build(badges) {
+    document.querySelector('.badge-field')?.remove();
+    if (!badges.length) return;
     const big = window.matchMedia('(min-width: 1024px)').matches;
     const cols = big ? 6 : 4, rows = 4;
     const field = document.createElement('div');
@@ -25,11 +28,28 @@
     document.body.appendChild(field);
   }
 
-  document.addEventListener('DOMContentLoaded', async () => {
+  /** Redraw the floating badges, from $badges (api/achievements.php) or fetched; hidden ones never float. */
+  async function refresh(badges) {
+    if (document.body.dataset.bg !== 'badges') {
+      document.querySelector('.badge-field')?.remove();
+      return;
+    }
     try {
-      const r = await api.get('achievements.php');
-      const badges = r.badges.filter((a) => !a.hidden);
-      if (badges.length) build(badges);
+      badges = badges || (await api.get('achievements.php')).badges;
+      build(badges.filter((a) => !a.hidden && a.image));
     } catch (e) { /* non-critical */ }
-  });
+  }
+
+  /** Switch the backdrop now ({ mode, image } from api/profile.php), without a reload. */
+  function set(bg) {
+    const body = document.body;
+    if (!body.classList.contains('badge-bg') || !bg) return;
+    body.dataset.bg = bg.mode;
+    if (bg.image) body.style.setProperty('--bg-photo', `url("${bg.image}")`);
+    else body.style.removeProperty('--bg-photo');
+    refresh();
+  }
+
+  window.SetloBackground = { set, refresh };
+  document.addEventListener('DOMContentLoaded', () => { if (document.body.classList.contains('badge-bg')) refresh(); });
 })();

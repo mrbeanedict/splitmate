@@ -72,13 +72,14 @@ Role is never fixed by who created the Bill — it's determined by who paid the 
 1. User registers/logs in.
 2. User creates a Bill and adds members.
 3. User photographs the receipt; Setlo runs OCR and extracts item names + prices.
-4. User reviews the extracted list, correcting any misread items before saving.
-5. Items are assigned to the members who ordered them (itemized), with shared items (tax, service charge) split equally.
-6. Setlo calculates each member's share and net balance.
-7. Setlo generates a settlement plan (who pays whom).
-8. Sender pays outside the app and marks the settlement as **Paid**.
-9. Receiver is notified and either **Confirms** (→ Settled) or **Rejects/Reports** (→ Disputed).
-10. Bill closes once all settlements are Settled.
+4. User reviews the extracted list, correcting any misread items before saving. Setlo asks whether to **round the total to whole pesos**. If yes, every share becomes whole pesos too, adding up to the rounded total, and the main payer keeps or covers the few centavos of difference.
+5. If several people paid and handed over more than the bill, Setlo asks **who received the change**. It never assumes. Whoever got it holds everyone's part of it, so the plan has them pass each part back.
+6. Items are assigned to the members who ordered them (itemized), with shared items (tax, service charge) split equally.
+7. Setlo calculates each member's share and net balance. When there was change, it shows the total change and each person's **expected change** (what they put in minus their share) so everyone can check it against the cash in hand.
+8. Setlo generates a settlement plan (who pays whom).
+9. Sender pays outside the app and marks the settlement as **Paid**.
+10. Receiver is notified and either **Confirms** (→ Settled) or **Rejects/Reports** (→ Disputed).
+11. Bill closes once all settlements are Settled.
 
 ## 7. Page List
 
@@ -197,19 +198,23 @@ Role is never fixed by who created the Bill — it's determined by who paid the 
 
 ## Achievements
 
-One-time badges, defined in `includes/achievements.php` and checked when a bill starts settling and whenever a payment is confirmed. Whoever's action earns a badge sees its pop-up right away; anyone else who earned it gets a notification and sees the pop-up on their next dashboard visit. On the profile, each badge can be reopened, hidden from others, or starred as the title shown next to your name.
+One-time badges, defined in `includes/achievements.php` and checked when a bill starts settling, whenever a payment is confirmed, and (Debt Survivor) on each visit. Whoever's action earns a badge sees its pop-up right away; anyone else who earned it gets a notification and sees the pop-up on their next dashboard visit. On the profile, each badge can be reopened, hidden from others, or starred as the title shown next to your name.
+
+Most badges take several occurrences (`ACHIEVEMENT_TARGETS`), each counted once per bill or settlement in `achievement_progress`. Badges earned before the targets were raised are kept.
 
 | Badge | Earned when |
 |---|---|
-| 🧾 Itemalizer | You created 3 item-by-item bills that reached settling |
-| 🪙 Kuripot | You alone had the smallest share of a bill (ties don't count) |
-| 🍔 Glutton | Your share of one bill was ₱1,000 or more |
-| 🤝 1, 2, 3 | Someone else paid towards your share |
-| 💚 Samaritan | You paid someone's whole share as a treat |
-| 🎭 Split Personality | You paid one debt in parts using 2+ payment methods |
-| 💰 Debt Collector | You received money you were owed |
-| 🧼 Clean Slate | You paid off your last open debt |
-| 🧮 Human Calculator | Fastest correct total in Receipt Race (ties all win) |
+| 🧾 Itemalizer | You created 5 item-by-item bills that reached settling |
+| 🪙 Kuripot | You alone had the smallest share of a bill (ties don't count), 10 times |
+| 🍔 Glutton | Your share of one bill was ₱1,000 or more, on 2 bills |
+| 🤝 1, 2, 3 | Someone else paid towards your share, on 5 debts |
+| 💚 Samaritan | You paid someone's whole share as a treat, 3 times |
+| 🎭 Split Personality | You paid one debt in parts using 2+ payment methods (cash, transfer, GCash, Maya, card…), on 5 debts |
+| 💰 Debt Collector | You received a payment on money owed to you for over 24 hours, on 2 debts |
+| 🫠 Debt Survivor | You still owed on a debt 7 days after it started |
+| 🧼 Clean Slate | You paid off your last open debt (₱0 owed), 3 times |
+| 💸 Big Spender | Your shares of all your bills add up to ₱5,000 |
+| 🧮 Human Calculator | Fastest correct total in Receipt Race (ties all win), 3 wins |
 | 🎯 Bullseye | Closest to the target without going over (ties all win) |
 | 🌟 Main Character | The roulette picked your wallet to pay the whole bill |
 

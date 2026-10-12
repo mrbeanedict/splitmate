@@ -235,6 +235,20 @@ $steps = [
        PRIMARY KEY (user_id, day), INDEX (day),
        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
      ) ENGINE=InnoDB',
+    // Harder badges: most take several occurrences now, counted from here on (badges already earned are kept)
+    'CREATE TABLE IF NOT EXISTS achievement_progress (
+       user_id INT UNSIGNED NOT NULL, code VARCHAR(30) NOT NULL, ref_id INT UNSIGNED NOT NULL,
+       amount INT UNSIGNED NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (user_id, code, ref_id),
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
+    // Page backdrop: floating badges, plain, or the user's own photo
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS bg_mode ENUM('badges','plain','photo') NOT NULL DEFAULT 'badges' AFTER featured_achievement",
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS bg_image VARCHAR(255) NULL AFTER bg_mode',
+    // Rounding the bill to whole pesos, and who actually received the change when several people paid
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS round_total TINYINT(1) NOT NULL DEFAULT 0 AFTER interest_rate',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS change_holder_id INT UNSIGNED NULL AFTER round_total',
+    'ALTER TABLE bills ADD CONSTRAINT bills_change_holder_fk FOREIGN KEY IF NOT EXISTS (change_holder_id) REFERENCES users(id) ON DELETE SET NULL',
 ];
 foreach ($steps as $sql) {
     db()->exec($sql);

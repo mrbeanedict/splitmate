@@ -78,4 +78,8 @@ header('Cache-Control: no-store');
   }
 </script>
 </head>
-<body class="<?= h(trim(($bodyClass ?? '') . (!empty($nav) && session_area() !== 'admin' ? ' badge-bg' : ''))) ?>">
+<?php
+// Sidebar pages: the user's chosen backdrop (badge-bg.css), set here so it's there from the first paint
+$bg = !empty($nav) && session_area() !== 'admin' && current_user() ? user_background(current_user()) : null;
+?>
+<body class="<?= h(trim(($bodyClass ?? '') . ($bg ? ' badge-bg' : ''))) ?>"<?php if ($bg): ?> data-bg="<?= h($bg['mode']) ?>"<?php if ($bg['image']): ?> style="--bg-photo: url('<?= h($bg['image']) ?>')"<?php endif; endif; ?>>

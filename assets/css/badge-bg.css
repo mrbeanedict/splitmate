@@ -1,5 +1,6 @@
-/* Sidebar pages (head.php adds body.badge-bg): soft colour washes over the gray, with the user's earned badges
-   (assets/js/badge-field.js) drifting behind the content. Plain CSS, no Tailwind build needed. */
+/* Sidebar pages (head.php adds body.badge-bg): soft colour washes over the gray, then the backdrop chosen on the
+   Profile (body[data-bg]): the user's earned badges drifting behind the content (assets/js/badge-field.js), nothing
+   more (plain), or their own photo. Plain CSS, no Tailwind build needed. */
 body.badge-bg {
   isolation: isolate; /* own stacking context, so the z-index:-1 badge field paints above this background, not under it */
   background-color: #f1f5f5;
@@ -21,6 +22,22 @@ html.dark body.badge-bg {
 }
 /* The page shell is gray too; let the backdrop and badges show through it. */
 body.badge-bg .device:not(.device-white) { background: transparent; }
+
+/* Their own photo (body[data-bg=photo], --bg-photo set by head.php): clearly recognisable, just softened a touch and
+   toned down so the cards stay the focus. Slightly oversized so the light blur has no soft edges. */
+body.badge-bg::before {
+  content: '';
+  position: fixed;
+  inset: -12px;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--bg-photo, none) center / cover no-repeat;
+  filter: blur(2px) saturate(.9);
+  opacity: 0;
+  transition: opacity .4s ease;
+}
+body.badge-bg[data-bg="photo"]::before { opacity: .6; }
+html.dark body.badge-bg[data-bg="photo"]::before { opacity: .45; filter: blur(2px) saturate(.85) brightness(.75); }
 
 /* Each img sets its own position, size, opacity and --dx/--dy/--dur/--delay inline. */
 .badge-field { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }

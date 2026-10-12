@@ -178,7 +178,19 @@ require __DIR__ . '/../partials/head.php';
       <div class="sheet-grip"></div>
       <h2 class="text-[18px] font-extrabold text-ink">Send the settlement plan?</h2>
       <p class="mt-1 text-[13px] text-slate-500">These payments settle everyone up. Item assignments lock once settling starts.</p>
-      <div class="mt-4 space-y-2">
+      <p v-if="preview && preview.bill.round_diff" class="mt-3 rounded-xl bg-slate-50 px-3.5 py-2.5 text-[12px] text-slate-600">
+        <b class="text-ink">Rounded:</b> {{ peso(preview.bill.exact_total) }} charged → {{ peso(preview.total) }} shared, in whole {{ bill.currency === 'PHP' ? 'pesos' : 'amounts' }}.
+      </p>
+      <!-- Change: each person's part, and (until named) who the cashier handed it to -->
+      <template v-if="preview && preview.payments.change > 0">
+        <change-summary class="mt-3" :payments="preview.payments" :shares="preview.shares" :members="members" :me="me"></change-summary>
+        <div v-if="holderMissing" class="mt-3">
+          <p class="mb-2 text-[13px] font-extrabold text-ink">Who received the change?</p>
+          <change-holder-picker :people="members" :model-value="null" :me="me" :paid="preview.payments.paid" :disabled="busy" @update:model-value="setHolder"></change-holder-picker>
+        </div>
+        <p v-if="!holderMissing" class="mt-3 text-[11px] font-extrabold uppercase tracking-[.06em] text-slate-400">Who pays whom</p>
+      </template>
+      <div v-if="!holderMissing" class="mt-4 space-y-2">
         <div v-for="(t, i) in plan" :key="i" class="flex items-center gap-3 rounded-2xl bg-slate-50 px-3.5 py-2.5">
           <avatar :user="memberMap[t.from]" :size="28"></avatar>
           <span class="flex-1 text-[13px] font-semibold">{{ nameOf(t.from) }} → {{ nameOf(t.to) }}</span>
@@ -186,17 +198,17 @@ require __DIR__ . '/../partials/head.php';
         </div>
         <p v-if="!plan.length" class="text-[13px] text-slate-400">Nobody owes anyone — the bill will close right away.</p>
       </div>
-      <label v-if="plan.length" class="mt-4 flex items-start gap-2.5 rounded-2xl bg-slate-50 px-3.5 py-3 text-[12.5px] leading-snug text-slate-600">
+      <label v-if="plan.length && !holderMissing" class="mt-4 flex items-start gap-2.5 rounded-2xl bg-slate-50 px-3.5 py-3 text-[12.5px] leading-snug text-slate-600">
         <input type="checkbox" v-model="interestOn" class="mt-0.5 h-4 w-4 shrink-0 accent-brand-600" />
         <span><b class="text-ink">Allow installments with interest</b><br />Anyone can pay in parts; each partial payment adds this % of what's still left.</span>
       </label>
-      <div v-if="plan.length && interestOn" class="mt-2.5">
+      <div v-if="plan.length && interestOn && !holderMissing" class="mt-2.5">
         <p class="mb-1.5 px-1 text-[12px] font-semibold text-slate-500">Interest after each partial payment</p>
         <rate-choice :rates="rates" v-model="interestRate"></rate-choice>
       </div>
       <div class="mt-5 grid grid-cols-2 gap-3">
         <button @click="confirming = false" class="btn-pill btn-pill-soft">Back</button>
-        <button @click="send" class="btn-pill btn-pill-primary" :disabled="busy">Start settling</button>
+        <button @click="send" class="btn-pill btn-pill-primary" :disabled="busy || holderMissing">Start settling</button>
       </div>
     </div>
   </div>
@@ -225,7 +237,7 @@ Setlo.mount({
   data: () => ({
     billId: <?= $billId ?>, me: <?= (int) $user['id'] ?>,
     loading: true, busy: false, saving: false, confirming: false,
-    bill: null, members: [], items: [], receipts: [], plan: [], paidBy: [], active: <?= (int) $user['id'] ?>, saveTimer: null,
+    bill: null, members: [], items: [], receipts: [], plan: [], preview: null, paidBy: [], active: <?= (int) $user['id'] ?>, saveTimer: null,
     discountLabel: { none: '', senior: ' · Senior', pwd: ' · PWD' },
     // Percentage split: typed percents per member (strings), saved after a short pause.
     splitMode: 'items', pctDraft: {}, pctTimer: null,
@@ -309,7 +321,9 @@ Setlo.mount({
     rcur() { return this.bill ? this.bill.receipt_currency || this.bill.currency : 'PHP'; },
     foreign() { return !!(this.bill && this.bill.fx && this.bill.fx.foreign); },
     /** calc's receipt-currency shares in the settlement currency (Setlo.convertShares mirrors the server). */
-    settled() { return Setlo.convertShares(this.calc.shares, this.billTotal, this.bill && this.bill.fx, this.bill ? this.bill.payer_id : 0); },
+    settled() { return Setlo.convertShares(this.calc.shares, this.billTotal, this.bill && this.bill.fx, this.bill ? this.bill.payer_id : 0, !!(this.bill && this.bill.round_total)); },
+    /** The plan can't be sent until someone is named as having the change. */
+    holderMissing() { return !!(this.preview && this.preview.payments.change > 0 && !this.preview.payments.change_holder); },
     shares() { return this.settled.shares; },
   },
   async mounted() {
@@ -450,7 +464,16 @@ Setlo.mount({
         return;
       }
       this.plan = r.plan;
+      this.preview = r;
       this.confirming = true;
+    },
+    /** Name who received the change from the sheet, then show the plan that follows from it. */
+    async setHolder(id) {
+      const r = await Setlo.run(this, async () => {
+        await api.post('bills.php', { action: 'set_change_holder', bill_id: this.billId, user_id: id });
+        return api.get('bills.php', { id: this.billId });
+      });
+      if (r) { this.preview = r; this.plan = r.plan; }
     },
     async send() {
       if (this.plan.length && this.interestError) { Setlo.toast(this.interestError); return; }

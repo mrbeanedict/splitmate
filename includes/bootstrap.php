@@ -128,7 +128,7 @@ function current_user(): ?array
     if ($user === false) {
         $user = null;
         if (!empty($_SESSION['user_id'])) {
-            $row = q('SELECT id, full_name, email, payment_method, currency, avatar_color, avatar, role, status FROM users WHERE id = ?', [$_SESSION['user_id']])->fetch();
+            $row = q('SELECT id, full_name, email, payment_method, currency, avatar_color, avatar, bg_mode, bg_image, role, status FROM users WHERE id = ?', [$_SESSION['user_id']])->fetch();
             if ($row && $row['status'] === 'active') {
                 $row['id'] = (int) $row['id'];
                 $user = $row;
@@ -270,6 +270,14 @@ function avatar_url(?string $avatar, int $userId): ?string
 }
 
 /** A user's users.avatar value, fetched once per request. */
+/** A user's page backdrop: mode 'badges' (their floating badges), 'plain' or 'photo', and their photo's URL if any. */
+function user_background(array $u): array
+{
+    // ?v= changes with the file, so a new photo isn't hidden behind the cached old one.
+    $image = $u['bg_image'] ? url('api/background.php') . '?v=' . substr(md5($u['bg_image']), 0, 8) : null;
+    return ['mode' => $u['bg_mode'] === 'photo' && !$image ? 'badges' : $u['bg_mode'], 'image' => $image];
+}
+
 function user_avatar(int $userId): ?string
 {
     static $cache = [];

@@ -9,6 +9,7 @@ function my_achievements(int $userId): array
 {
     $badges = user_badges($userId, true);
     $unseen = q('SELECT code FROM user_achievements WHERE user_id = ? AND seen_at IS NULL ORDER BY earned_at, code', [$userId])->fetchAll(PDO::FETCH_COLUMN);
+    $unseen = array_diff($unseen, achievements_earned()[$userId] ?? []); // earned in this request: the reply shows those
     return [
         'badges'   => $badges,
         'unseen'   => array_values(array_filter($badges, fn ($b) => in_array($b['code'], $unseen, true))),
@@ -28,6 +29,7 @@ function my_code(int $userId): string
 }
 
 if (method() === 'GET') {
+    check_debt_survivor($me['id']);
     json_ok(my_achievements($me['id']));
 }
 

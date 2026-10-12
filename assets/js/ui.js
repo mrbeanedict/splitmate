@@ -67,10 +67,31 @@
     return out;
   }
   /**
-   * Receipt-currency shares (cents) → the bill's settlement currency, as the server's convert_calc() does.
-   * fx: bills.php bill.fx; nativeTotal: whole bill in receipt cents. Returns { shares, total }.
+   * "Round to whole pesos", as round_to_whole() in PHP: the total to the nearest whole unit and, once everything is
+   * shared out, every share in whole units adding up to it. Returns { shares, total, exactTotal, roundDiff }.
    */
-  function convertShares(native, nativeTotal, fx, payerId) {
+  function roundWhole(res, on, currency) {
+    const out = { ...res, exactTotal: res.total, roundDiff: 0 };
+    if (!on || cinfo(currency).decimals === 0) return out;
+    const rounded = Math.floor((res.total + 50) / 100) * 100;
+    const sum = Object.values(res.shares).reduce((a, b) => a + b, 0);
+    if (rounded > 0 && sum === res.total) {
+      out.shares = Object.fromEntries(Object.entries(allocate(rounded / 100, res.shares)).map(([id, u]) => [id, u * 100]));
+    }
+    out.roundDiff = rounded - res.total;
+    out.total = rounded;
+    return out;
+  }
+  /**
+   * Receipt-currency shares (cents) → the bill's settlement currency, as the server's convert_calc() does.
+   * fx: bills.php bill.fx; nativeTotal: whole bill in receipt cents; roundTotal: bills.php bill.round_total.
+   * Returns { shares, total, exactTotal, roundDiff }.
+   */
+  function convertShares(native, nativeTotal, fx, payerId, roundTotal = false) {
+    const cur = fx ? fx.currency : 'PHP';
+    return roundWhole(convertExact(native, nativeTotal, fx, payerId), roundTotal, cur);
+  }
+  function convertExact(native, nativeTotal, fx, payerId) {
     if (!fx || !fx.foreign) return { shares: roundShares(native, 'exact', fx ? fx.currency : 'PHP', payerId), total: nativeTotal };
     const c = (v) => Math.round(Number(v || 0) * 100);
     // in the settlement currency's smallest unit (whole yen, won…), as bill_fx() does
@@ -251,6 +272,7 @@
     one_two_three: ['#bfdbfe', '#3b82f6'], samaritan: ['#bbf7d0', '#22c55e'], split_personality: ['#e9d5ff', '#a855f7'],
     debt_collector: ['#a7f3d0', '#059669'], clean_slate: ['#cffafe', '#06b6d4'], human_calculator: ['#c7d2fe', '#6366f1'],
     bullseye: ['#fecdd3', '#f43f5e'], main_character: ['#fde68a', '#f59e0b'], receipt_from_hell: ['#fecaca', '#b91c1c'],
+    debt_survivor: ['#e2e8f0', '#64748b'], big_spender: ['#d9f99d', '#65a30d'],
   };
   const reducedMotion = () => global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -334,7 +356,7 @@
           <div class="badge-art">
             <div class="badge-rays"></div>
             <span class="badge-tag">${reopened ? 'Achievement' : 'Unlocked!'}</span>
-            <img src="${escapeHtml(a.image)}" alt="" draggable="false" />
+            ${a.image ? `<img src="${escapeHtml(a.image)}" alt="" draggable="false" />` : `<span class="badge-emoji">${escapeHtml(a.emoji)}</span>`}
           </div>
           <div class="badge-body">
             <p class="text-[21px] font-extrabold leading-tight text-ink">${escapeHtml(a.emoji)} ${escapeHtml(a.title)}</p>
@@ -397,25 +419,121 @@
       <span v-else class="av" :style="{ background: user.color, width: size + 'px', height: size + 'px', fontSize: size * 0.36 + 'px', boxShadow: ring ? undefined : 'none' }" :title="user.name">{{ user.initials }}</span>`,
   };
 
-  /** A gallery photo cropped to its centre square and shrunk to 384 px, as a JPEG blob (keeps uploads small). */
-  function squarePhoto(file, size = 384) {
+  /**
+   * Let the user frame a gallery photo before it's uploaded: drag to move; pinch, scroll or the slider to zoom; arrow
+   * keys and +/- too. shape 'circle' (profile pictures: a round guide, saved square) or 'rect' (the whole stage, at
+   * aspect = width / height). Resolves a JPEG blob $width px wide, or null if cancelled.
+   */
+  function cropPhoto(file, { shape = 'rect', aspect = 1, width = 1200, title = 'Crop your photo' } = {}) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const src = URL.createObjectURL(file);
-      img.onload = () => {
-        const side = Math.min(img.naturalWidth, img.naturalHeight);
-        const c = document.createElement('canvas');
-        c.width = c.height = size;
-        const ctx = c.getContext('2d');
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, size, size);
-        ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, size, size);
-        URL.revokeObjectURL(src);
-        c.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not read that photo.'))), 'image/jpeg', 0.88);
-      };
       img.onerror = () => { URL.revokeObjectURL(src); reject(new Error('That file isn’t a photo we can open. Try a JPG or PNG.')); };
+      img.onload = async () => {
+        let crop;
+        const icon = (d) => `<svg class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="${d}"/></svg>`;
+        const r = await swal({
+          title,
+          html: `<div class="crop-stage" tabindex="0" aria-label="Photo framing: drag or use the arrow keys to move, plus and minus to zoom" style="aspect-ratio:${shape === 'circle' ? 1 : aspect}">
+              <img src="${src}" alt="" draggable="false" /><div class="crop-frame crop-${shape}"></div>
+            </div>
+            <div class="crop-zoom">${icon('M5 12h14')}<input type="range" min="0" max="1" step="0.001" value="0" aria-label="Zoom" />${icon('M12 5v14M5 12h14')}</div>
+            <p class="crop-hint">Drag to move · pinch, scroll or slide to zoom</p>`,
+          customClass: { popup: 'setlo-swal crop-popup' },
+          showCancelButton: true, confirmButtonText: 'Use photo',
+          didOpen: (el) => { crop = cropper(el, img, shape); },
+          preConfirm: () => crop.toBlob(width).catch((e) => { global.Swal.showValidationMessage(e.message); return false; }),
+        });
+        URL.revokeObjectURL(src);
+        resolve(r.isConfirmed ? r.value : null);
+      };
       img.src = src;
     });
+  }
+
+  /** The moving parts of cropPhoto's dialog. Returns { toBlob(width) } for the framed part. */
+  function cropper(el, img, shape) {
+    const stage = el.querySelector('.crop-stage');
+    const pic = stage.querySelector('img');
+    const range = el.querySelector('.crop-zoom input');
+    const W = stage.clientWidth, H = stage.clientHeight;
+    const pad = shape === 'circle' ? W * 0.08 : 0; // matches .crop-circle's inset
+    const f = { x: pad, y: pad, w: W - 2 * pad, h: H - 2 * pad }; // the frame, in stage pixels
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const min = Math.max(f.w / iw, f.h / ih), max = min * 5; // the photo always covers the frame
+    let s = min, x = f.x + (f.w - iw * s) / 2, y = f.y + (f.h - ih * s) / 2;
+
+    pic.style.width = iw + 'px';
+    pic.style.height = ih + 'px';
+    const draw = () => {
+      x = Math.min(f.x, Math.max(f.x + f.w - iw * s, x));
+      y = Math.min(f.y, Math.max(f.y + f.h - ih * s, y));
+      pic.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+      range.value = Math.log(s / min) / Math.log(max / min);
+    };
+    /** Zoom to scale $ns, keeping the stage point (cx, cy) still. */
+    const zoomTo = (ns, cx = f.x + f.w / 2, cy = f.y + f.h / 2) => {
+      ns = Math.min(max, Math.max(min, ns));
+      x = cx - (cx - x) * ns / s;
+      y = cy - (cy - y) * ns / s;
+      s = ns;
+      draw();
+    };
+    const local = (e) => { const b = stage.getBoundingClientRect(); return { x: (e.clientX - b.left) * W / b.width, y: (e.clientY - b.top) * H / b.height }; };
+
+    // One finger or the mouse moves the photo; two fingers pinch-zoom around their midpoint (and move it).
+    const pts = new Map();
+    stage.addEventListener('pointerdown', (e) => {
+      stage.setPointerCapture(e.pointerId);
+      pts.set(e.pointerId, local(e));
+      stage.classList.add('dragging');
+    });
+    stage.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      const before = [...pts.values()];
+      pts.set(e.pointerId, local(e));
+      const after = [...pts.values()];
+      if (after.length === 1) {
+        x += after[0].x - before[0].x;
+        y += after[0].y - before[0].y;
+        draw();
+      } else if (after.length === 2) {
+        const mid = (p) => ({ x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 });
+        const dist = (p) => Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1;
+        const m0 = mid(before), m1 = mid(after);
+        x += m1.x - m0.x;
+        y += m1.y - m0.y;
+        zoomTo(s * dist(after) / dist(before), m1.x, m1.y);
+      }
+    });
+    const lift = (e) => { pts.delete(e.pointerId); if (!pts.size) stage.classList.remove('dragging'); };
+    stage.addEventListener('pointerup', lift);
+    stage.addEventListener('pointercancel', lift);
+    stage.addEventListener('wheel', (e) => { e.preventDefault(); const p = local(e); zoomTo(s * Math.exp(-e.deltaY * 0.0015), p.x, p.y); }, { passive: false });
+    stage.addEventListener('keydown', (e) => {
+      const step = { ArrowLeft: [12, 0], ArrowRight: [-12, 0], ArrowUp: [0, 12], ArrowDown: [0, -12] }[e.key];
+      if (step) { x += step[0]; y += step[1]; draw(); }
+      else if (e.key === '+' || e.key === '=') zoomTo(s * 1.1);
+      else if (e.key === '-') zoomTo(s / 1.1);
+      else return;
+      e.preventDefault();
+    });
+    range.addEventListener('input', () => zoomTo(min * Math.pow(max / min, +range.value)));
+    draw();
+
+    return {
+      toBlob(width) {
+        const c = document.createElement('canvas');
+        c.width = Math.round(Math.min(width, f.w / s)) || width; // never enlarged past the photo's own pixels
+        c.height = Math.round(c.width * f.h / f.w);
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, (f.x - x) / s, (f.y - y) / s, f.w / s, f.h / s, 0, 0, c.width, c.height);
+        return new Promise((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error('Could not read that photo.'))), 'image/jpeg', 0.88));
+      },
+    };
   }
 
   /**
@@ -444,11 +562,14 @@
         e.target.value = '';
         if (!file) return;
         if (!file.type.startsWith('image/')) { toast('Choose a photo.'); return; }
-        this.busy = 'upload';
+        this.busy = 'crop';
         try {
+          const photo = await cropPhoto(file, { shape: 'circle', width: 384, title: 'Crop your picture' });
+          if (!photo) return;
+          this.busy = 'upload';
           const fd = new FormData();
           fd.append('action', 'upload_avatar');
-          fd.append('photo', await squarePhoto(file), 'avatar.jpg');
+          fd.append('photo', photo, 'avatar.jpg');
           this.$emit('saved', (await api.post('profile.php', fd)).profile);
         } catch (err) { toast(err.message); }
         finally { this.busy = null; }
@@ -817,6 +938,70 @@
     </div>`,
   };
 
+  /**
+   * Who physically received the change: one tap per person, the people who paid first. props: people (members),
+   * modelValue (user id or null), me (your id), paid ({ id: amount } handed over). Emits update:modelValue.
+   */
+  const ChangeHolderPicker = {
+    components: { Avatar },
+    props: { people: { type: Array, required: true }, modelValue: { type: Number, default: null }, me: { type: Number, default: 0 }, paid: { type: Object, default: () => ({}) }, disabled: Boolean },
+    emits: ['update:modelValue'],
+    computed: {
+      ordered() { return [...this.people].sort((a, b) => (this.paid[b.id] || 0) - (this.paid[a.id] || 0)); },
+    },
+    template: `<div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Who received the change">
+      <button v-for="p in ordered" :key="p.id" type="button" role="radio" :aria-checked="modelValue === p.id" :disabled="disabled"
+              class="mchip" :class="{ on: modelValue === p.id }" @click="$emit('update:modelValue', p.id)">
+        <avatar :user="p" :size="24"></avatar>{{ p.id === me ? 'You' : p.first }}
+      </button>
+    </div>`,
+  };
+
+  /**
+   * The change, person by person (bills.php payments): the total handed back by the cashier, who holds it, and for
+   * each member what they put in, their share, and what's due back to them (or what they still owe), so everyone can
+   * check it against the cash in their hand. Shown only when there was change. props: payments, shares, members, me.
+   */
+  const ChangeSummary = {
+    components: { Avatar },
+    props: { payments: { type: Object, required: true }, shares: { type: Object, default: () => ({}) }, members: { type: Array, required: true }, me: { type: Number, default: 0 } },
+    computed: {
+      holder() { return this.members.find((m) => m.id === this.payments.change_holder) || null; },
+      rows() {
+        const exp = this.payments.expected || {};
+        return this.members
+          .map((m) => ({ ...m, put: this.payments.paid[m.id] || 0, share: this.shares[m.id] || 0, back: exp[m.id] || 0 }))
+          .sort((a, b) => b.put - a.put || b.back - a.back);
+      },
+    },
+    methods: { who(m) { return m.id === this.me ? 'You' : m.first; } },
+    template: `<div v-if="payments.change > 0" class="rounded-2xl border border-amber-200 bg-amber-50/70 p-3.5">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <p class="text-[11px] font-extrabold uppercase tracking-[.06em] text-amber-800/70">Group change</p>
+          <p class="text-[20px] font-extrabold leading-tight text-amber-900">{{ peso(payments.change) }}</p>
+        </div>
+        <div v-if="holder" class="flex shrink-0 items-center gap-1.5 rounded-full bg-white/80 py-1 pl-1 pr-2.5 text-[12px] font-bold text-amber-900">
+          <avatar :user="holder" :size="22"></avatar>{{ holder.id === me ? 'You have it' : holder.first + ' has it' }}
+        </div>
+        <span v-else class="shrink-0 rounded-full bg-rose-100 px-2.5 py-1 text-[11.5px] font-bold text-rose-700">Who got it?</span>
+      </div>
+      <p class="mt-1 text-[11.5px] leading-snug text-amber-800/80">{{ peso(payments.total) }} handed to the cashier. Each person's change is what they put in minus their share.</p>
+      <div class="mt-3 divide-y divide-amber-200/60 rounded-xl bg-white/70">
+        <div v-for="m in rows" :key="m.id" class="flex items-center gap-2.5 px-3 py-2">
+          <avatar :user="m" :size="26"></avatar>
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-[12.5px] font-bold text-ink">{{ who(m) }}</p>
+            <p class="text-[11px] text-slate-500">Put in {{ peso(m.put) }} · share {{ peso(m.share) }}</p>
+          </div>
+          <p v-if="m.back > 0.004" class="text-right text-[13px] font-extrabold text-emerald-600">{{ peso(m.back) }}<span class="block text-[10px] font-semibold text-slate-400">change due</span></p>
+          <p v-else-if="m.back < -0.004" class="text-right text-[13px] font-extrabold text-rose-600">{{ peso(-m.back) }}<span class="block text-[10px] font-semibold text-slate-400">still owes</span></p>
+          <p v-else class="text-right text-[12px] font-bold text-slate-400">Even</p>
+        </div>
+      </div>
+    </div>`,
+  };
+
   const helpers = { peso, onlineVia, methodWithVia, pesoShort, currencySymbol, currencyLabel, fmtRate, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', timeAgo, fmtDate, fmtDateTime, fmtMonth, toast, receiptLabel, statusLabel: (s) => STATUS_LABELS[s] || s };
 
   /** Create and mount a page's Vue app with the shared components and helpers. */
@@ -825,6 +1010,8 @@
     app.component('avatar', Avatar);
     app.component('avatar-picker', AvatarPicker);
     app.component('payer-picker', PayerPicker);
+    app.component('change-holder-picker', ChangeHolderPicker);
+    app.component('change-summary', ChangeSummary);
     app.component('rate-choice', RateChoice);
     app.component('currency-select', CurrencySelect);
     app.component('status-pill', StatusPill);
@@ -919,5 +1106,5 @@
       .then((ok) => { if (ok) form.submit(); });
   }, true);
 
-  global.Setlo = { mount, run, load, useCurrency, allocate, roundShares, convertShares, currencies: CURRENCIES, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', confirm: confirmDialog, alert: alertDialog, promptText, showCopy, escapeHtml, payLink, qrSvg, qrPng, showPayQr, groupByReceipt, toggleArchive, afterSignUp, showAchievements, showAchievement: (a) => achievementModal(a, { reopened: true }), ...helpers };
+  global.Setlo = { mount, run, load, useCurrency, allocate, roundShares, convertShares, currencies: CURRENCIES, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', confirm: confirmDialog, alert: alertDialog, promptText, showCopy, escapeHtml, payLink, qrSvg, qrPng, showPayQr, groupByReceipt, toggleArchive, afterSignUp, cropPhoto, showAchievements, showAchievement: (a) => achievementModal(a, { reopened: true }), ...helpers };
 })(window);

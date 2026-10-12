@@ -176,6 +176,17 @@ require __DIR__ . '/../partials/head.php';
       <p v-if="receiptTotal !== '' && receiptTotal !== null" class="text-[12px] font-semibold" :class="diff === 0 ? 'text-brand-600' : 'text-rose-500'">
         {{ diff === 0 ? '✓ Matches the receipt total' : 'Off by ' + peso(Math.abs(diff)) + ' — check quantities and prices' }}
       </p>
+      <!-- Round the bill to whole pesos? Every share then becomes whole pesos too (round_to_whole() in includes/domain.php) -->
+      <div v-if="canRound" class="!mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+        <div class="min-w-0">
+          <p class="text-[13.5px] font-extrabold text-ink">Round to whole {{ unitName }}?</p>
+          <p class="text-[11.5px] leading-snug text-slate-400">{{ roundHint }}</p>
+        </div>
+        <div class="seg seg-light w-28 shrink-0 !p-0.5" role="radiogroup" aria-label="Round the total">
+          <button type="button" role="radio" :aria-checked="!roundTotal" :class="{ on: !roundTotal }" @click="roundTotal = false">No</button>
+          <button type="button" role="radio" :aria-checked="roundTotal" :class="{ on: roundTotal }" @click="roundTotal = true">Yes</button>
+        </div>
+      </div>
     </div>
 
     <!-- Several people paid the restaurant: each one's contribution, if known (ticked on the Create Bill step) -->
@@ -198,6 +209,13 @@ require __DIR__ . '/../partials/head.php';
       <p class="mt-2 text-[12px] font-semibold" :class="payCovers ? 'text-brand-600' : 'text-slate-500'">
         {{ peso(payTotal, bill.currency) }} put in<template v-if="!foreign"> of {{ peso(total) }}{{ payTotal === 0 ? '' : payCovers ? ' ✓' : ' — ' + peso(Math.round((total - payTotal) * 100) / 100) + ' short' }}</template><template v-else> (in {{ bill.currency }}; the receipt is in {{ receiptCur }})</template>
       </p>
+      <!-- More was handed over than the bill: ask who the cashier gave the change to (never assumed) -->
+      <div v-if="change > 0" data-field="holder" class="mt-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-3.5">
+        <p class="text-[13.5px] font-extrabold text-amber-900">{{ peso(change, bill.currency) }} change — who received it?</p>
+        <p class="mt-0.5 text-[11.5px] leading-snug text-amber-800/80">Whoever the cashier handed it to. Setlo works out each person's part of it, and who passes what back, from this.</p>
+        <change-holder-picker class="mt-2.5" :people="members" v-model="changeHolder" :me="meId" :paid="payAmounts"></change-holder-picker>
+        <p v-if="holderAsked && !changeHolder" class="field-error">Choose who received the change.</p>
+      </div>
     </div>
   </div>
 
@@ -205,7 +223,7 @@ require __DIR__ . '/../partials/head.php';
     <div class="dock-inner">
       <div>
         <p class="text-[11px] font-medium text-slate-400">{{ rows.length }} items · total</p>
-        <p class="text-[21px] font-extrabold leading-tight tracking-tight text-white">{{ peso(total) }}</p>
+        <p class="text-[21px] font-extrabold leading-tight tracking-tight text-white">{{ rounding && !foreign ? peso(rounded.total) : peso(total) }}</p>
       </div>
       <button @click="save" class="dock-btn" :disabled="busy">{{ busy ? 'Saving…' : 'Continue' }}</button>
     </div>
@@ -233,8 +251,34 @@ Setlo.mount({
     billId: <?= $billId ?>, loading: true, busy: false, photos: null, shown: null,
     bill: null, receipts: [], rows: [], tax: '0.00', svc: '0.00', discount: '0.00', receiptTotal: '',
     meId: <?= (int) $user['id'] ?>, payers: [], payDraft: {},
+    members: [], roundTotal: false, changeHolder: null, serverExact: 0, holderAsked: false,
   }),
   computed: {
+    /** The whole amount in the settlement currency, before any rounding: as typed here, or (another currency) as last saved. */
+    settleExact() { return this.foreign ? this.serverExact : this.total; },
+    canRound() { return !!this.bill && (Setlo.currencies[this.bill.currency] || {}).decimals !== 0; },
+    rounding() { return this.canRound && this.roundTotal; },
+    unitName() { return this.bill.currency === 'PHP' ? 'pesos' : 'amounts'; },
+    /** Nearest whole unit, as round_to_whole() does: { total, diff } in the settlement currency. */
+    rounded() {
+      const c = cents(this.settleExact);
+      const r = Math.floor((c + 50) / 100) * 100;
+      return { total: r / 100, diff: (r - c) / 100 };
+    },
+    roundHint() {
+      const cur = this.bill.currency;
+      const d = this.rounded.diff;
+      if (!d) return 'It’s already a whole amount.';
+      const by = (d > 0 ? '+' : '−') + this.peso(Math.abs(d), cur);
+      const payer = this.members.find((m) => m.id === this.bill.payer_id);
+      const who = payer ? (payer.id === this.meId ? 'you' : payer.first) : 'the payer';
+      return this.roundTotal
+        ? `${this.peso(this.settleExact, cur)} → ${this.peso(this.rounded.total, cur)} (${by}). Every share becomes whole ${this.unitName}; ${who} ${d > 0 ? 'keeps' : 'covers'} the ${this.peso(Math.abs(d), cur)}.`
+        : `Keep ${this.peso(this.settleExact, cur)} exactly, or round to ${this.peso(this.rounded.total, cur)} (${by}) so everyone pays whole ${this.unitName}.`;
+    },
+    payAmounts() { return Object.fromEntries(this.payers.map((m) => [m.id, money(this.payDraft[m.id] || 0)])); },
+    /** Handed over beyond what was charged (several payers only): the change somebody received. */
+    change() { return this.payers.length > 1 ? Math.max(0, Math.round((this.payTotal - this.settleExact) * 100) / 100) : 0; },
     flaggedCount() { return this.rows.filter((r) => r.needs_review).length; },
     subtotal() { return this.rows.reduce((s, r) => s + this.lineTotal(r), 0); },
     /** Mirrors tax_included() in includes/domain.php: tax already in the prices if leaving it out is what matches the printed total. */
@@ -256,7 +300,7 @@ Setlo.mount({
     },
     dupReceipts() { return this.receipts.filter((rc) => rc.dup_note); },
     payTotal() { return Math.round(this.payers.reduce((s, m) => s + money(this.payDraft[m.id] || 0), 0) * 100) / 100; },
-    /** The amounts handed over only have to cover the bill total (change goes back to the biggest payer). */
+    /** The amounts handed over only have to cover the bill total (whoever received the change is asked below). */
     payCovers() { return this.payTotal > 0 && this.payTotal >= this.total - 0.005; },
     /** How much the payers' amounts are short of the bill total (0 when covered, or when the receipt is in another currency). */
     payShort() { return this.foreign ? 0 : Math.max(0, Math.round((this.total - this.payTotal) * 100) / 100); },
@@ -303,12 +347,16 @@ Setlo.mount({
       const payerIds = r.payments.multi ? r.payments.payer_ids : [];
       this.payers = r.members.filter((m) => payerIds.includes(m.id));
       this.payDraft = Object.fromEntries(this.payers.map((m) => [m.id, r.payments.paid[m.id] ? r.payments.paid[m.id].toFixed(2) : '']));
+      this.members = r.members;
+      this.roundTotal = !!r.bill.round_total;
+      this.changeHolder = r.payments.change_holder ?? null;
+      this.serverExact = r.bill.exact_total ?? r.total;
       if (!this.rows.length && !this.receipts.length) this.add();
       this.shown = this.formState();
     },
     async reload() { this.fill(await api.get('bills.php', { id: this.billId })); },
     formState() {
-      return JSON.stringify([this.rows.map(({ key, ...row }) => row), this.tax, this.svc, this.discount, this.receiptTotal, this.payDraft]);
+      return JSON.stringify([this.rows.map(({ key, ...row }) => row), this.tax, this.svc, this.discount, this.receiptTotal, this.payDraft, this.roundTotal, this.changeHolder]);
     },
     flagText(r) {
       if (r.suggestion) return 'Looks like “' + r.suggestion + '”?';
@@ -382,7 +430,8 @@ Setlo.mount({
         items: this.rows.map((x) => ({ id: x.id, name: x.name.trim(), qty: Number(x.qty), unit_price: money(x.unit_price), promo: money(x.promo || 0), needs_review: !!x.needs_review })),
         tax: money(this.tax), service_charge: money(this.svc), discount: money(this.discount),
         receipt_total: this.receiptTotal === '' ? null : money(this.receiptTotal),
-        ...(this.payers.length > 1 ? { payments: Object.fromEntries(this.payers.map((m) => [m.id, money(this.payDraft[m.id] || 0)])) } : {}),
+        ...(this.payers.length > 1 ? { payments: this.payAmounts, change_holder_id: this.change > 0 ? this.changeHolder || 0 : 0 } : {}),
+        round_total: this.roundTotal,
       };
     },
     /**
@@ -486,6 +535,13 @@ Setlo.mount({
       if (flagged) return this.flash(flagged, 'Confirm the highlighted item first');
       if (!this.rows.length) return Setlo.toast('Add at least one item.', 'warn');
       if (!this.validateAll()) return;
+      // Change is never assumed to be with anyone: ask before moving on (adding a receipt may still change it)
+      if (this.change > 0 && !this.changeHolder) {
+        this.holderAsked = true;
+        document.querySelector('[data-field="holder"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        Setlo.toast('Choose who received the change.', 'warn');
+        return;
+      }
 
       const r = await Setlo.run(this, () => api.post('items.php', this.payload()));
       if (r) location.href = r.redirect;

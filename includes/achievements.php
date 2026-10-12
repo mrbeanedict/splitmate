@@ -2,28 +2,47 @@
 // One-time achievements. Each is earned once (user_achievements) and kept for good. Whoever's request earns one
 // sees its pop-up in that reply (json_ok adds them); anyone else sees theirs on the dashboard, after a notification.
 // A user can hide badges and feature one shown badge as the title next to their name (users.featured_achievement).
+// Most badges take several occurrences (ACHIEVEMENT_TARGETS), counted in achievement_progress once per bill,
+// settlement or game. Badges earned under the older, easier rules stay earned.
 
 declare(strict_types=1);
 
-// image: artwork in assets/achievement (transparent PNG, shown on the badge card's colour)
+// image: artwork in assets/achievement (transparent PNG, shown on the badge card's colour; the emoji until it exists)
 const ACHIEVEMENTS = [
-    'itemalizer'        => ['emoji' => '🧾', 'title' => 'Itemalizer',        'image' => 'itemalizer.png',        'description' => 'Split three bills item by item.'],
-    'kuripot'           => ['emoji' => '🪙', 'title' => 'Kuripot',           'image' => 'kuripot.png',           'description' => 'Had the smallest share of the whole group.'],
-    'glutton'           => ['emoji' => '🍔', 'title' => 'Glutton',           'image' => 'glutton.png',           'description' => 'Your share of a single bill reached ₱1,000.'],
-    'one_two_three'     => ['emoji' => '🤝', 'title' => '1, 2, 3',           'image' => '1-2-3.png',             'description' => 'Someone covered your share.'],
-    'samaritan'         => ['emoji' => '💚', 'title' => 'Samaritan',         'image' => 'samaritan.png',         'description' => 'Paid someone’s whole share as a treat.'],
-    'split_personality' => ['emoji' => '🎭', 'title' => 'Split Personality', 'image' => 'split-personality.png', 'description' => 'Paid one debt in parts using two or more payment methods.'],
-    'debt_collector'    => ['emoji' => '💰', 'title' => 'Debt Collector',    'image' => 'debt-collector.png',    'description' => 'Received money you were owed.'],
-    'clean_slate'       => ['emoji' => '🧼', 'title' => 'Clean Slate',       'image' => 'clean-slate.png',       'description' => 'Paid everything off — you owe ₱0.'],
-    'human_calculator'  => ['emoji' => '🧮', 'title' => 'Human Calculator',  'image' => 'human-calculator.png',  'description' => 'Fastest correct total in Receipt Race.'],
+    'itemalizer'        => ['emoji' => '🧾', 'title' => 'Itemalizer',        'image' => 'itemalizer.png',        'description' => 'Split five bills item by item.'],
+    'kuripot'           => ['emoji' => '🪙', 'title' => 'Kuripot',           'image' => 'kuripot.png',           'description' => 'Had the smallest share of the group ten times.'],
+    'glutton'           => ['emoji' => '🍔', 'title' => 'Glutton',           'image' => 'glutton.png',           'description' => 'Your share of a single bill reached ₱1,000 — twice.'],
+    'one_two_three'     => ['emoji' => '🤝', 'title' => '1, 2, 3',           'image' => '1-2-3.png',             'description' => 'Someone else covered your share five times.'],
+    'samaritan'         => ['emoji' => '💚', 'title' => 'Samaritan',         'image' => 'samaritan.png',         'description' => 'Paid someone’s whole share as a treat three times.'],
+    'split_personality' => ['emoji' => '🎭', 'title' => 'Split Personality', 'image' => 'split-personality.png', 'description' => 'Paid five debts in parts using two or more payment methods.'],
+    'debt_collector'    => ['emoji' => '💰', 'title' => 'Debt Collector',    'image' => 'debt-collector.png',    'description' => 'Got paid twice on money owed to you for over a day.'],
+    'debt_survivor'     => ['emoji' => '🫠', 'title' => 'Debt Survivor',     'image' => 'debt-survivor.png',     'description' => 'Had a balance still unpaid after 7 days.'],
+    'clean_slate'       => ['emoji' => '🧼', 'title' => 'Clean Slate',       'image' => 'clean-slate.png',       'description' => 'Paid everything off to ₱0 owed, three times.'],
+    'big_spender'       => ['emoji' => '💸', 'title' => 'Big Spender',       'image' => 'big-spender.png',       'description' => 'Your shares of all your bills add up to ₱5,000.'],
+    'human_calculator'  => ['emoji' => '🧮', 'title' => 'Human Calculator',  'image' => 'human-calculator.png',  'description' => 'Won Receipt Race three times.'],
     'bullseye'          => ['emoji' => '🎯', 'title' => 'Bullseye',          'image' => 'bullseye.png',          'description' => 'Got closest to the target without going over.'],
     'main_character'    => ['emoji' => '🌟', 'title' => 'Main Character',    'image' => 'main-character.png',    'description' => 'The roulette picked your wallet to pay the whole bill.'],
     'receipt_from_hell' => ['emoji' => '😈', 'title' => 'Receipt from Hell', 'image' => 'receipt-from-hell.png', 'description' => 'Were on a single bill with 30 or more items.'],
 ];
 
+// How many occurrences each badge takes (big_spender: centavos in pesos); badges not listed take one.
+const ACHIEVEMENT_TARGETS = [
+    'itemalizer'        => 5,
+    'kuripot'           => 10,
+    'glutton'           => 2,
+    'one_two_three'     => 5,
+    'samaritan'         => 3,
+    'split_personality' => 5,
+    'debt_collector'    => 2,
+    'clean_slate'       => 3,
+    'human_calculator'  => 3,
+    'big_spender'       => 500000,
+];
+
 const GLUTTON_CENTS = 100000;
-const ITEMALIZER_BILLS = 3;
 const RECEIPT_FROM_HELL_ITEMS = 30;
+const DEBT_COLLECTOR_HOURS = 24;  // owed at least this long before the payment counts
+const DEBT_SURVIVOR_DAYS = 7;
 
 /** Badges earned during this request, by user id. With $userId and $code, records one. */
 function achievements_earned(?int $userId = null, ?string $code = null): array
@@ -50,10 +69,32 @@ function award(int $userId, string $code, ?int $billId = null): void
     notify($userId, 'achievement', "Achievement unlocked: {$a['emoji']} {$a['title']} — {$a['description']}", 'dashboard?achievements=1');
 }
 
+/**
+ * Count one occurrence of $code for $userId — once per $refId (the bill, settlement or game it happened on) — and
+ * give the badge once ACHIEVEMENT_TARGETS is reached. $amount: what this occurrence adds (big_spender: centavos).
+ */
+function progress(int $userId, string $code, int $refId, ?int $billId, int $amount = 1): void
+{
+    $target = ACHIEVEMENT_TARGETS[$code] ?? 1;
+    if ($target > 1) {
+        q(
+            "INSERT IGNORE INTO achievement_progress (user_id, code, ref_id, amount) SELECT id, ?, ?, ? FROM users WHERE id = ? AND role <> 'guest'",
+            [$code, $refId, $amount, $userId]
+        );
+        $total = (int) q('SELECT COALESCE(SUM(amount), 0) FROM achievement_progress WHERE user_id = ? AND code = ?', [$userId, $code])->fetchColumn();
+        if ($total < $target) {
+            return;
+        }
+    }
+    award($userId, $code, $billId);
+}
+
 /** What the pop-up and the profile need for one badge. $row: its user_achievements row, if loaded. */
 function achievement_payload(string $code, ?array $row = null): array
 {
-    return ['code' => $code, 'image' => url('assets/achievement/' . ACHIEVEMENTS[$code]['image'])] + ACHIEVEMENTS[$code] + ($row ? [
+    $file = ACHIEVEMENTS[$code]['image'];
+    $image = is_file(__DIR__ . '/../assets/achievement/' . $file) ? url('assets/achievement/' . $file) : null;
+    return ['code' => $code, 'image' => $image] + ACHIEVEMENTS[$code] + ($row ? [
         'earned_at' => $row['earned_at'],
         'hidden'    => (bool) $row['hidden'],
     ] : []);
@@ -98,13 +139,7 @@ function achievements_after_settling(array $bill, array $calc): void
     $billId = (int) $bill['id'];
 
     if ($calc['split_mode'] === 'items') {
-        $itemized = (int) q(
-            "SELECT COUNT(*) FROM bills WHERE creator_id = ? AND kind = 'bill' AND split_mode = 'items' AND status IN ('settling','closed')",
-            [$bill['creator_id']]
-        )->fetchColumn();
-        if ($itemized >= ITEMALIZER_BILLS) {
-            award((int) $bill['creator_id'], 'itemalizer', $billId);
-        }
+        progress((int) $bill['creator_id'], 'itemalizer', $billId, $billId);
     }
 
     // Receipt from Hell: everyone on a bill of 30+ item lines, whatever their share (award() skips guests).
@@ -116,11 +151,15 @@ function achievements_after_settling(array $bill, array $calc): void
     }
 
     $shares = array_filter($calc['shares'], fn ($c) => $c > 0);
-    // The ₱1,000 bar, in the bill's currency (no rate known: no Glutton on this bill)
+    // Shares in pesos, for the ₱1,000 bar and the ₱5,000 running total (no rate known: this bill doesn't count)
     $toPeso = ($calc['currency'] ?? 'PHP') === 'PHP' ? 1.0 : (fx_rate($calc['currency'], 'PHP')['rate'] ?? 0.0);
-    foreach ($shares as $uid => $c) {
-        if ($toPeso > 0 && $c * $toPeso >= GLUTTON_CENTS) {
-            award((int) $uid, 'glutton', $billId);
+    if ($toPeso > 0) {
+        foreach ($shares as $uid => $c) {
+            $peso = (int) round($c * $toPeso);
+            if ($peso >= GLUTTON_CENTS) {
+                progress((int) $uid, 'glutton', $billId, $billId);
+            }
+            progress((int) $uid, 'big_spender', $billId, $billId, $peso);
         }
     }
     // Kuripot: only when exactly one person has the smallest share.
@@ -128,8 +167,20 @@ function achievements_after_settling(array $bill, array $calc): void
         $min = min($shares);
         $smallest = array_keys($shares, $min, true);
         if (count($smallest) === 1) {
-            award((int) $smallest[0], 'kuripot', $billId);
+            progress((int) $smallest[0], 'kuripot', $billId, $billId);
         }
+    }
+}
+
+/** Debt Survivor: $userId has owed on a settlement for DEBT_SURVIVOR_DAYS. Checked on each visit and payment. */
+function check_debt_survivor(int $userId): void
+{
+    $billId = q(
+        "SELECT bill_id FROM settlements WHERE from_user_id = ? AND status <> 'settled' AND created_at <= NOW() - INTERVAL ? DAY LIMIT 1",
+        [$userId, DEBT_SURVIVOR_DAYS]
+    )->fetchColumn();
+    if ($billId !== false) {
+        award($userId, 'debt_survivor', (int) $billId);
     }
 }
 
@@ -140,34 +191,46 @@ function achievements_after_payment(array $s, array $p): void
     $billId = (int) $s['bill_id'];
     $debtor = (int) $s['from_user_id'];
     $payer = (int) $p['paid_by'];
-    $status = (string) q('SELECT status FROM settlements WHERE id = ?', [$sid])->fetchColumn();
+    $now = q(
+        'SELECT status, created_at <= NOW() - INTERVAL ? HOUR AS overdue, created_at <= NOW() - INTERVAL ? DAY AS survived FROM settlements WHERE id = ?',
+        [DEBT_COLLECTOR_HOURS, DEBT_SURVIVOR_DAYS, $sid]
+    )->fetch();
+    $status = (string) $now['status'];
 
-    award((int) $s['to_user_id'], 'debt_collector', $billId);
+    // Debt Collector: paid on money that had been owed for over a day.
+    if ($now['overdue']) {
+        progress((int) $s['to_user_id'], 'debt_collector', $sid, $billId);
+    }
+    if ($now['survived']) {
+        award($debtor, 'debt_survivor', $billId);
+    }
 
     if ($payer !== $debtor) {
-        award($debtor, 'one_two_three', $billId);
+        progress($debtor, 'one_two_three', $sid, $billId);
         // Samaritan: the whole debt paid by this one person, as a treat.
         $others = (int) q(
             "SELECT COUNT(*) FROM settlement_payments WHERE settlement_id = ? AND status = 'confirmed' AND (paid_by <> ? OR pay_back = 1)",
             [$sid, $payer]
         )->fetchColumn();
         if ($status === 'settled' && $others === 0) {
-            award($payer, 'samaritan', $billId);
+            progress($payer, 'samaritan', $sid, $billId);
         }
     }
 
+    // Different methods: cash, transfer, and each online channel (GCash, Maya, card…) on its own.
     $methods = (int) q(
-        "SELECT COUNT(DISTINCT method) FROM settlement_payments WHERE settlement_id = ? AND status = 'confirmed' AND paid_by = ? AND method <> 'credit'",
+        "SELECT COUNT(DISTINCT IF(method = 'online', COALESCE(online_via, 'online'), method)) FROM settlement_payments
+         WHERE settlement_id = ? AND status = 'confirmed' AND paid_by = ? AND method <> 'credit'",
         [$sid, $debtor]
     )->fetchColumn();
     if ($methods >= 2) {
-        award($debtor, 'split_personality', $billId);
+        progress($debtor, 'split_personality', $sid, $billId);
     }
 
     if ($status === 'settled') {
         $open = (int) q("SELECT COUNT(*) FROM settlements WHERE from_user_id = ? AND status <> 'settled'", [$debtor])->fetchColumn();
         if ($open === 0) {
-            award($debtor, 'clean_slate', $billId);
+            progress($debtor, 'clean_slate', $sid, $billId);
         }
     }
 }

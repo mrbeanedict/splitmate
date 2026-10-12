@@ -102,7 +102,7 @@ require __DIR__ . '/../partials/head.php';
           </div>
           <div v-if="!multiPay" class="mt-3">
             <payer-picker :people="realMembers" :model-value="[bill.payer_id]" :me="me" :multiple="false" @update:model-value="setPayer($event[0])"></payer-picker>
-            <p class="mt-1.5 text-[12px] text-slate-400">{{ payer.id === me ? 'You' : payer.name }} paid {{ peso(d.total) }}. Everyone else settles with this person.</p>
+            <p class="mt-1.5 text-[12px] text-slate-400">{{ payer.id === me ? 'You' : payer.name }} paid {{ peso(exactTotal) }}. Everyone else settles with this person.</p>
           </div>
           <template v-else>
             <div class="mt-3 space-y-2">
@@ -114,9 +114,13 @@ require __DIR__ . '/../partials/head.php';
               </label>
             </div>
             <p class="mt-2 text-[12px] font-semibold" :class="payDraftOk ? 'text-brand-600' : 'text-rose-500'">
-              {{ peso(payDraftTotal) }} handed to the cashier of {{ peso(d.total) }} due{{ payDraftOk ? ' ✓' : ' — ' + peso(d.total - payDraftTotal) + ' short' }}
+              {{ peso(payDraftTotal) }} handed to the cashier of {{ peso(exactTotal) }} due{{ payDraftOk ? ' ✓' : ' — ' + peso(exactTotal - payDraftTotal) + ' short' }}
             </p>
-            <p v-if="payDraftOk && payDraftTotal > d.total + 0.005" class="mt-0.5 text-[12px] text-slate-400">{{ peso(payDraftTotal - d.total) }} change goes back to the biggest payer.</p>
+            <!-- More than the bill was handed over: who the cashier gave the change to (never assumed) -->
+            <div v-if="draftChange > 0" class="mt-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-3">
+              <p class="text-[13px] font-extrabold text-amber-900">{{ peso(draftChange) }} change — who received it?</p>
+              <change-holder-picker class="mt-2" :people="d.members" v-model="holderDraft" :me="me" :paid="payDraftAmounts"></change-holder-picker>
+            </div>
             <button type="button" @click="splitEvenly" class="mt-2 text-[12px] font-bold text-brand-700 hover:underline">Split evenly between {{ evenIds.length }} {{ evenIds.length === 1 ? 'person' : 'people' }}</button>
             <button @click="savePayments" class="btn btn-primary btn-sm mt-3 w-full" :disabled="busy">Save payments</button>
           </template>
@@ -126,11 +130,27 @@ require __DIR__ . '/../partials/head.php';
 
     <!-- Settlement plan -->
     <template v-if="tab === 'plan'">
+      <!-- Rounded to whole pesos: what was charged, and who keeps or covers the difference -->
+      <p v-if="bill.round_diff" class="rounded-xl bg-slate-50 px-3.5 py-2.5 text-[12px] text-slate-600">
+        <b class="text-ink">Rounded to whole {{ bill.currency === 'PHP' ? 'pesos' : 'amounts' }}:</b> {{ peso(bill.exact_total) }} charged → {{ peso(d.total) }} shared.
+        {{ payer.id === me ? 'You' : payer.first }} {{ bill.round_diff > 0 ? (payer.id === me ? 'keep' : 'keeps') : (payer.id === me ? 'cover' : 'covers') }} the {{ peso(Math.abs(bill.round_diff)) }}.
+      </p>
+      <!-- The change: in total, who holds it, and each person's part of it -->
+      <template v-if="d.payments.change > 0">
+        <change-summary :payments="d.payments" :shares="d.shares" :members="d.members" :me="me"></change-summary>
+        <div v-if="canEdit && !d.payments.change_holder" class="tile p-4">
+          <p class="text-[13.5px] font-extrabold text-ink">Who received the {{ peso(d.payments.change) }} change?</p>
+          <p class="mt-0.5 text-[12px] text-slate-400">Whoever the cashier handed it to. Needed before the bill can start settling.</p>
+          <change-holder-picker class="mt-2.5" :people="d.members" :model-value="null" :me="me" :paid="d.payments.paid" :disabled="busy" @update:model-value="setHolder"></change-holder-picker>
+        </div>
+        <button v-else-if="canEdit" type="button" class="-mt-1 px-1 text-[12px] font-bold text-brand-700 hover:underline" @click="setHolder(0)">Change who has it</button>
+      </template>
       <div v-if="!d.settlements.length" class="tile p-4">
         <p class="text-sm font-bold text-ink">Proposed transfers</p>
         <p class="mt-0.5 text-[12px] text-slate-400">Final once the creator confirms the split. Uses the fewest payments possible.</p>
         <p v-if="d.unassigned_count" class="mt-3 text-[12px] font-semibold text-rose-500">Assign every item to see the plan.</p>
-        <p v-else-if="d.payments.mismatch" class="mt-3 text-[12px] font-semibold text-rose-500">Payments entered ({{ peso(d.payments.total) }}) don't cover the bill total ({{ peso(d.total) }}).</p>
+        <p v-else-if="d.payments.mismatch" class="mt-3 text-[12px] font-semibold text-rose-500">Payments entered ({{ peso(d.payments.total) }}) don't cover the bill total ({{ peso(exactTotal) }}).</p>
+        <p v-else-if="d.payments.change > 0 && !d.payments.change_holder" class="mt-3 text-[12px] font-semibold text-amber-600">Choose who received the change to see the final plan.</p>
         <div v-else class="mt-3 space-y-2">
           <div v-for="(t, i) in d.plan" :key="i" class="flex items-center gap-2.5 rounded-xl bg-slate-50 px-3 py-2">
             <avatar :user="memberMap[t.from]" :size="28"></avatar>
@@ -295,7 +315,7 @@ Setlo.mount({
     billId: <?= $billId ?>, me: <?= (int) $user['id'] ?>,
     loading: true, busy: false, bill: null, d: { me: {}, members: [], items: [], settlements: [], shares: {}, balances: {}, plan: [], payments: { paid: {}, multi: false } },
     tab: 'members', tabs: [{ key: 'members', label: 'Members' }, { key: 'plan', label: 'Settlement' }, { key: 'items', label: 'Items' }],
-    search: '', results: [], timer: null, guestName: '', multiPay: false, payDraft: {}, copied: false, canShare: !!navigator.share,
+    search: '', results: [], timer: null, guestName: '', multiPay: false, payDraft: {}, holderDraft: null, copied: false, canShare: !!navigator.share,
     fxDraft: { mode: 'market', actual_total: '', manual_rate: '', fees: '', fees_note: '', rounding: 'exact' },
   }),
   computed: {
@@ -326,8 +346,12 @@ Setlo.mount({
       return [...this.realMembers].sort((a, b) => (first.includes(b.id) - first.includes(a.id)));
     },
     payDraftTotal() { return Math.round(Object.values(this.payDraft).reduce((s, v) => s + (parseFloat(v) || 0), 0) * 100) / 100; },
+    payDraftAmounts() { return Object.fromEntries(Object.entries(this.payDraft).map(([k, v]) => [k, parseFloat(v) || 0])); },
+    /** What was really charged (before any "round to whole pesos"): what the payments have to cover. */
+    exactTotal() { return this.bill ? this.bill.exact_total ?? this.d.total : 0; },
     /** The amounts are the cash handed to the cashier (amount tendered): they only have to cover the total. */
-    payDraftOk() { return this.payDraftTotal >= this.d.total - 0.005; },
+    payDraftOk() { return this.payDraftTotal >= this.exactTotal - 0.005; },
+    draftChange() { return this.payDraftOk ? Math.round((this.payDraftTotal - this.exactTotal) * 100) / 100 : 0; },
     canEdit() { return this.d.me.is_creator && !this.bill.locked; },
     /** Another member's open debt that I could pay for them (guests' debts are the creator's own to pay). */
     canCover() {
@@ -432,21 +456,27 @@ Setlo.mount({
     startMultiPay() {
       this.multiPay = true;
       this.payDraft = Object.fromEntries(this.realMembers.map((m) => [m.id, this.d.payments.multi && this.d.payments.paid[m.id] ? this.d.payments.paid[m.id].toFixed(2) : '']));
+      this.holderDraft = this.d.payments.change_holder ?? null;
     },
     /** Fill the amounts with an equal split of the total (any odd centavos go to the first people). */
     splitEvenly() {
       const ids = this.evenIds;
-      const cents = Math.round(this.d.total * 100);
+      const cents = Math.round(this.exactTotal * 100);
       const base = Math.floor(cents / ids.length);
       const extra = cents - base * ids.length;
       this.payDraft = Object.fromEntries(this.realMembers.map((m) => [m.id, ids.includes(m.id) ? ((base + (ids.indexOf(m.id) < extra ? 1 : 0)) / 100).toFixed(2) : '']));
     },
+    /** Who received the change (0: pick again). */
+    async setHolder(id) {
+      await Setlo.run(this, async () => { await api.post('bills.php', { action: 'set_change_holder', bill_id: this.billId, user_id: id }); await this.load(); });
+    },
     async savePayments() {
       if (!this.validateAll(this.realMembers.map((m) => 'pay' + m.id))) return;
-      if (!this.payDraftOk) { Setlo.toast('The amounts must cover at least ' + this.peso(this.d.total) + '.'); return; }
+      if (!this.payDraftOk) { Setlo.toast('The amounts must cover at least ' + this.peso(this.exactTotal) + '.'); return; }
+      if (this.draftChange > 0 && !this.holderDraft) { Setlo.toast('Choose who received the change.', 'warn'); return; }
       const payments = Object.fromEntries(Object.entries(this.payDraft).filter(([, v]) => parseFloat(v) > 0).map(([k, v]) => [k, parseFloat(v)]));
       await Setlo.run(this, async () => {
-        await api.post('bills.php', { action: 'set_payments', bill_id: this.billId, payments });
+        await api.post('bills.php', { action: 'set_payments', bill_id: this.billId, payments, change_holder_id: this.draftChange > 0 ? this.holderDraft : 0 });
         await this.load();
         Setlo.toast('Payments saved', 'ok');
       });

@@ -36,6 +36,7 @@ function bill_for(int $billId, array $user): array
     foreach (['id', 'creator_id', 'payer_id'] as $k) {
         $bill[$k] = (int) $bill[$k];
     }
+    $bill['change_holder_id'] = $bill['change_holder_id'] === null ? null : (int) $bill['change_holder_id'];
     return $bill;
 }
 
@@ -212,7 +213,7 @@ function convert_calc(array $bill, array $calc): array
               'native_shares' => $calc['shares'], 'fx' => $fx, 'fx_missing' => $fx['missing']];
     if (!$fx['foreign']) {
         $calc['shares'] = round_shares($calc['shares'], 'exact', $fx['currency'], (int) $bill['payer_id']);
-        return $calc;
+        return round_to_whole($bill, $calc);
     }
     $ids = array_keys($calc['shares']);
     // uid 0 holds what isn't shared out yet (unassigned items, percentages short of 100), so it isn't spread on the others
@@ -224,6 +225,28 @@ function convert_calc(array $bill, array $calc): array
     }
     $calc['shares'] = round_shares($shares, $fx['rounding'], $fx['currency'], (int) $bill['payer_id']);
     $calc['total'] = $fx['converted'] + $fx['fees'];
+    return round_to_whole($bill, $calc);
+}
+
+/**
+ * "Round to whole pesos" (bills.round_total): the total goes to the nearest whole unit, and once everything is shared
+ * out every share becomes whole units too, in proportion and adding up to the rounded total (largest remainder).
+ * exact_total keeps what was really charged; round_diff (rounded − exact) is the payer's to keep or cover, see
+ * settlement_plan(). Mirrored by Setlo.convertShares() in assets/js/ui.js.
+ */
+function round_to_whole(array $bill, array $calc): array
+{
+    $calc['exact_total'] = $calc['total'];
+    $calc['round_diff'] = 0;
+    if (empty($bill['round_total']) || currency_decimals($calc['currency']) === 0) {
+        return $calc;
+    }
+    $rounded = floor_div($calc['total'] + 50, 100) * 100;
+    if ($rounded > 0 && array_sum($calc['shares']) === $calc['total']) {
+        $calc['shares'] = array_map(fn ($units) => $units * 100, allocate(intdiv($rounded, 100), $calc['shares']));
+    }
+    $calc['round_diff'] = $rounded - $calc['total'];
+    $calc['total'] = $rounded;
     return $calc;
 }
 
@@ -467,6 +490,9 @@ function bill_card(array $bill): array
     $native = $sub + $tax + cents($bill['service_charge']) - cents($bill['discount'] ?? 0);
     $fx = bill_fx($bill, $native);
     $total = ($bill['kind'] ?? 'bill') === 'loan' ? cents($bill['loan_amount'] ?? 0) : $fx['converted'] + $fx['fees'];
+    if (($bill['kind'] ?? 'bill') !== 'loan' && !empty($bill['round_total']) && currency_decimals($fx['currency']) > 0) {
+        $total = floor_div($total + 50, 100) * 100; // "round to whole pesos", as round_to_whole()
+    }
 
     switch ($bill['status']) {
         case 'closed':
@@ -565,38 +591,49 @@ function bill_payments(array $bill, int $totalCents): array
 }
 
 /**
+ * Who received the change, when the amounts handed to the cashier came to more than the bill: the person the creator
+ * named (bills.change_holder_id, any member), or — until someone is named — the main payer if they handed over enough
+ * to have got it, else whoever handed over the most. Returns [uid, named?].
+ */
+function change_holder(array $bill, array $members, array $paid, int $change): array
+{
+    $named = $bill['change_holder_id'] ?? null;
+    if ($named !== null && in_array((int) $named, array_column($members, 'id'), true)) {
+        return [(int) $named, true];
+    }
+    $payer = (int) $bill['payer_id'];
+    return [($paid[$payer] ?? 0) >= $change ? $payer : (int) array_search(max($paid), $paid, true), false];
+}
+
+/**
  * Who pays whom, with as few transfers as possible (greedy: the biggest debtor pays the biggest creditor).
- * Returns ['transfers' => [[from, to, cents], ...], 'balances' => uid => paid − share, 'paid' => uid => cents,
- *          'paid_total' => cents, 'mismatch' => cents the payments are off from the bill total].
+ * The amounts paid are what each person handed to the cashier, so together they may be more than the bill: the
+ * difference is the change, and whoever physically got it (change_holder()) holds everyone's part of it. That can
+ * leave them owing others even if they handed over little or nothing themselves.
+ * With the total rounded (round_to_whole()), the main payer keeps (or covers) the difference from what was charged.
+ * Returns ['transfers' => [[from, to, cents], ...], 'balances' => uid => what they're owed (+) or owe (−),
+ *          'expected' => uid => paid − share: the change due back to each (+) or what they still have to put in (−),
+ *          'paid' => uid => cents, 'paid_total', 'change', 'holder' => uid|null, 'holder_named' => bool,
+ *          'mismatch' => cents the payments are short of what was charged].
  */
 function settlement_plan(array $bill, array $members, array $calc): array
 {
-    $paid = bill_payments($bill, $calc['total']);
+    $charged = $calc['exact_total'] ?? $calc['total'];
+    $roundDiff = $calc['round_diff'] ?? 0;
+    $paid = bill_payments($bill, $charged);
     $paidTotal = array_sum($paid);
-    // The amounts are what was handed to the cashier (amount tendered), so they may exceed the bill total.
-    // The change comes back to whoever handed over the most (the main payer), who is out of pocket only the net.
-    $change = max(0, $paidTotal - $calc['total']);
-    $net = $paid;
-    if ($change > 0) {
-        $holder = isset($paid[(int) $bill['payer_id']]) && $paid[(int) $bill['payer_id']] >= $change ? (int) $bill['payer_id'] : array_search(max($paid), $paid, true);
-        $net[$holder] = max(0, $net[$holder] - $change);
-        // Change bigger than the holder's cash (can't happen with a sane tender): spread the rest down the others
-        $left = $change - ($paid[$holder] - $net[$holder]);
-        foreach ($net as $uid => $c) {
-            if ($left <= 0) {
-                break;
-            }
-            $take = min($c, $left);
-            $net[$uid] -= $take;
-            $left -= $take;
-        }
-    }
+    $change = max(0, $paidTotal - $charged);
+    [$holder, $named] = $change > 0 ? change_holder($bill, $members, $paid, $change) : [null, false];
+
+    $expected = [];
     $balances = [];
     foreach ($members as $m) {
-        $balances[$m['id']] = ($net[$m['id']] ?? 0) - ($calc['shares'][$m['id']] ?? 0);
+        $uid = $m['id'];
+        $expected[$uid] = ($paid[$uid] ?? 0) - ($calc['shares'][$uid] ?? 0) + ($uid === (int) $bill['payer_id'] ? $roundDiff : 0);
+        $balances[$uid] = $expected[$uid] - ($uid === $holder ? $change : 0);
     }
-    // Only a shortfall is a problem: the payments must cover the total.
-    $mismatch = min(0, $paidTotal - $calc['total']);
+    // Only a shortfall is a problem: the payments must cover what was charged.
+    $mismatch = min(0, $paidTotal - $charged);
 
     $transfers = [];
     if ($mismatch === 0 && $calc['unassigned_count'] === 0 && empty($calc['fx_missing']) && in_array($calc['percent_total'] ?? null, [null, 10000], true)) {
@@ -620,7 +657,8 @@ function settlement_plan(array $bill, array $members, array $calc): array
             $bal[$creditor] -= $amount;
         }
     }
-    return ['transfers' => $transfers, 'balances' => $balances, 'paid' => $paid, 'paid_total' => $paidTotal, 'change' => $change, 'mismatch' => $mismatch];
+    return ['transfers' => $transfers, 'balances' => $balances, 'expected' => $expected, 'paid' => $paid, 'paid_total' => $paidTotal,
+            'change' => $change, 'holder' => $holder, 'holder_named' => $named, 'mismatch' => $mismatch];
 }
 
 /**
@@ -650,7 +688,10 @@ function start_settling(array $bill, array $actor, ?float $interestRate = null):
     $plan = settlement_plan($bill, $members, $calc);
     if ($plan['mismatch'] !== 0) {
         fail('The payments entered (' . money_str($plan['paid_total'], $cur) . ') don’t cover the bill total ('
-            . money_str($calc['total'], $cur) . '). Fix “Who paid the restaurant” first.', 422);
+            . money_str($calc['exact_total'], $cur) . '). Fix “Who paid the restaurant” first.', 422);
+    }
+    if ($plan['change'] > 0 && !$plan['holder_named']) {
+        fail('There’s ' . money_str($plan['change'], $cur) . ' change — choose who received it first.', 422, ['need' => 'change_holder']);
     }
     $names = array_column($members, 'first', 'id');
 
@@ -666,7 +707,9 @@ function start_settling(array $bill, array $actor, ?float $interestRate = null):
         foreach ($plan['transfers'] as [$from, $to, $c]) {
             q('INSERT INTO settlements (bill_id, from_user_id, to_user_id, currency, principal, amount, interest_rate) VALUES (?, ?, ?, ?, ?, ?, ?)', [$bill['id'], $from, $to, $cur, pesos($c), pesos($c), $interestRate]);
             $sid = (int) $pdo->lastInsertId();
-            log_event($sid, $actor['id'], 'created', 'Generated from ' . $bill['name'] . ' balances.');
+            log_event($sid, $actor['id'], 'created', 'Generated from ' . $bill['name'] . ' balances'
+                . ($plan['holder'] !== null ? ", with {$names[$plan['holder']]} holding the " . money_str($plan['change'], $cur) . ' change' : '')
+                . ($calc['round_diff'] ? ', total rounded to ' . money_str($calc['total'], $cur) : '') . '.');
             apply_credits($from, $to, (int) $actor['id'], $cur);
             notify($from, 'settling', "You owe {$names[$to]} " . money_str($c, $cur) . " for {$bill['name']}."
                 . ($interestRate ? ' Paying in parts adds ' . (0 + $interestRate) . "% of what's left each time." : ''), 'my-settlements');

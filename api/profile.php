@@ -1,5 +1,5 @@
 <?php
-// My profile: picture, name, payment details, personal "Pay me" QR code, password.
+// My profile: picture, name, payment details, personal "Pay me" QR code, page backdrop, password.
 require __DIR__ . '/../includes/api.php';
 require __DIR__ . '/../includes/uploads.php';
 
@@ -9,7 +9,7 @@ const PAYMENT_METHODS = ['GCash', 'Maya', 'Bank Transfer', 'Cash'];
 
 function profile_of(int $userId): array
 {
-    $u = q('SELECT id, full_name, email, payment_method, payment_account, currency, pay_code, avatar_color, avatar, featured_achievement, google_sub FROM users WHERE id = ?', [$userId])->fetch();
+    $u = q('SELECT id, full_name, email, payment_method, payment_account, currency, pay_code, avatar_color, avatar, featured_achievement, bg_mode, bg_image, google_sub FROM users WHERE id = ?', [$userId])->fetch();
     if ($u['pay_code'] === null) {
         // Safety net: every account has its own Pay-me code.
         $u['pay_code'] = new_pay_code();
@@ -23,7 +23,18 @@ function profile_of(int $userId): array
         'pay_code'        => $u['pay_code'],
         'google_linked'   => $u['google_sub'] !== null,
         'avatar'          => $u['avatar'], // 'pfp/<file>', 'up/<file>' or null: which picker choice is selected
+        'background'      => user_background($u),
     ];
+}
+
+/** Replace (or with null, remove) my backdrop photo; the old file is deleted. Without a photo, 'photo' mode falls back to badges. */
+function set_background_image(int $userId, ?string $file): void
+{
+    $old = q('SELECT bg_image FROM users WHERE id = ?', [$userId])->fetchColumn() ?: null;
+    q("UPDATE users SET bg_image = ?, bg_mode = IF(? IS NOT NULL, 'photo', IF(bg_mode = 'photo', 'badges', bg_mode)) WHERE id = ?", [$file, $file, $userId]);
+    if ($old && $old !== $file) {
+        delete_upload('backgrounds', $old);
+    }
 }
 
 /** Replace my picture; a gallery photo I'm moving away from is deleted. */
@@ -148,6 +159,27 @@ switch (input('action', '')) {
         // A photo from the phone's gallery, already cropped square and shrunk by the page (assets/js/ui.js)
         $file = save_uploaded_image('photo', 'avatars', 'u' . $me['id']);
         set_avatar($me['id'], 'up/' . $file);
+        json_ok(['profile' => profile_of($me['id'])]);
+
+    case 'set_background':
+        // mode: 'badges' (floating badges), 'plain', or 'photo' (needs a photo uploaded first)
+        $mode = (string) input('mode', '');
+        if (!in_array($mode, ['badges', 'plain', 'photo'], true)) {
+            fail('Pick a background.', 422);
+        }
+        if ($mode === 'photo' && !q('SELECT bg_image FROM users WHERE id = ?', [$me['id']])->fetchColumn()) {
+            fail('Upload a photo first.', 422);
+        }
+        q('UPDATE users SET bg_mode = ? WHERE id = ?', [$mode, $me['id']]);
+        json_ok(['profile' => profile_of($me['id'])]);
+
+    case 'upload_background':
+        // A photo from the gallery, already shrunk by the page (assets/js/ui.js fitPhoto); it becomes the backdrop.
+        set_background_image($me['id'], save_uploaded_image('photo', 'backgrounds', 'b' . $me['id']));
+        json_ok(['profile' => profile_of($me['id'])]);
+
+    case 'remove_background':
+        set_background_image($me['id'], null);
         json_ok(['profile' => profile_of($me['id'])]);
 
     case 'rotate_pay_code':

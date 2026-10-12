@@ -125,6 +125,33 @@ require __DIR__ . '/../partials/head.php';
       <div class="seg seg-light" role="radiogroup" aria-label="Light or dark mode">
         <button v-for="m in modes" :key="m.key" type="button" role="radio" :aria-checked="theme.mode === m.key" :class="{ on: theme.mode === m.key }" @click="setTheme({ mode: m.key })">{{ m.label }}</button>
       </div>
+      <!-- Backdrop behind the pages: saved to the account (api/profile.php), applied live (assets/js/badge-field.js) -->
+      <p class="section-label mt-5">BACKGROUND</p>
+      <div class="seg seg-light" role="radiogroup" aria-label="Page background">
+        <button v-for="b in backgrounds" :key="b.key" type="button" role="radio" :aria-checked="bg.mode === b.key" :class="{ on: bg.mode === b.key }"
+                :disabled="!!busyBg" @click="setBackground(b.key)">{{ b.label }}</button>
+      </div>
+      <p class="mt-2 text-[11.5px] text-slate-400">{{ bgHint }} Saved to your account.</p>
+      <div v-if="bg.mode === 'photo' && bg.image" class="mt-3 flex items-center gap-3.5 rounded-2xl border border-slate-200 bg-slate-50 p-2.5">
+        <img :src="bg.image" alt="Your background photo" class="aspect-video w-28 shrink-0 rounded-xl object-cover shadow-sm ring-1 ring-black/5" />
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-[13px] font-bold text-ink">{{ busyBg === 'upload' ? 'Uploading…' : 'Your photo' }}</p>
+          <p class="truncate text-[11.5px] text-slate-400">Shown softly behind your pages</p>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <button type="button" class="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1.5 text-[12px] font-bold text-brand-700 transition hover:bg-brand-100 disabled:opacity-50"
+                    :disabled="!!busyBg" @click="$refs.bgFile.click()">
+              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.6-4.6a2 2 0 012.8 0L16 16m-2-2l1.6-1.6a2 2 0 012.8 0L20 14M14 8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+              Change
+            </button>
+            <button type="button" class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-bold text-slate-500 transition hover:bg-slate-100 hover:text-rose-600 disabled:opacity-50"
+                    :disabled="!!busyBg" @click="removeBackground">
+              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M10 11v6m4-6v6M9 7l1-3h4l1 3m-9 0l1 13h10l1-13"/></svg>
+              Remove
+            </button>
+          </div>
+        </div>
+      </div>
+      <input ref="bgFile" type="file" accept="image/*" class="hidden" @change="uploadBackground" />
     </div>
 
     <!-- Home currency (saved on change): bills I pay settle in it; other currencies are estimated in it -->
@@ -229,6 +256,8 @@ Setlo.mount({
     presets: [], picking: false,
     theme: SetloTheme.get(), accents: SetloTheme.ACCENTS, hexDraft: SetloTheme.get().custom,
     modes: [{ key: 'light', label: '☀️ Light' }, { key: 'dark', label: '🌙 Dark' }, { key: 'system', label: '🖥 System' }],
+    backgrounds: [{ key: 'badges', label: '🏅 Badges' }, { key: 'plain', label: 'Plain' }, { key: 'photo', label: '🖼 Photo' }],
+    busyBg: null,
     f: { full_name: '', payment_method: 'GCash', payment_account: '' },
     pw: { current: '', new: '', confirm: '' }, serverErrors: {},
   }),
@@ -241,6 +270,14 @@ Setlo.mount({
       return this.f.payment_method === 'Bank Transfer' ? 'Bank & account number' : this.f.payment_method + ' number / name';
     },
     accountPlaceholder() { return this.f.payment_method === 'Bank Transfer' ? 'e.g. BPI 1234-5678-90 · Juan Dela Cruz' : 'e.g. 0917 123 4567 · Juan D.'; },
+    bg() { return this.p?.background || { mode: 'badges', image: null }; },
+    bgHint() {
+      return {
+        badges: 'Your shown badges float behind your pages; hidden ones stay out.',
+        plain: 'Just the soft colour wash, nothing moving.',
+        photo: 'Your photo, softened a little so your cards stay easy to read.',
+      }[this.bg.mode];
+    },
     payUrl() { return this.p ? Setlo.payLink(this.p.pay_code) : ''; },
     qr() { return this.p ? Setlo.qrSvg(this.payUrl) : ''; },
     featuredBadge() {
@@ -257,7 +294,40 @@ Setlo.mount({
     openBadge(a) { Setlo.showAchievement(a); },
     async toggleHidden(a) {
       const r = await Setlo.run(this, () => api.post('achievements.php', { action: 'hide', code: a.code, hidden: !a.hidden }), 'busyAch');
-      if (r) this.ach = r;
+      if (r) { this.ach = r; window.SetloBackground?.refresh(r.badges); }
+    },
+    /** A new backdrop was saved: show it now and keep it in the profile. */
+    applyBackground(r) {
+      if (!r) return;
+      this.p = { ...this.p, background: r.profile.background };
+      window.SetloBackground?.set(r.profile.background);
+    },
+    async setBackground(mode) {
+      if (mode === this.bg.mode || this.busyBg) return;
+      if (mode === 'photo' && !this.bg.image) { this.$refs.bgFile.click(); return; } // no photo yet: pick one first
+      this.applyBackground(await Setlo.run(this, () => api.post('profile.php', { action: 'set_background', mode }), 'busyBg'));
+    },
+    async uploadBackground(e) {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      if (!file.type.startsWith('image/')) { Setlo.toast('Choose a photo.'); return; }
+      this.busyBg = 'crop';
+      try {
+        const photo = await Setlo.cropPhoto(file, { shape: 'rect', aspect: 16 / 9, width: 1600, title: 'Crop your background' });
+        if (!photo) return;
+        this.busyBg = 'upload';
+        const fd = new FormData();
+        fd.append('action', 'upload_background');
+        fd.append('photo', photo, 'background.jpg');
+        this.applyBackground(await api.post('profile.php', fd));
+        Setlo.toast('Background updated', 'ok');
+      } catch (err) { Setlo.toast(err.message); }
+      finally { this.busyBg = null; }
+    },
+    async removeBackground() {
+      const ok = await Setlo.confirm({ title: 'Remove your photo?', text: 'Your background goes back to the floating badges.', confirmText: 'Remove' });
+      if (ok) this.applyBackground(await Setlo.run(this, () => api.post('profile.php', { action: 'remove_background' }), 'busyBg'));
     },
     async feature(a) {
       const r = await Setlo.run(this, () => api.post('achievements.php', { action: 'feature', code: a.code === this.ach.featured ? '' : a.code }), 'busyAch');
