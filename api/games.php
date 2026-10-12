@@ -66,7 +66,7 @@ $for = input('for_user_id') ? (int) input('for_user_id') : null;
 
 if ($action === 'start') {
     $mode = input('mode') === 'live' ? 'live' : 'screen';
-    start_game($bill, $me, (string) input('game', ''), $mode);
+    start_game($bill, $me, (string) input('game', ''), $mode, (int) input('payers', 1));
     if (input('game') === 'skip') {
         json_ok(['redirect' => 'assign-items?bill=' . $bill['id']]);
     }
@@ -82,6 +82,9 @@ if ($action === 'start') {
             break;
         case 'begin':
             begin_game($g, $me);
+            break;
+        case 'spin':
+            game_spin($g, $me);
             break;
         case 'race_go':
             game_race_go($g, $me, $for);

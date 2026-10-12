@@ -2,6 +2,7 @@
 // Fun Mode game screen: Game Options (creator), lobby (live mode), play, and the result. The server holds the
 // game (api/games.php); this page draws it and polls for changes every 1–2 s, paused while the tab is hidden.
 require __DIR__ . '/../includes/bootstrap.php';
+require_once __DIR__ . '/../includes/games.php'; // ROULETTE_SPIN_MS, so later wheel picks spin as long as the first
 $user = require_login();
 $title = 'Fun Mode';
 $nav = 'scan';
@@ -58,6 +59,17 @@ require __DIR__ . '/../partials/head.php';
         <button @click="stepGame(1)" class="carousel-arrow" :disabled="gameIndex >= gameKeys.length - 1" aria-label="Next game">
           <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </button>
+      </div>
+
+      <!-- Roulette: how many people the wheel picks; they split the bill equally -->
+      <div v-if="pick.game === 'roulette' && members.length > 2" class="tile flex items-center gap-3 p-3.5">
+        <div class="min-w-0 flex-1">
+          <p class="text-[13.5px] font-bold text-ink">How many pay?</p>
+          <p class="text-[11.5px] text-slate-500">{{ pick.payers === 1 ? 'One wallet pays it all.' : 'The wheel lands ' + pick.payers + ' times — they split the bill equally.' }}</p>
+        </div>
+        <button @click="setPayers(-1)" class="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-[18px] font-bold text-slate-500 disabled:opacity-30" :disabled="pick.payers <= 1" aria-label="Fewer payers">−</button>
+        <span class="w-5 text-center text-[15px] font-extrabold tabular-nums" aria-live="polite">{{ pick.payers }}</span>
+        <button @click="setPayers(1)" class="flex h-8 w-8 items-center justify-center rounded-full border border-fuchsia-300 text-[18px] font-bold text-fuchsia-600 disabled:opacity-30" :disabled="pick.payers >= members.length - 1" aria-label="More payers">+</button>
       </div>
 
       <!-- slides in when Mystery Card is picked; the card lines are dealt in one by one -->
@@ -218,12 +230,12 @@ require __DIR__ . '/../partials/head.php';
 
     <!-- ===== Roulette: spin the wheel ===== -->
     <template v-else-if="(view === 'playing' || view === 'done') && game.game === 'roulette'">
-      <div class="tile p-5">
-        <p class="text-center text-[13px] font-semibold text-slate-500">{{ landed ? 'The wheel has spoken' : 'Spinning… 🎡' }}</p>
+      <div class="wheel-stage p-5">
+        <p class="wheel-status">{{ wheelStatus }}</p>
         <div class="wheel-wrap mt-4">
           <div class="wheel-pointer" :class="{ flick: spinning }"></div>
           <div class="wheel" :class="{ landed }" :style="wheelStyle">
-            <div v-for="(p, i) in game.players" :key="p.user.id" class="wheel-label" :class="{ win: landed && result && result.payer === p.user.id }"
+            <div v-for="(p, i) in game.players" :key="p.user.id" class="wheel-label" :class="{ win: hits.includes(p.user.id) }"
                  :style="{ transform: 'rotate(' + sliceCenter(i) + 'deg)' }">
               <avatar :user="p.user" :size="34"></avatar>
               <span>{{ who(p.user) }}</span>
@@ -232,10 +244,18 @@ require __DIR__ . '/../partials/head.php';
           <div class="wheel-hub">🎡</div>
         </div>
       </div>
+      <!-- the wheel waits for the host: nothing is picked until they tap Spin -->
+      <button v-if="wheelPhase === 'ready' && game.is_host" @click="post('spin')" class="btn-pill btn-fun" :disabled="busy">Spin the wheel 🎡</button>
       <div v-if="view === 'done' && result && landed" class="pop-in tile !border-amber-300 !bg-amber-50 p-5 text-center">
         <p class="text-[44px]">💸</p>
-        <p class="text-[18px] font-extrabold text-ink">{{ result.payer === me.id ? 'Your wallet has been selected!' : nameOf(result.payer) + '’s wallet has been selected!' }}</p>
-        <p class="mt-1 text-[13px] text-slate-600">{{ result.payer === me.id ? 'You pay' : nameOf(result.payer) + ' pays' }} the whole bill. 🌟 Main Character unlocked.</p>
+        <template v-if="payers.length === 1">
+          <p class="text-[18px] font-extrabold text-ink">{{ payers[0] === me.id ? 'Your wallet has been selected!' : nameOf(payers[0]) + '’s wallet has been selected!' }}</p>
+          <p class="mt-1 text-[13px] text-slate-600">{{ payers[0] === me.id ? 'You pay' : nameOf(payers[0]) + ' pays' }} the whole bill. 🌟 Main Character unlocked.</p>
+        </template>
+        <template v-else>
+          <p class="text-[18px] font-extrabold text-ink">{{ payerNames }}’s wallets have been selected!</p>
+          <p class="mt-1 text-[13px] text-slate-600">They split the whole bill equally. 🌟 Main Character unlocked.</p>
+        </template>
       </div>
     </template>
 
@@ -368,17 +388,21 @@ require __DIR__ . '/../partials/head.php';
 
     <!-- ===== Result: the new shares ===== -->
     <template v-if="view === 'done'">
-      <div v-if="shares && bill.split_mode === 'game'" class="tile p-4">
+      <!-- roulette: the shares would give the payers away, so they wait until the wheel has stopped for good -->
+      <div v-if="shares && bill.split_mode === 'game' && (game.game !== 'roulette' || landed)" class="pop-in tile p-4">
         <p class="section-label">WHAT EVERYONE PAYS</p>
         <div v-for="m in members" :key="m.id" class="flex items-center gap-3 py-1.5">
           <avatar :user="m" :size="26"></avatar>
           <span class="flex-1 text-[13px] font-semibold">{{ who(m) }}</span>
           <span class="text-[13.5px] font-extrabold tabular-nums" :class="shares[m.id] < 0 ? 'text-emerald-600' : shares[m.id] === 0 ? 'text-slate-400' : 'text-ink'">{{ shares[m.id] < 0 ? '+' + peso(-shares[m.id], bill.currency) : peso(shares[m.id] || 0, bill.currency) }}</span>
         </div>
-        <p v-if="result && game.game === 'roulette' && result.payer === bill.payer_id" class="mt-2 rounded-xl bg-emerald-50 p-2.5 text-[12px] font-semibold text-emerald-700">{{ nameOf(bill.payer_id) }} already paid the restaurant, so nobody owes anything!</p>
+        <p v-if="result && game.game === 'roulette' && payers.length === 1 && payers[0] === bill.payer_id" class="mt-2 rounded-xl bg-emerald-50 p-2.5 text-[12px] font-semibold text-emerald-700">{{ nameOf(bill.payer_id) }} already paid the restaurant, so nobody owes anything!</p>
       </div>
-      <a :href="bill.next" class="btn-pill btn-fun">{{ me.is_creator ? 'Continue to split' : 'See the bill' }}</a>
-      <button v-if="me.is_creator && bill.status !== 'settling' && bill.status !== 'closed'" @click="replay" class="btn btn-ghost w-full !text-slate-500" :disabled="busy">Play another game</button>
+      <!-- roulette: nothing to continue to until the wheel has picked everyone -->
+      <button v-if="game.game === 'roulette' && !landed" class="btn-pill btn-fun" disabled>The wheel is spinning…</button>
+      <a v-else :href="bill.next" class="btn-pill btn-fun">{{ me.is_creator ? 'Continue to split' : 'See the bill' }}</a>
+      <button v-if="game.game === 'roulette' && me.is_creator && bill.status !== 'settling' && bill.status !== 'closed'" @click="spinAgain" class="btn btn-ghost w-full !text-fuchsia-600" :disabled="busy || !landed">🔁 Spin again</button>
+      <button v-if="me.is_creator && bill.status !== 'settling' && bill.status !== 'closed'" @click="replay" class="btn btn-ghost w-full !text-slate-500" :disabled="busy || (game.game === 'roulette' && !landed)">Play another game</button>
     </template>
 
     <button v-if="game && me.is_creator && ['lobby', 'playing', 'choosing'].includes(view)" @click="cancel" class="btn btn-ghost w-full !text-slate-400" :disabled="busy">Stop this game</button>
@@ -392,9 +416,9 @@ Setlo.mount({
   data: () => ({
     billId: <?= $billId ?>, loading: true, busy: false,
     bill: null, me: { id: <?= (int) $user['id'] ?>, is_creator: false }, members: [], games: {}, cards: {}, game: null, shares: null,
-    pick: { game: 'roulette', mode: 'screen' }, gameArt: <?= json_encode(url('assets/games/')) ?>, gameArtV: <?= (int) max(array_map('filemtime', glob(__DIR__ . '/../assets/games/*.svg'))) ?>, scrollFrame: null,
+    pick: { game: 'roulette', mode: 'screen', payers: 1 }, gameArt: <?= json_encode(url('assets/games/')) ?>, gameArtV: <?= (int) max(array_map('filemtime', glob(__DIR__ . '/../assets/games/*.svg'))) ?>, scrollFrame: null,
     offset: 0, now: Date.now(), poller: null, ticker: null,
-    angle: 0, spinning: false, landed: false, wheelRaf: null,
+    angle: 0, spinning: false, landed: false, wheelRaf: null, wheelTimer: null, hits: [],
     answerInput: '', basket: {}, revealed: false, replaying: false, lastNudge: 0, reveal: null,
   }),
   computed: {
@@ -424,10 +448,21 @@ Setlo.mount({
     turnLimit() { return Math.round((this.game.turn_limit_ms || 90000) / 1000); },
     validAnswer() { const v = parseFloat(this.answerInput); return v >= 0 && this.answerInput.trim() !== '' && v <= 1000000; },
     basketCount() { return Object.values(this.basket).reduce((a, b) => a + b, 0); },
-    /** 'playing' while the wheel spins, 'done' once the payer is known; anything else is not a roulette on screen. */
+    /** 'ready' until the host taps Spin, 'playing' while the wheel spins, 'done' once the payers are known. */
     wheelPhase() {
       if (!this.game || this.game.game !== 'roulette') return 'none';
-      return this.game.status === 'done' && this.result ? 'done' : this.game.status === 'playing' ? 'playing' : 'none';
+      if (this.game.status === 'done' && this.result) return 'done';
+      if (this.game.status !== 'playing') return 'none';
+      return this.game.deadline_ms ? 'playing' : 'ready';
+    },
+    /** Who the wheel picked, in landing order (older results only have `payer`). */
+    payers() { return this.result ? this.result.payers || [this.result.payer] : []; },
+    payerNames() { return this.payers.map(this.nameOf).join(' & '); },
+    wheelStatus() {
+      if (this.landed) return 'The wheel has spoken';
+      if (this.wheelPhase === 'ready') return this.game.is_host ? 'Ready when you are' : 'Waiting for ' + this.hostName + ' to spin…';
+      if (this.wheelPhase === 'done' && this.payers.length > 1) return `Pick ${Math.min(this.hits.length + 1, this.payers.length)} of ${this.payers.length}…`;
+      return 'Spinning… 🎡';
     },
     wheelStyle() {
       const n = this.game ? this.game.players.length : 0;
@@ -488,6 +523,7 @@ Setlo.mount({
     clearInterval(this.ticker);
     clearTimeout(this.poller);
     cancelAnimationFrame(this.wheelRaf);
+    clearTimeout(this.wheelTimer);
     document.removeEventListener('visibilitychange', this.schedule);
   },
   methods: {
@@ -518,12 +554,17 @@ Setlo.mount({
     },
     // ----- Roulette wheel -----
     sliceCenter(i) { return (i + 0.5) * 360 / this.game.players.length; },
-    /** Spin freely while the game plays; once the server names the payer, ease to a stop with their slice under the pointer. */
+    /**
+     * Spin freely while the game plays; once the server names the payers, ease to a stop on each one in turn
+     * (every spin as long as the first, a pause between), lighting up their seat as the pointer lands on it.
+     */
     syncWheel(snap) {
       cancelAnimationFrame(this.wheelRaf);
+      clearTimeout(this.wheelTimer);
       const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const phase = this.wheelPhase;
       this.spinning = false;
+      this.hits = [];
       if (phase === 'playing') {
         this.landed = false;
         if (calm) return;
@@ -533,18 +574,45 @@ Setlo.mount({
         this.wheelRaf = requestAnimationFrame(step);
       } else if (phase === 'done') {
         const slice = 360 / this.game.players.length;
-        const idx = this.game.players.findIndex((p) => p.user.id === this.result.payer);
-        // anywhere inside the slice, not always dead centre
-        const target = (((-(this.sliceCenter(idx) + (Math.random() - 0.5) * slice * 0.6)) % 360) + 360) % 360;
-        if (snap || calm) { this.angle = target; this.landed = true; return; }
-        const from = ((this.angle % 360) + 360) % 360, to = from + 360 * 4 + (((target - from) % 360) + 360) % 360, ms = 3600, t0 = performance.now();
-        const ease = (x) => 1 - Math.pow(1 - x, 3);
-        const step = (t) => {
-          const k = Math.min(1, (t - t0) / ms);
-          this.angle = from + (to - from) * ease(k);
-          if (k < 1) { this.wheelRaf = requestAnimationFrame(step); } else { this.angle = to % 360; this.landed = true; }
+        // anywhere inside the payer's slice, not always dead centre
+        const targetFor = (uid) => {
+          const idx = this.game.players.findIndex((p) => p.user.id === uid);
+          return (((-(this.sliceCenter(idx) + (Math.random() - 0.5) * slice * 0.6)) % 360) + 360) % 360;
         };
-        this.wheelRaf = requestAnimationFrame(step);
+        const payers = this.payers;
+        if (snap || calm) { this.angle = targetFor(payers[payers.length - 1]); this.hits = [...payers]; this.landed = true; return; }
+        // Ease-out over 3.6 s from full speed (720°/s): about 2–3 turns, so the slow-down starts at the speed it spins at.
+        const ease = (x) => 1 - Math.pow(1 - x, 3);
+        const stop = (n) => {
+          const from = ((this.angle % 360) + 360) % 360, target = targetFor(payers[n]);
+          const to = from + 720 + (((target - from) % 360) + 360) % 360, ms = 3600, t0 = performance.now();
+          this.spinning = false;
+          const step = (t) => {
+            const k = Math.min(1, (t - t0) / ms);
+            this.angle = from + (to - from) * ease(k);
+            if (k < 1) { this.wheelRaf = requestAnimationFrame(step); return; }
+            this.angle = to % 360;
+            this.hits = [...this.hits, payers[n]];
+            if (n + 1 < payers.length) this.wheelTimer = setTimeout(() => spinUp(n + 1), 900);
+            else this.landed = true;
+          };
+          this.wheelRaf = requestAnimationFrame(step);
+        };
+        // Later picks spin up from rest and run free as long as the first pick did (the server's spin time), then stop.
+        const spinUp = (n) => {
+          this.spinning = true;
+          const t0 = performance.now();
+          let last = t0;
+          const step = (t) => {
+            const v = 720 * Math.min(1, (t - t0) / 700);
+            this.angle = (this.angle + v * (t - last) / 1000) % 360;
+            last = t;
+            if (t - t0 < <?= ROULETTE_SPIN_MS ?>) this.wheelRaf = requestAnimationFrame(step);
+            else stop(n);
+          };
+          this.wheelRaf = requestAnimationFrame(step);
+        };
+        stop(0);
       } else {
         this.landed = false;
       }
@@ -622,9 +690,16 @@ Setlo.mount({
         if (best) this.pick.game = best;
       });
     },
+    setPayers(d) { this.pick.payers = Math.min(this.members.length - 1, Math.max(1, this.pick.payers + d)); },
     async start() {
-      const r = await this.post('start', { game: this.pick.game, mode: this.pick.mode });
-      if (r && this.pick.mode === 'live') Setlo.toast('Everyone was notified — waiting for them to join.');
+      const payers = Math.min(this.pick.payers, this.members.length - 1);
+      const r = await this.post('start', { game: this.pick.game, mode: this.pick.mode, payers });
+      if (r && this.pick.mode === 'live') Setlo.toast('Everyone was notified — waiting for them to join.', 'info');
+    },
+    /** Roulette retry: same players, same number of payers, a fresh spin. */
+    async spinAgain() {
+      if (!(await Setlo.confirm({ title: 'Spin again?', text: 'This result is thrown away and the wheel picks again.', confirmText: 'Spin again' }))) return;
+      await this.post('start', { game: 'roulette', mode: this.game.mode, payers: this.game.payers_count || 1 });
     },
     async skip() {
       const r = await Setlo.run(this, () => api.post('games.php', { action: 'start', bill_id: this.billId, game: 'skip' }));

@@ -32,7 +32,7 @@ const CARD_DECK_MIN = 8;                                                // at le
 const CARD_GRAB_CENTS = 1000;
 const GAME_CARD_SECONDS = 45;
 const GAME_CHOOSE_SECONDS = 30;
-const ROULETTE_SPIN_MS = 3500;    // the wheel spins this long, then the screens stop it on the loser
+const ROULETTE_SPIN_MS = 3500;    // after the host taps Spin, the wheel spins this long, then the screens stop it on the loser(s)
 
 const GAME_ANSWER_SECONDS = 90;  // Receipt Race / Closest: the live clock; in a one-phone race, each turn's limit
 const RACE_TOLERANCE_CENTS = 100; // a race answer within ₱1 counts as correct (rounding)
@@ -180,13 +180,13 @@ function build_closest(array $items): array
     return ['items' => $list, 'target' => max($target, (int) ceil($cheapest / 100) * 100)];
 }
 
-/** Milliseconds until the playing phase's deadline, or null for none (one screen, no clock). */
+/** Milliseconds until the playing phase's deadline, or null for none (one screen, no clock; roulette waits for Spin). */
 function game_play_ms(string $game, bool $live, int $players): ?int
 {
     return match ($game) {
         'race', 'closest' => $live ? GAME_ANSWER_SECONDS * 1000 : null,
         'cards'    => $live ? GAME_CARD_SECONDS * 1000 : null,
-        'roulette' => ROULETTE_SPIN_MS,
+        'roulette' => null,
     };
 }
 
@@ -202,8 +202,11 @@ function game_touch(array $g): void
     q('UPDATE game_sessions SET version = version + 1 WHERE id = ?', [$g['id']]);
 }
 
-/** Start a game ($game 'skip' records that the creator chose a normal split). Replaces any earlier game. */
-function start_game(array $bill, array $me, string $game, string $mode): void
+/**
+ * Start a game ($game 'skip' records that the creator chose a normal split). Replaces any earlier game.
+ * $payers: Roulette only — how many people the wheel picks to split the bill (at least one player is spared).
+ */
+function start_game(array $bill, array $me, string $game, string $mode, int $payers = 1): void
 {
     require_creator($bill, $me);
     require_editable($bill);
@@ -218,6 +221,9 @@ function start_game(array $bill, array $me, string $game, string $mode): void
         }
         if (!q('SELECT 1 FROM receipt_items WHERE bill_id = ? AND unit_price > 0', [$bill['id']])->fetchColumn()) {
             fail('Add the receipt items first.', 422);
+        }
+        if ($game === 'roulette' && ($payers < 1 || $payers >= count($members))) {
+            fail('Pick how many pay.', 422);
         }
     }
     $ids = array_column($members, 'id');
@@ -238,7 +244,7 @@ function start_game(array $bill, array $me, string $game, string $mode): void
         $state = match ($game) {
             'race'     => ['race' => build_race($items)],
             'closest'  => ['closest' => build_closest($items)],
-            'roulette' => ['order' => game_shuffle($ids)],   // knock-out order; the last one pays
+            'roulette' => ['order' => game_shuffle($ids), 'payers' => $payers],   // knock-out order; the last $payers pay
             'cards'    => ['deck' => build_deck(count($ids)), 'x' => card_amount(compute_percent_shares($bill, $members, $items)['total'], count($ids))],
         };
         $ms = $live ? null : game_play_ms($game, false, count($ids));
@@ -309,6 +315,20 @@ function game_actor(array $g, array $me, ?int $forUserId): array
         fail('Play your own turn on your phone.', 403);
     }
     return $player;
+}
+
+/** Roulette: the host taps Spin — the wheel turns for ROULETTE_SPIN_MS, then the game picks the payers. */
+function game_spin(array $g, array $me): void
+{
+    if ($g['game'] !== 'roulette' || $g['status'] !== 'playing') {
+        fail('The wheel isn’t ready to spin.', 409);
+    }
+    if ($g['host_id'] !== $me['id']) {
+        fail('Only the person who started the game can spin the wheel.', 403);
+    }
+    if ($g['deadline_ms'] === null) {
+        game_update($g, 'deadline_at = DATE_ADD(NOW(3), INTERVAL ? MICROSECOND)', [ROULETTE_SPIN_MS * 1000]);
+    }
 }
 
 /** One-phone Receipt Race: the player has the phone and taps Go — their clock starts now, on the server. */
@@ -677,11 +697,15 @@ function finish_game(array $g): bool
             $result = ['target' => $target, 'winners' => $winners];
             game_winners_pay_nothing($bill, $ids, $winners, $result, 'bullseye');
         } elseif ($g['game'] === 'roulette') {
+            // The last players in the knock-out order pay, in the order the wheel lands on them.
             $order = array_values(array_intersect($g['state']['order'], $ids));
-            $payer = end($order);
-            $result = ['payer' => $payer, 'order' => $order];
-            apply_game_result($bill, array_map(fn ($uid) => $uid === $payer ? 1 : 0, array_combine($ids, $ids)));
-            award($payer, 'main_character', $bill['id']);
+            $k = max(1, min((int) ($g['state']['payers'] ?? 1), count($order) - 1));
+            $payers = array_slice(array_reverse($order), 0, $k);
+            $result = ['payers' => $payers, 'payer' => $payers[0], 'order' => $order];
+            apply_game_result($bill, array_map(fn ($uid) => in_array($uid, $payers, true) ? 1 : 0, array_combine($ids, $ids)));
+            foreach ($payers as $uid) {
+                award($uid, 'main_character', $bill['id']);
+            }
         } else {
             $cards = player_cards($g, $players);
             $targets = [];
@@ -749,6 +773,9 @@ function game_payload(array $g, array $me): array
     }
     if ($g['game'] === 'closest') {
         $out['closest'] = $g['state']['closest'];
+    }
+    if ($g['game'] === 'roulette') {
+        $out['payers_count'] = (int) ($g['state']['payers'] ?? 1);
     }
     if ($g['game'] === 'cards') {
         $out['x'] = $g['state']['x'];
