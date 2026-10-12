@@ -584,14 +584,14 @@
   /* Roulette */
   /* Seats grow only a little when highlighted, so they stay inside the card's padding and clear of the title */
   /* Spin the wheel: the slices are a conic-gradient set inline (pages/game.php); labels are rotated to each slice's middle */
-  .wheel-wrap { @apply relative mx-auto aspect-square w-full max-w-[300px]; }
+  .wheel-wrap { @apply relative mx-auto aspect-square w-full max-w-[300px] sm:max-w-[440px] lg:max-w-[500px]; }
   .wheel { @apply absolute inset-[10px] rounded-full ring-[6px] ring-white; box-shadow: 0 14px 30px -10px rgb(0 0 0 / .45), inset 0 0 0 2px rgb(0 0 0 / .08); will-change: transform; }
-  .wheel-label { @apply absolute inset-0 flex flex-col items-center gap-1 pt-[9%] text-white transition-opacity duration-500; text-shadow: 0 1px 3px rgb(0 0 0 / .55); }
-  .wheel-label > span { @apply max-w-[4.5rem] truncate text-[11px] font-extrabold; }
+  .wheel-label { @apply absolute inset-0 flex flex-col items-center gap-1 pt-[8%] text-white transition-opacity duration-500; text-shadow: 0 1px 3px rgb(0 0 0 / .55); }
+  .wheel-label > span { @apply max-w-[4.5rem] truncate text-[11px] font-extrabold sm:max-w-[6rem] sm:text-[13px]; }
   .wheel-label .av { box-shadow: 0 0 0 2px rgb(255 255 255 / .9); }
   .wheel.landed .wheel-label:not(.win) { opacity: .5; }
   .wheel-label.win .av { box-shadow: 0 0 0 3px #fde047, 0 0 16px 4px rgb(253 224 71 / .8); }
-  .wheel-hub { @apply absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white text-[26px] shadow-lg ring-4 ring-fuchsia-500; }
+  .wheel-hub { @apply absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white text-[26px] sm:h-20 sm:w-20 sm:text-[34px] shadow-lg ring-4 ring-fuchsia-500; }
   .wheel-pointer { @apply absolute left-1/2 top-0 z-10 -translate-x-1/2; width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent; border-top: 26px solid #f59e0b; filter: drop-shadow(0 3px 2px rgb(0 0 0 / .35)); }
   .wheel-pointer.flick { animation: wheel-flick .16s ease-in-out infinite; transform-origin: 50% 0; }
   @keyframes wheel-flick { 0%, 100% { transform: translateX(-50%) rotate(-7deg); } 50% { transform: translateX(-50%) rotate(7deg); } }
