@@ -12,7 +12,7 @@ $back = $adding ? 'review-items.php?bill=' . $billId : ($billId ? 'my-bills?edit
 $headExtra = ['assets/js/docscan-core.js', 'assets/js/docscan.js'];
 require __DIR__ . '/../partials/head.php';
 ?>
-<div id="app" class="device device-narrow" v-cloak>
+<div id="app" class="device" v-cloak>
 
   <div class="app-hero px-5 pb-5 pt-8">
     <div class="flex items-center gap-3">

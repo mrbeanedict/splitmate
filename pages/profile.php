@@ -6,9 +6,9 @@ $nav = 'profile';
 $back = 'dashboard.php';
 require __DIR__ . '/../partials/head.php';
 ?>
-<div id="app" class="device device-narrow" v-cloak>
+<div id="app" class="device" v-cloak>
 
-  <div class="app-hero px-5 pb-6 pt-8">
+  <div class="app-hero px-5 pb-5 pt-8">
     <div class="flex items-center gap-3">
       <?php require __DIR__ . '/../partials/back.php'; ?>
       <h1 class="flex-1 text-[21px] font-extrabold tracking-tight">Profile</h1>
@@ -30,7 +30,7 @@ require __DIR__ . '/../partials/head.php';
   </div>
 
   <spinner v-if="loading"></spinner>
-  <div v-else class="flex-1 space-y-5 px-5 pb-6 pt-5">
+  <div v-else class="flex-1 space-y-5 px-5 pb-6 pt-4">
 
     <!-- Money owed to me, and unfinished installments -->
     <div v-if="money" class="tile p-4">

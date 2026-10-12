@@ -49,7 +49,7 @@ require __DIR__ . '/../partials/head.php';
   </div>
 
   <spinner v-else-if="loading"></spinner>
-  <div v-else class="flex-1 space-y-5 px-5 pb-6 pt-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5 lg:space-y-0">
+  <div v-else class="flex-1 space-y-5 px-5 pb-6 pt-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5 lg:space-y-0">
 
     <!-- Headline numbers -->
     <div class="grid grid-cols-2 gap-3 lg:col-span-2 lg:grid-cols-4">
