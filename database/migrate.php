@@ -336,9 +336,20 @@ $steps = [
        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
        INDEX (status, created_at)
      ) ENGINE=InnoDB",
+    // First-visit dashboard tour (assets/js/tour.js): when the user finished or skipped it
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarded_at DATETIME NULL AFTER bg_image',
+    // Guest access: a guest member's private link to see their share without an account (pages/guest.php)
+    'ALTER TABLE bill_members ADD COLUMN IF NOT EXISTS view_token CHAR(24) NULL UNIQUE AFTER game_share',
 ];
+$hadTour = (bool) db()->query("SHOW COLUMNS FROM users LIKE 'onboarded_at'")->fetch();
 foreach ($steps as $sql) {
     db()->exec($sql);
+}
+// The tour is for new sign-ups: accounts from before it existed count as already shown it.
+if (!$hadTour) {
+    q('UPDATE users SET onboarded_at = NOW() WHERE onboarded_at IS NULL');
+    echo "Marked existing accounts as past the dashboard tour.
+";
 }
 
 // Bills scanned before receipts had their own table: turn each one's photo and totals into a receipt.

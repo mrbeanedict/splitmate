@@ -2,9 +2,13 @@
 require __DIR__ . '/../includes/bootstrap.php';
 require __DIR__ . '/../includes/google.php';
 $next = safe_next((string) ($_GET['next'] ?? ''));
+// From a guest's private link (pages/guest.php): their bill and payments come along into the new account
+$claim = claim_param();
+$peek = $claim ? guest_peek($claim) : null;
 if (current_user()) {
-    redirect($next ? 'pages/' . $next : '');
+    redirect($claim ? 'pages/guest?t=' . $claim : ($next ? 'pages/' . $next : ''));
 }
+$bannerText = $peek ? 'Your share of <b>' . h($peek['bill']) . '</b> from ' . h($peek['creator']) . ' comes with you. Nothing to re-enter.' : '';
 $title = 'Create Account';
 $bodyClass = 'landing-body';
 $headExtra = ['assets/fonts/caveat-latin.woff2', 'assets/js/google-auth.js'];
@@ -13,11 +17,17 @@ require __DIR__ . '/../partials/auth-landing-top.php';
 ?>
 <div id="app" class="landing-card" v-cloak>
   <div class="flex flex-col items-center text-center">
-    <a href="<?= h(url('')) ?>" aria-label="Back to Setlo home"><span class="logo-tile h-14 w-14 rounded-[18px] text-[30px]">₱</span></a>
+    <a href="<?= h(url('')) ?>" aria-label="Back to Setlo home"><img src="<?= h(url('assets/icons/icon-192.png')) ?>" alt="" class="logo-img h-14 w-14 rounded-[18px]" /></a>
     <h2 class="mt-3 text-[22px] font-extrabold text-slate-800">Create your account</h2>
     <p class="mt-1 max-w-[280px] text-[14px] leading-snug text-slate-500">Start splitting bills with your barkada in seconds.</p>
   </div>
 
+<?php if ($peek): ?>
+  <div class="mt-5 flex items-start gap-3 rounded-2xl bg-brand-50 px-4 py-3 text-left" style="background:var(--tint)">
+    <img src="<?= h(url('assets/mascot/thumbs.png')) ?>" alt="" class="h-12 w-auto shrink-0" />
+    <p class="text-[13px] leading-snug text-slate-600"><?= $bannerText ?></p>
+  </div>
+<?php endif; ?>
   <div ref="google" class="mt-6 flex min-h-[52px] justify-center"></div>
   <div class="my-5 flex items-center gap-3 text-[12px] text-slate-400"><span class="h-px flex-1 bg-slate-200"></span>or sign up with email<span class="h-px flex-1 bg-slate-200"></span></div>
 
@@ -76,19 +86,22 @@ require __DIR__ . '/../partials/auth-landing-top.php';
   </form>
 
   <p class="mt-6 text-center text-[14px] text-slate-600">
-    Already have an account? <a href="login<?= $next ? '?next=' . h(urlencode($next)) : '' ?>" class="font-bold text-brand-700 hover:underline">Log in</a>
+    Already have an account? <a href="login<?= $claim ? '?claim=' . h($claim) : ($next ? '?next=' . h(urlencode($next)) : '') ?>" class="font-bold text-brand-700 hover:underline">Log in</a>
+    <span class="mt-2 block"><a href="try" class="font-semibold text-slate-500 hover:text-brand-700 hover:underline"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true" style="display:inline;margin-right:.35rem;vertical-align:-3px"><circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></svg>Sign in as guest</a></span>
   </p>
 </div>
 
 <?php require __DIR__ . '/../partials/auth-landing-bottom.php'; ?>
 <script>
 const NEXT = <?= json_encode($next) ?>;
+const CLAIM = <?= json_encode($claim) ?>;
+const CLAIM_NAME = <?= json_encode($peek['guest'] ?? '') ?>;
 const GOOGLE_CLIENT_ID = <?= json_encode(google_client_id()) ?>;
 
 Setlo.mount({
   mixins: [Setlo.validation],
   data: () => ({
-    f: { full_name: '', email: '', password: '', password_confirm: '', agree: false },
+    f: { full_name: CLAIM_NAME, email: '', password: '', password_confirm: '', agree: false },
     serverErrors: {}, error: '', showPw: false, busy: false,
   }),
   mounted() {
@@ -96,7 +109,8 @@ Setlo.mount({
       clientId: GOOGLE_CLIENT_ID,
       label: 'Sign up with Google',
       text: 'signup_with',
-      onSuccess: (r) => { location.href = Setlo.afterSignUp(r, NEXT); },
+      claim: CLAIM,
+      onSuccess: (r) => { location.href = Setlo.afterSignUp(r, r.claimed || NEXT); },
       onError: (message) => { this.error = message; },
     });
   },
@@ -117,8 +131,8 @@ Setlo.mount({
 
       this.busy = true;
       try {
-        const r = await api.post('auth.php', { action: 'register', ...this.f, full_name: this.f.full_name.trim() });
-        location.href = Setlo.afterSignUp(r, NEXT);
+        const r = await api.post('auth.php', { action: 'register', ...this.f, full_name: this.f.full_name.trim(), claim: CLAIM });
+        location.href = Setlo.afterSignUp(r, r.claimed || NEXT);
       } catch (e) {
         this.serverErrors = e.data.fields || {};
         if (!e.data.fields) this.error = e.message;

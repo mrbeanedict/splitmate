@@ -5,6 +5,9 @@ $title = 'Dashboard';
 $nav = 'dashboard';
 $hour = (int) date('G');
 $greeting = $hour < 12 ? 'Good morning,' : ($hour < 18 ? 'Good afternoon,' : 'Good evening,');
+// First visit after signing up: the mascot's tour of the app (assets/js/tour.js), until finished or skipped
+$showTour = q('SELECT onboarded_at FROM users WHERE id = ?', [$user['id']])->fetchColumn() === null;
+$headExtra = ['assets/css/tour.css', 'assets/js/tour.js'];
 require __DIR__ . '/../partials/head.php';
 ?>
 <div id="app" class="device" v-cloak>
@@ -16,21 +19,41 @@ require __DIR__ . '/../partials/head.php';
         <h1 class="text-[22px] font-extrabold leading-tight tracking-tight"><?= h($user['full_name']) ?></h1>
       </div>
       <div class="flex items-center gap-2.5">
-        <notif-bell></notif-bell>
-        <div class="relative">
+        <notif-bell data-tour="bell"></notif-bell>
+        <div class="relative" data-tour="account">
           <?php $photo = avatar_url($user['avatar'], $user['id']); ?>
           <button class="glass-btn<?= $photo ? ' overflow-hidden !bg-white/90 p-0.5' : '' ?>" @click="menu = !menu" aria-label="Account menu"><?php if ($photo): ?><img src="<?= h($photo) ?>" alt="" class="h-full w-full rounded-full object-cover" /><?php else: ?><?= h(initials($user['full_name'])) ?><?php endif; ?></button>
-          <div v-if="menu" class="hero-pop tile absolute right-0 top-12 z-40 w-56 overflow-hidden text-slate-800 shadow-xl">
+          <div v-if="menu" class="hero-pop tile acct-menu absolute right-0 top-12 z-40 overflow-hidden text-slate-800 shadow-xl">
             <div class="border-b border-slate-100 px-4 py-3">
               <p class="text-sm font-bold text-ink"><?= h($user['full_name']) ?></p>
-              <p class="text-xs text-slate-400"><?= h($user['email']) ?> · <?= h($user['payment_method']) ?></p>
+              <p class="truncate text-xs text-slate-400"><?= h($user['email']) ?> · <?= h($user['payment_method']) ?></p>
             </div>
-            <a href="profile" class="block px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Profile &amp; payment QR</a>
-            <a href="landing#reviews" class="block px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Rate Setlo</a>
-            <a href="stats" class="block px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Spending stats</a>
+<?php
+// Each row: [href or null for a button, icon colour, icon paths, title, description, extra attributes]
+$chevron = '<svg class="acct-chev" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></svg>';
+$acctRows = [
+    ['profile', 'c-brand', '<circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/>', 'Profile &amp; payment QR', 'Photo, name and Pay-me QR'],
+    ['landing#reviews', 'c-amber', '<path stroke-linejoin="round" d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>', 'Rate Setlo', "Tell us how we're doing"],
+    ['stats', 'c-indigo', '<path stroke-linecap="round" stroke-linejoin="round" d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', 'Spending stats', 'Monthly totals and favorite spots'],
+    [null, 'c-violet', '<path stroke-linecap="round" stroke-linejoin="round" d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>', 'Replay the tour', 'Walk through Setlo again'],
+];
+foreach ($acctRows as [$href, $color, $paths, $title, $desc]):
+    $inner = '<span class="acct-ic ' . $color . '"><svg fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24">' . $paths . '</svg></span>'
+        . '<span class="acct-body"><span class="acct-title">' . $title . '</span><span class="acct-desc">' . h($desc) . '</span></span>' . $chevron;
+?>
+<?php if ($href): ?>
+            <a href="<?= $href ?>" class="acct-item"><?= $inner ?></a>
+<?php else: ?>
+            <button type="button" class="acct-item" @click="replayTour"><?= $inner ?></button>
+<?php endif; ?>
+<?php endforeach; ?>
             <form method="post" action="logout" class="border-t border-slate-100">
               <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>" />
-              <button class="w-full px-4 py-3 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50">Sign out</button>
+              <button class="acct-item acct-out">
+                <span class="acct-ic c-rose"><svg fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg></span>
+                <span class="acct-body"><span class="acct-title">Sign out</span><span class="acct-desc">Log out of Setlo on this device</span></span>
+                <?= $chevron ?>
+              </button>
             </form>
           </div>
         </div>
@@ -40,7 +63,7 @@ require __DIR__ . '/../partials/head.php';
 
   <div class="relative z-10 -mt-10 flex-1 space-y-6 px-5 pb-6">
     <!-- Owe / owed summary -->
-    <div class="tile grid grid-cols-2 divide-x divide-slate-100 py-4 shadow-lg shadow-slate-900/5">
+    <div class="tile grid grid-cols-2 divide-x divide-slate-100 py-4 shadow-lg shadow-slate-900/5" data-tour="balance">
       <a href="my-settlements" class="px-4">
         <p class="text-[12px] font-medium text-slate-500">You owe</p>
         <p class="mt-0.5 text-[22px] font-extrabold tracking-tight text-rose-500">{{ (d.owe.estimated ? "≈ " : "") + peso(d.owe.total, d.owe.currency) }}</p>
@@ -55,7 +78,7 @@ require __DIR__ . '/../partials/head.php';
 
     <!-- Quick actions -->
     <div class="grid grid-cols-4 gap-2">
-      <a href="my-bills?new=1" class="flex flex-col items-center gap-1.5">
+      <a href="my-bills?new=1" class="flex flex-col items-center gap-1.5" data-tour="new-bill">
         <div class="qa-icon bg-brand-100/70 text-brand-600">
           <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V6a2 2 0 012-2h2M16 4h2a2 2 0 012 2v2M20 16v2a2 2 0 01-2 2h-2M8 20H6a2 2 0 01-2-2v-2M8 12h8"/></svg>
         </div>
@@ -94,7 +117,7 @@ require __DIR__ . '/../partials/head.php';
 
     <div class="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
     <!-- Active bills -->
-    <section>
+    <section data-tour="bills">
       <div class="mb-3 flex items-center justify-between">
         <h2 class="text-[15px] font-extrabold text-ink">Active Bills</h2>
         <a href="my-bills" class="text-[13px] font-bold text-brand-700">See all</a>
@@ -136,6 +159,7 @@ require __DIR__ . '/../partials/head.php';
 </div>
 
 <script>
+const SHOW_TOUR = <?= $showTour ? 'true' : 'false' ?>;
 Setlo.mount({
   data: () => ({
     loading: true, menu: false,
@@ -145,9 +169,15 @@ Setlo.mount({
   async mounted() {
     document.addEventListener('click', (e) => { if (!e.target.closest('[aria-label="Account menu"]') && !e.target.closest('form')) this.menu = false; });
     await Setlo.load(this, 'dashboard.php', null, (r) => { this.d = r; });
+    // The tour first, so a badge pop-up never opens on top of it
+    if (SHOW_TOUR) await SetloTour.start();
     this.showNewAchievements();
   },
   methods: {
+    replayTour() {
+      this.menu = false;
+      SetloTour.start({ replay: true });
+    },
     /** Badges earned while away (someone else's action earned them): their pop-ups, once. */
     async showNewAchievements() {
       try {

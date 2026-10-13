@@ -65,6 +65,24 @@ function login_throttle(string $email, string $ip): void
     }
 }
 
+/**
+ * Sign-up/sign-in that came from a guest link: take that guest's bill over into this account. Returns where to go
+ * next (the bill), or null when there was no link or it no longer works — signing in never fails because of it.
+ */
+function claim_after_auth(int $userId): ?string
+{
+    $token = (string) input('claim', '');
+    if ($token === '') {
+        return null;
+    }
+    try {
+        $billId = claim_guest_account($token, $userId);
+    } catch (ApiError $e) {
+        return null;
+    }
+    return bill_link(q('SELECT * FROM bills WHERE id = ?', [$billId])->fetch(), $userId);
+}
+
 switch ($action) {
     case 'login':
         $email = strtolower(str_input('email', 190));
@@ -100,6 +118,7 @@ switch ($action) {
         json_ok([
             'role'     => $u['role'],
             'redirect' => $u['role'] === 'admin' ? 'admin-dashboard' : 'dashboard',
+            'claimed'  => $u['role'] === 'user' ? claim_after_auth((int) $u['id']) : null,
             'csrf'     => csrf_token(),
         ]);
 
@@ -132,9 +151,10 @@ switch ($action) {
             "INSERT INTO users (full_name, email, password_hash, payment_method, avatar_color, pay_code) VALUES (?, ?, ?, 'GCash', ?, ?)",
             [trim($name), $email, password_hash($password, PASSWORD_DEFAULT), $palette[array_rand($palette)], new_pay_code()]
         );
-        login_user((int) db()->lastInsertId(), true);
-        // First stop for a new account: pick a profile picture (pages/choose-photo.php)
-        json_ok(['redirect' => 'choose-photo', 'new' => true, 'csrf' => csrf_token()]);
+        $newId = (int) db()->lastInsertId();
+        login_user($newId, true);
+        // First stop for a new account: pick a profile picture (pages/choose-photo.php). From a guest link, the guest's bill comes along.
+        json_ok(['redirect' => 'choose-photo', 'new' => true, 'claimed' => claim_after_auth($newId), 'csrf' => csrf_token()]);
 
     case 'google':
         // Sign in or sign up with a Google ID token from Google Identity Services.
@@ -170,7 +190,7 @@ switch ($action) {
             $isNew = true;
         }
         login_user($userId, (bool) input('remember', true));
-        json_ok(['redirect' => $isNew ? 'choose-photo' : 'dashboard', 'new' => $isNew, 'csrf' => csrf_token()]);
+        json_ok(['redirect' => $isNew ? 'choose-photo' : 'dashboard', 'new' => $isNew, 'claimed' => claim_after_auth($userId), 'csrf' => csrf_token()]);
 
     case 'forgot':
         // Step 1: email a 6-digit code. The reply is the same whether or not the email has an account,

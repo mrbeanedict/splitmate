@@ -1320,5 +1320,5 @@
       .then((ok) => { if (ok) form.submit(); });
   }, true);
 
-  global.Setlo = { mount, run, load, useCurrency, allocate, roundShares, convertShares, currencies: CURRENCIES, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', confirm: confirmDialog, alert: alertDialog, promptText, showCopy, escapeHtml, payLink, qrSvg, qrPng, showPayQr, groupByReceipt, toggleArchive, afterSignUp, cropPhoto, captureCamera, compressImage, photoViewer, showAchievements, showAchievement: (a) => achievementModal(a, { reopened: true }), ...helpers };
+  global.Setlo = { mount, run, load, useCurrency, allocate, roundShares, convertShares, currencies: CURRENCIES, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', confirm: confirmDialog, alert: alertDialog, promptText, showCopy, escapeHtml, payLink, qrSvg, qrPng, showPayQr, groupByReceipt, toggleArchive, afterSignUp, cropPhoto, captureCamera, compressImage, photoViewer, confetti, showAchievements, showAchievement: (a) => achievementModal(a, { reopened: true }), ...helpers };
 })(window);

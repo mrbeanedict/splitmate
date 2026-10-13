@@ -445,6 +445,7 @@
     @apply inline-flex shrink-0 items-center justify-center bg-gradient-to-br from-brand-500 to-brand-700 font-extrabold text-white;
     box-shadow: 0 12px 24px -10px rgb(var(--brand-600) / .7), inset 0 1px 0 rgb(255 255 255 / .25);
   }
+  .logo-img { display: block; flex-shrink: 0; object-fit: cover; box-shadow: 0 12px 24px -10px rgb(var(--brand-600) / .7); }
   .landing-input { @apply h-[52px] w-full rounded-2xl border-[1.5px] border-transparent bg-[color:var(--field)] pl-12 pr-4 text-[15px] text-ink transition placeholder:text-slate-400 focus:border-brand-500 focus:bg-surface focus:outline-none focus:ring-4 focus:ring-brand-500/[.12]; }
   .landing-input-icon { @apply pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500; }
   .landing-feature-icon { @apply flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-surface/85 text-brand-600 shadow-sm ring-1 ring-brand-100; }
@@ -918,3 +919,30 @@ html.dark .wheel-hub { background-color: rgb(var(--surface)); }
 html.dark .mcard-front { --tw-ring-color: rgb(217 70 239 / .45); }
 html.dark .progress-muted > span { background-color: rgb(var(--slate-300)); }
 html.dark .ring-fuchsia-200, html.dark .ring-fuchsia-300, html.dark .ring-violet-200 { --tw-ring-color: rgb(255 255 255 / .14); }
+
+/* Dashboard account menu (avatar pop-up): icon, title with a one-line description, and a chevron per row */
+.acct-menu { width: 18rem; max-width: calc(100vw - 2rem); }
+.acct-item { display: flex; width: 100%; align-items: center; gap: .75rem; padding: .65rem 1rem; text-align: left; color: rgb(var(--ink)); transition: background-color .15s; }
+.acct-item:hover { background-color: var(--field); }
+.acct-ic { display: grid; place-items: center; flex-shrink: 0; width: 2.25rem; height: 2.25rem; border-radius: .75rem; }
+.acct-ic svg { width: 1.15rem; height: 1.15rem; }
+.acct-ic.c-brand { background: var(--tint); color: rgb(var(--brand-700)); }
+.acct-ic.c-amber { background: rgb(254 243 199); color: rgb(217 119 6); }
+.acct-ic.c-indigo { background: rgb(224 231 255); color: rgb(99 102 241); }
+.acct-ic.c-violet { background: rgb(237 233 254); color: rgb(124 58 237); }
+.acct-ic.c-rose { background: rgb(255 228 230); color: rgb(225 29 72); }
+.acct-body { min-width: 0; flex: 1; }
+.acct-title { display: block; font-size: .875rem; font-weight: 700; line-height: 1.25; }
+.acct-desc { display: block; margin-top: 1px; font-size: 11.5px; line-height: 1.3; color: rgb(148 163 184); }
+.acct-chev { width: 1rem; height: 1rem; flex-shrink: 0; color: rgb(203 213 225); transition: transform .15s; }
+.acct-item:hover .acct-chev { transform: translateX(2px); color: rgb(var(--brand-500)); }
+.acct-item.acct-out .acct-title { color: rgb(225 29 72); }
+.acct-item.acct-out:hover { background-color: rgb(255 241 242); }
+html.dark .acct-ic.c-amber { background: rgb(245 158 11 / .16); color: rgb(251 191 36); }
+html.dark .acct-ic.c-indigo { background: rgb(99 102 241 / .18); color: rgb(165 180 252); }
+html.dark .acct-ic.c-violet { background: rgb(139 92 246 / .18); color: rgb(196 181 253); }
+html.dark .acct-ic.c-rose { background: rgb(244 63 94 / .16); color: rgb(251 113 133); }
+html.dark .acct-ic.c-brand { color: rgb(var(--brand-300)); }
+html.dark .acct-chev { color: rgb(71 85 105); }
+html.dark .acct-item.acct-out .acct-title { color: rgb(251 113 133); }
+html.dark .acct-item.acct-out:hover { background-color: rgb(244 63 94 / .12); }

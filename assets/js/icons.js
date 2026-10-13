@@ -1,0 +1,59 @@
+// Line icons (24×24, stroke = currentColor) for the guest pages, the mascot pop-up and the tour, in the same style as
+// the sidebar icons in partials/nav.php. Exposes window.SetloIcons.svg(name, size = 20) → an <svg> string.
+(function (global) {
+  const P = (d) => `<path stroke-linecap="round" stroke-linejoin="round" d="${d}"/>`;
+  const ICONS = {
+    receipt: P('M6 3h12v18l-3-2-3 2-3-2-3 2V3zM9 8h6M9 12h6'),
+    scan: P('M4 8V6a2 2 0 012-2h2M16 4h2a2 2 0 012 2v2M20 16v2a2 2 0 01-2 2h-2M8 20H6a2 2 0 01-2-2v-2M8 12h8'),
+    wallet: '<rect x="3" y="6" width="18" height="14" rx="2.5"/>' + P('M16 13h2M3 10h14a2 2 0 012 2'),
+    users: '<circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/>' + P('M3 19c.8-3 3.2-4.6 6-4.6s5.2 1.6 6 4.6M15.5 14.6c2.6-.3 4.6 1.2 5.5 4.4'),
+    trophy: P('M8 21h8m-4-4v4m-5-17h10v5a5 5 0 01-10 0V4zM7 6H4v1a3 3 0 003 3m10-4h3v1a3 3 0 01-3 3'),
+    save: P('M5 4h11l3 3v13H5V4zM8 4v5h7M8 20v-6h8v6'),
+    clock: '<circle cx="12" cy="12" r="9"/>' + P('M12 7v5l3 2'),
+    lock: '<rect x="5" y="11" width="14" height="9" rx="2"/>' + P('M8 11V8a4 4 0 018 0v3'),
+    check: P('M5 13l4 4L19 7'),
+    x: P('M6 6l12 12M18 6L6 18'),
+    star: P('M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z'),
+    link: P('M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1'),
+    warn: P('M12 9v4m0 4h.01M10.3 3.9L2.4 18a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z'),
+    sparkle: P('M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z'),
+    thumbs: P('M7 11v9H4v-9h3zM7 11l4-7a2 2 0 012 2v3h5.5a2 2 0 012 2.3l-1 6A2 2 0 0117.5 20H7'),
+    help: '<circle cx="12" cy="12" r="9"/>' + P('M9.5 9.5a2.5 2.5 0 114 2c-.8.6-1.5 1-1.5 2M12 17h.01'),
+    search: '<circle cx="11" cy="11" r="6"/>' + P('M20 20l-4.5-4.5'),
+    bolt: P('M13 3L5 14h6l-1 7 8-11h-6l1-7z'),
+    cash: '<rect x="3" y="7" width="18" height="10" rx="2"/><circle cx="12" cy="12" r="2.5"/>',
+    phone: '<rect x="7" y="3" width="10" height="18" rx="2"/>' + P('M11 18h2'),
+    eye: P('M2.04 12.32a1 1 0 010-.64C3.42 7.51 7.36 4.5 12 4.5s8.57 3.01 9.96 7.18a1 1 0 010 .64C20.58 16.49 16.64 19.5 12 19.5s-8.57-3.01-9.96-7.18z') + '<circle cx="12" cy="12" r="3"/>',
+    user: '<circle cx="12" cy="8" r="4"/>' + P('M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5'),
+    shield: P('M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3zM9 12l2 2 4-4'),
+    ticket: P('M4 8a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 000 4v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2a2 2 0 000-4V8zM13 6v2m0 3v2m0 3v2'),
+    coins: '<ellipse cx="12" cy="6" rx="7" ry="3"/>' + P('M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6'),
+    globe: '<circle cx="12" cy="12" r="9"/>' + P('M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z'),
+    undo: P('M7 10h10M7 14h6M17 3l4 4-4 4M21 7H9a6 6 0 00-6 6v0a6 6 0 006 6h3'),
+    qr: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>' + P('M14 14h3v3M21 14v.01M14 21h3M21 17v4'),
+    award: '<circle cx="12" cy="9" r="6"/>' + P('M8.5 14L7 21l5-3 5 3-1.5-7'),
+    moon: P('M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z'),
+    play: P('M8 5l11 7-11 7V5z'),
+    bell: P('M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9'),
+    folder: P('M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z'),
+    pointer: P('M9 11V5a1.5 1.5 0 013 0v5l3.5.7a2 2 0 011.5 2V16a6 6 0 01-6 6h-1a5 5 0 01-4-2l-3-4.5a1.5 1.5 0 012.3-1.9L9 14'),
+    bulb: P('M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0012 3z'),
+    frame: P('M7 3v13a1 1 0 001 1h13M3 7h13a1 1 0 011 1v13'),
+    arrow: P('M5 12h14m-6-6l6 6-6 6'),
+    download: P('M12 4v11m0 0l-4-4m4 4l4-4M5 20h14'),
+    chat: P('M4 5h16v11H9l-5 4V5z'),
+    heart: P('M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z'),
+    gamepad: '<rect x="3" y="8" width="18" height="10" rx="5"/>' + P('M8 11v4M6 13h4M15.5 12v.01M17.5 14v.01'),
+    calc: '<rect x="5" y="3" width="14" height="18" rx="2"/>' + P('M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01'),
+    percent: P('M19 5L5 19') + '<circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>',
+    camera: P('M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z') + '<circle cx="12" cy="13" r="3.5"/>',
+    flask: P('M9 3h6M10 3v6l-5 9a2 2 0 001.8 3h10.4A2 2 0 0019 18l-5-9V3M8 15h8'),
+    party: P('M4 20l4-12 8 8-12 4zM14 5l1-2M18 9l2-1M16 3.5v.01M20.5 13v.01'),
+    hand: P('M8 13V6a1.5 1.5 0 013 0v5M11 11V4.5a1.5 1.5 0 013 0V11M14 11V6a1.5 1.5 0 013 0v7a6 6 0 01-6 6h-.5a5 5 0 01-4-2L4.5 13.5a1.5 1.5 0 012.2-2L8 13'),
+  };
+  /** An inline icon. size in px; the stroke follows the surrounding text colour. */
+  function svg(name, size = 20) {
+    return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+  }
+  global.SetloIcons = { svg, names: Object.keys(ICONS) };
+})(window);

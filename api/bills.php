@@ -335,6 +335,26 @@ switch ($action) {
         q('UPDATE bills SET invite_code = ? WHERE id = ?', [$code, $bill['id']]);
         json_ok(['invite_code' => $code]);
 
+    case 'guest_link':
+        // A private link for a guest member: opens their share of this bill without an account (pages/guest.php).
+        // Works at any stage of the bill, so they can follow it through settlement.
+        require_creator($bill, $me);
+        $uid = int_param('user_id');
+        $row = q("SELECT m.view_token FROM bill_members m JOIN users u ON u.id = m.user_id WHERE m.bill_id = ? AND m.user_id = ? AND u.role = 'guest'", [$bill['id'], $uid])->fetch();
+        if (!$row) {
+            fail('Only guests added by name get a link.', 422);
+        }
+        $token = $row['view_token'] ?: new_guest_token();
+        if (!$row['view_token']) {
+            q('UPDATE bill_members SET view_token = ? WHERE bill_id = ? AND user_id = ?', [$token, $bill['id'], $uid]);
+        }
+        json_ok(['token' => $token, 'link' => url('pages/guest?t=' . $token)]);
+
+    case 'guest_link_revoke':
+        require_creator($bill, $me);
+        q('UPDATE bill_members SET view_token = NULL WHERE bill_id = ? AND user_id = ?', [$bill['id'], int_param('user_id')]);
+        json_ok();
+
     case 'set_discount_type':
         require_creator($bill, $me);
         require_editable($bill);

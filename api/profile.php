@@ -187,6 +187,11 @@ switch (input('action', '')) {
         q('UPDATE users SET pay_code = ? WHERE id = ?', [new_pay_code(), $me['id']]);
         json_ok(['profile' => profile_of($me['id'])]);
 
+    case 'onboarded':
+        // Finished or skipped the dashboard tour (assets/js/tour.js): don't show it again on its own.
+        q('UPDATE users SET onboarded_at = COALESCE(onboarded_at, NOW()) WHERE id = ?', [$me['id']]);
+        json_ok();
+
     case 'password':
         $hash = (string) q('SELECT password_hash FROM users WHERE id = ?', [$me['id']])->fetchColumn();
         if (!password_verify((string) input('current', ''), $hash)) {

@@ -23,6 +23,7 @@ CREATE TABLE users (
   featured_achievement VARCHAR(30) NULL,          -- badge shown next to their name (user_achievements.code)
   bg_mode         ENUM('badges','plain','photo') NOT NULL DEFAULT 'badges', -- page backdrop: floating badges, none, or their photo
   bg_image        VARCHAR(255) NULL,              -- their backdrop photo (uploads/backgrounds), kept while another mode is picked
+  onboarded_at    DATETIME NULL,                  -- finished or skipped the first-visit dashboard tour; NULL = show it
   role            ENUM('user','admin','guest') NOT NULL DEFAULT 'user',  -- guest: name-only bill member, cannot sign in
   status          ENUM('active','suspended') NOT NULL DEFAULT 'active',
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -83,6 +84,7 @@ CREATE TABLE bill_members (
   percent   DECIMAL(5,2) NULL,                    -- share of the whole bill when bills.split_mode = 'percent'
   game_weight TINYINT UNSIGNED NULL,              -- split_mode = 'game': 1 = shares the bill equally, 0 = pays nothing
   game_share  INT NULL,                           -- split_mode = 'game' (Mystery Card): their exact share in centavos
+  view_token CHAR(24) NULL UNIQUE,                -- a guest member's private link (pages/guest.php); NULL = no link
   joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   archived_at DATETIME NULL,                      -- this member put the closed bill away: hidden from their lists, kept for everyone else
   PRIMARY KEY (bill_id, user_id),

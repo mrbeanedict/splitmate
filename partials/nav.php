@@ -45,7 +45,7 @@ $isActive = fn (string $key) => ($nav ?? '') === $key;
   <p class="nav-section"><span class="nav-label"><?= h($heading) ?></span></p>
 <?php endif; ?>
 <?php foreach ($links as $key => [$href, $label, $tab, $paths]): ?>
-  <a href="<?= $href ?>" title="<?= h($label) ?>" class="<?= $tab ? '' : '!hidden lg:!flex' ?><?= $isActive($key) ? ' active' : '' ?>"<?= $isActive($key) ? ' aria-current="page"' : '' ?>><?= $icon($paths) ?><span class="nav-label"><span class="lg:hidden"><?= h($tab ?? $label) ?></span><span class="hidden lg:inline"><?= h($label) ?></span></span></a>
+  <a href="<?= $href ?>" data-tour="nav-<?= $key ?>" title="<?= h($label) ?>" class="<?= $tab ? '' : '!hidden lg:!flex' ?><?= $isActive($key) ? ' active' : '' ?>"<?= $isActive($key) ? ' aria-current="page"' : '' ?>><?= $icon($paths) ?><span class="nav-label"><span class="lg:hidden"><?= h($tab ?? $label) ?></span><span class="hidden lg:inline"><?= h($label) ?></span></span></a>
 <?php endforeach; ?>
 <?php endforeach; ?>
   <!-- Phones: 5th tab opens the slide-in menu -->

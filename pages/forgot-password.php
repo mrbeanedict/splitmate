@@ -13,7 +13,7 @@ require __DIR__ . '/../partials/auth-landing-top.php';
 ?>
 <div id="app" class="landing-card" v-cloak>
   <div class="flex flex-col items-center text-center">
-    <span class="logo-tile h-14 w-14 rounded-[18px] text-[30px]">₱</span>
+    <img src="<?= h(url('assets/icons/icon-192.png')) ?>" alt="" class="logo-img h-14 w-14 rounded-[18px]" />
     <h2 class="mt-3 text-[22px] font-extrabold text-slate-800">{{ heading }}</h2>
     <p class="mt-1 max-w-[290px] text-[14px] leading-snug text-slate-500">{{ intro }}</p>
   </div>

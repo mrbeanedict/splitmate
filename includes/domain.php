@@ -752,3 +752,103 @@ function maybe_close_bill(int $billId): void
         }
     }
 }
+
+// ---------- Guest access: a name-only member's private link, and turning a guest into an account ----------
+
+/** Guest-link tokens: 24 characters from the same unambiguous alphabet as invite codes. */
+function new_guest_token(): string
+{
+    $alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    do {
+        $token = '';
+        for ($i = 0; $i < 24; $i++) {
+            $token .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+    } while (q('SELECT 1 FROM bill_members WHERE view_token = ?', [$token])->fetchColumn());
+    return $token;
+}
+
+const GUEST_LINK_MAX_MISSES = 20;    // wrong links per IP per window
+const GUEST_LINK_WINDOW_MINUTES = 15;
+
+/**
+ * The guest a private link belongs to: [bill, guest user row], or a 404. Wrong tokens are counted per IP (the same
+ * login_attempts table the sign-in throttle uses) so a link can't be guessed.
+ */
+function guest_by_token(string $token): array
+{
+    $ip = substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
+    $miss = function (string $msg) use ($ip): never {
+        q('INSERT INTO login_attempts (email, ip) VALUES (?, ?)', ['guest-link', $ip]);
+        fail($msg, 404);
+    };
+    $recent = (int) q(
+        "SELECT COUNT(*) FROM login_attempts WHERE email = 'guest-link' AND ip = ? AND attempted_at > NOW() - INTERVAL " . GUEST_LINK_WINDOW_MINUTES . ' MINUTE',
+        [$ip]
+    )->fetchColumn();
+    if ($recent >= GUEST_LINK_MAX_MISSES) {
+        fail('Too many tries. Please wait a few minutes and open your link again.', 429);
+    }
+    if (!preg_match('/^[A-Za-z0-9]{24}$/', $token)) {
+        $miss('This link isn’t valid. Ask the person who sent it for a new one.');
+    }
+    $row = q(
+        "SELECT m.bill_id, u.id AS guest_id FROM bill_members m JOIN users u ON u.id = m.user_id
+         WHERE m.view_token = BINARY ? AND u.role = 'guest'",
+        [$token]
+    )->fetch();
+    if (!$row) {
+        $miss('This link isn’t valid any more. If you already made a Setlo account, sign in to see your bill.');
+    }
+    $bill = q('SELECT * FROM bills WHERE id = ?', [$row['bill_id']])->fetch();
+    foreach (['id', 'creator_id', 'payer_id'] as $k) {
+        $bill[$k] = (int) $bill[$k];
+    }
+    $bill['change_holder_id'] = $bill['change_holder_id'] === null ? null : (int) $bill['change_holder_id'];
+    $guest = q('SELECT id, full_name, avatar_color, role, avatar, featured_achievement FROM users WHERE id = ?', [$row['guest_id']])->fetch();
+    return [$bill, $guest];
+}
+
+/**
+ * Move a guest's bill and payment records into a real account, then remove the guest. Used when someone opens their
+ * guest link and registers or signs in. One transaction; where the account is already on the same bill the rows are
+ * merged instead of duplicated. Returns the bill's id.
+ */
+function claim_guest_account(string $token, int $userId): int
+{
+    [$bill, $guest] = guest_by_token($token);
+    $g = (int) $guest['id'];
+    $real = q("SELECT id FROM users WHERE id = ? AND role = 'user' AND status = 'active'", [$userId])->fetchColumn();
+    if (!$real) {
+        fail('Only a Setlo account can take over a guest bill.', 403);
+    }
+    if ($bill['creator_id'] === $userId) {
+        fail('This is your own bill, so there is nothing to claim.', 409);
+    }
+
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        // Tables keyed by (something, user): move the row, or drop the guest's when the account already has one
+        foreach (['bill_members', 'item_assignments', 'bill_payments', 'game_players'] as $table) {
+            q("UPDATE IGNORE $table SET user_id = ? WHERE user_id = ?", [$userId, $g]);
+            q("DELETE FROM $table WHERE user_id = ?", [$g]);
+        }
+        foreach ([['bills', 'creator_id'], ['bills', 'payer_id'], ['bills', 'change_holder_id'], ['settlements', 'from_user_id'], ['settlements', 'to_user_id'],
+                  ['settlement_events', 'actor_id'], ['settlement_payments', 'paid_by'], ['credits', 'owner_id'], ['credits', 'holder_id'],
+                  ['game_sessions', 'host_id'], ['game_players', 'target_id']] as [$table, $col]) {
+            q("UPDATE $table SET $col = ? WHERE $col = ?", [$userId, $g]);
+        }
+        // If the account was both sides of a debt (they paid the bill the guest owed), the debt cancels itself out
+        q('DELETE FROM settlements WHERE from_user_id = to_user_id AND from_user_id = ?', [$userId]);
+        q('UPDATE bill_members SET view_token = NULL WHERE bill_id = ? AND user_id = ?', [$bill['id'], $userId]); // the link is spent
+        q("DELETE FROM users WHERE id = ? AND role = 'guest'", [$g]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+    $who = q('SELECT full_name FROM users WHERE id = ?', [$userId])->fetchColumn();
+    notify($bill['creator_id'], 'added', first_name((string) $who) . " now has a Setlo account — their share of {$bill['name']} is linked to it.", 'bill-detail?bill=' . $bill['id']);
+    return $bill['id'];
+}

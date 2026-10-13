@@ -17,7 +17,7 @@ require __DIR__ . '/../partials/head.php';
 
   <div class="auth-hero px-6 pb-14 pt-8">
     <div class="flex items-center gap-2.5 text-white">
-      <span class="brand-mark">₱</span>
+      <img src="<?= h(url('assets/icons/icon-192.png')) ?>" alt="" class="logo-img h-[34px] w-[34px] rounded-[10px]" />
       <span class="text-[24px] font-extrabold tracking-tight">setlo</span>
     </div>
     <h1 class="mt-6 text-[24px] font-extrabold tracking-tight text-white">You're invited 🍽️</h1>

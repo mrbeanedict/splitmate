@@ -50,6 +50,7 @@ header('Cache-Control: no-store');
   window.SETLO_HOME_CURRENCY = <?= json_encode(is_currency(current_user()['currency'] ?? null) ? current_user()['currency'] : 'PHP') ?>;
 </script>
 <script src="<?= h(url('assets/js/api.js')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/js/api.js') ?>"></script>
+<script src="<?= h(url('assets/js/icons.js')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/js/icons.js') ?>"></script>
 <script src="<?= h(url('assets/js/ui.js')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/js/ui.js') ?>"></script>
 <script src="<?= h(url('assets/js/validate.js')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/js/validate.js') ?>"></script>
 <script src="<?= h(url('assets/js/receipt.js')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/js/receipt.js') ?>"></script>

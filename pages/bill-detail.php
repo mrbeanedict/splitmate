@@ -43,6 +43,7 @@ require __DIR__ . '/../partials/head.php';
             <p class="text-xs text-slate-400">
               <template v-if="d.payments.paid[m.id]">Paid {{ peso(d.payments.paid[m.id]) }} · </template>share {{ peso(d.shares[m.id] || 0) }}<template v-if="d.share_estimates && d.share_estimates[m.id]"> ≈ {{ peso(d.share_estimates[m.id].amount, d.share_estimates[m.id].currency) }}</template><template v-if="m.is_guest"> · guest, no account</template>
             </p>
+            <button v-if="m.is_guest && d.me.is_creator" type="button" @click="guestLink(m)" class="mt-1 text-[11.5px] font-bold text-brand-700 hover:underline"><svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="display:inline;margin-right:4px;vertical-align:-2px"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></svg>Share {{ m.first }}’s link</button>
           </div>
           <p v-if="(d.balances[m.id] || 0) > 0" class="text-right text-sm font-bold text-emerald-600">+{{ peso(d.balances[m.id]) }}<span class="block text-[10px] font-medium text-slate-400">gets back</span></p>
           <p v-else-if="(d.balances[m.id] || 0) < 0" class="text-right text-sm font-bold text-red-600">−{{ peso(-d.balances[m.id]) }}<span class="block text-[10px] font-medium text-slate-400">owes</span></p>
@@ -485,6 +486,18 @@ Setlo.mount({
       const v = { guest: V.name(this.guestName, 'Guest name') };
       if (this.multiPay) for (const m of this.realMembers) v['pay' + m.id] = V.money(this.payDraft[m.id], { label: 'Amount' });
       return v;
+    },
+    /** A private link that opens this guest's share without an account (pages/guest.php): shared, or shown to copy. */
+    async guestLink(m) {
+      try {
+        const r = await api.post('bills.php', { action: 'guest_link', bill_id: this.billId, user_id: m.id });
+        const text = `Hi ${m.first}! Here's your share of "${this.bill.name}" on Setlo. No account needed:`;
+        if (navigator.share) {
+          try { await navigator.share({ title: 'Your share on Setlo', text, url: r.link }); return; }
+          catch (e) { if (e.name === 'AbortError') return; }
+        }
+        Setlo.showCopy(`${m.first}’s private link`, r.link, 'Send this to them. They can open it without an account and will only see their own share.');
+      } catch (e) { Setlo.toast(e.message, 'error'); }
     },
     async addGuest() {
       this.touch('guest');

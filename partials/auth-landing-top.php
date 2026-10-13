@@ -18,7 +18,7 @@
     <!-- Left: brand, headline, features -->
     <aside class="hidden flex-col lg:flex">
       <a href="<?= h(url('')) ?>" class="flex items-center gap-4" aria-label="Setlo home">
-        <span class="logo-tile h-[72px] w-[72px] rounded-[22px] text-[40px]">₱</span>
+        <img src="<?= h(url('assets/icons/icon-192.png')) ?>" alt="" class="logo-img h-[72px] w-[72px] rounded-[22px]" />
         <div>
           <p class="text-[44px] font-extrabold leading-none tracking-tight text-brand-600">setlo</p>
           <p class="mt-1.5 text-[16px] font-medium text-slate-500">Split. Track. Stay Together.</p>

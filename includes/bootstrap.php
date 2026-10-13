@@ -299,10 +299,32 @@ function initials(string $name): string
     return $out ?: '?';
 }
 
-/** Only allow in-app "continue to" targets (invite and Pay-me links), never external URLs. */
+/** Only allow in-app "continue to" targets (invite and Pay-me links, a bill's pages), never external URLs. */
 function safe_next(string $next): string
 {
-    return preg_match('/^(join\?code|pay\?u)=[A-Za-z0-9]{12}$/', $next) ? $next : '';
+    return preg_match('/^((join\?code|pay\?u)=[A-Za-z0-9]{12}|(bill-items|bill-detail|bill-breakdown)\?bill=\d{1,10})$/', $next) ? $next : '';
+}
+
+/** The guest-link token in ?claim= (pages/register, pages/login), or '' when it isn't one that exists. */
+function claim_param(): string
+{
+    $token = (string) ($_GET['claim'] ?? '');
+    return guest_peek($token) ? $token : '';
+}
+
+/** Who a guest link is for, so sign-up pages can say it: ['guest' => name, 'bill' => name, 'creator' => name], or null. */
+function guest_peek(string $token): ?array
+{
+    if (!preg_match('/^[A-Za-z0-9]{24}$/', $token)) {
+        return null;
+    }
+    $row = q(
+        "SELECT u.full_name AS guest, b.name AS bill, c.full_name AS creator FROM bill_members m
+         JOIN users u ON u.id = m.user_id JOIN bills b ON b.id = m.bill_id JOIN users c ON c.id = b.creator_id
+         WHERE m.view_token = BINARY ? AND u.role = 'guest'",
+        [$token]
+    )->fetch();
+    return $row ?: null;
 }
 
 function first_name(string $name): string

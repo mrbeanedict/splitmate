@@ -27,7 +27,7 @@
           <div class="phone-mock-screen">
             <div class="flex items-center justify-between px-6 pt-3 text-[11px] font-bold text-night"><span>9:41</span><span class="h-5 w-20 rounded-full bg-night"></span><span>▮▮</span></div>
             <div class="flex items-center justify-between px-5 pt-3">
-              <span class="flex items-center gap-1.5 text-[17px] font-extrabold text-brand-700"><span class="logo-tile h-6 w-6 rounded-md text-[13px]">₱</span>setlo</span>
+              <span class="flex items-center gap-1.5 text-[17px] font-extrabold text-brand-700"><img src="<?= h(url('assets/icons/icon-192.png')) ?>" alt="" class="logo-img h-6 w-6 rounded-md" />setlo</span>
               <svg class="h-5 w-5 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></svg>
             </div>
             <div class="mx-4 mt-3 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 p-4 text-white">
