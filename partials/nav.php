@@ -16,6 +16,7 @@ $sections = [
     'Money' => [
         'settle' => ['my-settlements', 'Settle up', 'Settle', '<rect x="3" y="6" width="18" height="14" rx="2.5"/><path stroke-linecap="round" stroke-linejoin="round" d="M16 13h2M3 10h14a2 2 0 012 2"/>'],
         'utang'  => ['utang', 'Utang', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M7 10h10M7 14h6M17 3l4 4-4 4M21 7H9a6 6 0 00-6 6v0a6 6 0 006 6h3"/>'],
+        'purchases' => ['purchases', 'My purchases', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12l1 13H5L6 7zM9 7a3 3 0 016 0"/>'],
         // Overview and past bills (the old Bill History) on one page
         'stats'  => ['stats', 'Spending & history', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],
     ],

@@ -10,6 +10,7 @@ $billId = (int) ($_GET['bill'] ?? 0);
 if (!$billId) {
     redirect('pages/my-bills');
 }
+$headExtra = ['assets/css/game-carousel.css'];
 require __DIR__ . '/../partials/head.php';
 ?>
 <div id="app" class="device device-narrow" v-cloak>
@@ -37,6 +38,7 @@ require __DIR__ . '/../partials/head.php';
     <template v-if="view === 'options'">
       <p class="section-label">PICK A GAME</p>
       <!-- swipe to pick: the slide in the middle is the chosen game -->
+      <div class="game-car-wrap">
       <div ref="track" @scroll.passive="onTrackScroll" class="game-carousel -mx-5 px-5">
         <button v-for="(gm, key, i) in games" :key="key" :data-game="key" @click="selectGame(key)" class="game-slide" :class="{ on: pick.game === key }" :aria-pressed="pick.game === key">
           <img :src="gameArt + key + '.svg?v=' + gameArtV" alt="" :loading="i ? 'lazy' : 'eager'" />
@@ -49,16 +51,17 @@ require __DIR__ . '/../partials/head.php';
           </span>
         </button>
       </div>
-      <div class="flex items-center justify-center gap-3">
-        <button @click="stepGame(-1)" class="carousel-arrow" :disabled="gameIndex <= 0" aria-label="Previous game">
-          <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+        <button @click="stepGame(-1)" class="carousel-arrow carousel-side carousel-prev" :disabled="gameIndex <= 0" aria-label="Previous game">
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
         </button>
+        <button @click="stepGame(1)" class="carousel-arrow carousel-side carousel-next" :disabled="gameIndex >= gameKeys.length - 1" aria-label="Next game">
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+      <div class="flex items-center justify-center gap-3">
         <div class="flex items-center gap-1.5">
           <button v-for="(gm, key) in games" :key="key" @click="selectGame(key)" class="carousel-dot" :class="{ on: pick.game === key }" :aria-label="'Show ' + gm.title" :aria-current="pick.game === key"></button>
         </div>
-        <button @click="stepGame(1)" class="carousel-arrow" :disabled="gameIndex >= gameKeys.length - 1" aria-label="Next game">
-          <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-        </button>
       </div>
 
       <!-- Roulette: how many people the wheel picks; they split the bill equally -->

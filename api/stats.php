@@ -96,8 +96,26 @@ foreach (q(
     $flow['received'] += $toHome(cents($r['received']), $r['currency']);
 }
 
+// My purchases (pages/purchases.php), in my home currency: this month against last, and where this month went
+$monthStart = date('Y-m-01');
+$lastStart = date('Y-m-01', strtotime('first day of last month'));
+$sumSince = fn (string $from, ?string $to) => (int) q('SELECT COALESCE(SUM(ROUND(amount * 100)), 0) FROM purchases WHERE user_id = ? AND purchased_on >= ?' . ($to ? ' AND purchased_on < ?' : ''), array_filter([$me['id'], $from, $to], fn ($v) => $v !== null))->fetchColumn();
+$byCat = q('SELECT category, SUM(ROUND(amount * 100)) AS c FROM purchases WHERE user_id = ? AND purchased_on >= ? GROUP BY category ORDER BY c DESC', [$me['id'], $monthStart])->fetchAll();
+
+// Purchases per month for the chart's six months, next to the bill shares
+$soloByMonth = [];
+foreach (q("SELECT DATE_FORMAT(purchased_on, '%Y-%m') AS k, SUM(ROUND(amount * 100)) AS c FROM purchases WHERE user_id = ? AND purchased_on >= ? GROUP BY k", [$me['id'], array_key_first($months) . '-01'])->fetchAll() as $r) {
+    $soloByMonth[$r['k']] = (int) $r['c'];
+}
+
 json_ok([
-    'months'     => array_map(fn ($k, $v) => ['month' => $k, 'amount' => pesos($v)], $keys, array_values($months)),
+    'personal'   => [
+        'this_month'  => pesos($sumSince($monthStart, null)),
+        'last_month'  => pesos($sumSince($lastStart, $monthStart)),
+        'count'       => (int) q('SELECT COUNT(*) FROM purchases WHERE user_id = ?', [$me['id']])->fetchColumn(),
+        'by_category' => array_map(fn ($r) => ['name' => $r['category'], 'amount' => pesos((int) $r['c'])], $byCat),
+    ],
+    'months'     => array_map(fn ($k, $v) => ['month' => $k, 'amount' => pesos($v), 'solo' => pesos($soloByMonth[$k] ?? 0)], $keys, array_values($months)),
     'this_month' => pesos($thisMonth),
     'last_month' => pesos($lastMonth),
     'total'      => pesos($total),

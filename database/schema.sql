@@ -5,7 +5,7 @@ CREATE DATABASE IF NOT EXISTS setlo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicod
 USE setlo;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS community_translations, community_saves, community_comments, community_reactions, community_photos, community_posts, feedback, settlement_payment_proofs, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
+DROP TABLE IF EXISTS purchase_events, purchases, community_translations, community_saves, community_comments, community_reactions, community_photos, community_posts, feedback, settlement_payment_proofs, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
 SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE users (
@@ -21,7 +21,7 @@ CREATE TABLE users (
   avatar_color    CHAR(7) NOT NULL DEFAULT '#0d9488',
   avatar          VARCHAR(120) NULL,              -- profile picture: 'pfp/<file>' (assets/pfp) or 'up/<file>' (uploads/avatars); NULL = initials
   featured_achievement VARCHAR(30) NULL,          -- badge shown next to their name (user_achievements.code)
-  bg_mode         ENUM('badges','plain','photo') NOT NULL DEFAULT 'badges', -- page backdrop: floating badges, none, or their photo
+  bg_mode         ENUM('badges','receipts','plain','photo') NOT NULL DEFAULT 'badges', -- page backdrop: floating badges, floating receipts + chameleon, none, or their photo
   bg_image        VARCHAR(255) NULL,              -- their backdrop photo (uploads/backgrounds), kept while another mode is picked
   onboarded_at    DATETIME NULL,                  -- finished or skipped the first-visit dashboard tour; NULL = show it
   role            ENUM('user','admin','guest') NOT NULL DEFAULT 'user',  -- guest: name-only bill member, cannot sign in
@@ -511,4 +511,40 @@ CREATE TABLE community_translations (
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (comment_id, lang),
   FOREIGN KEY (comment_id) REFERENCES community_comments(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- A person's own purchases (pages/purchases.php), outside any bill
+CREATE TABLE purchases (
+  id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id        INT UNSIGNED NOT NULL,
+  title          VARCHAR(80) NOT NULL,
+  category       VARCHAR(30) NOT NULL,
+  status         ENUM('paid','unpaid') NOT NULL DEFAULT 'paid', -- unpaid: still to pay (a bill due), settled later
+  amount         DECIMAL(12,2) NOT NULL,
+  purchased_on   DATE NOT NULL,
+  due_on         DATE NULL,
+  paid_on        DATE NULL,
+  merchant       VARCHAR(60) NULL,
+  receipt_no     VARCHAR(40) NULL,
+  payment_method VARCHAR(30) NULL,
+  note           VARCHAR(300) NULL,
+  receipt_image  VARCHAR(80) NULL,               -- the scanned receipt photo (uploads/receipts)
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX (user_id, purchased_on)
+) ENGINE=InnoDB;
+
+-- The journal of those purchases: added, scanned, edited, settled, reopened, deleted
+CREATE TABLE purchase_events (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id     INT UNSIGNED NOT NULL,
+  purchase_id INT UNSIGNED NULL,                  -- no foreign key: the entry outlives a deleted purchase
+  event       ENUM('added','scanned','edited','settled','reopened','deleted') NOT NULL,
+  title       VARCHAR(80) NOT NULL,
+  amount      DECIMAL(12,2) NOT NULL,
+  detail      VARCHAR(120) NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX (user_id, created_at)
 ) ENGINE=InnoDB;

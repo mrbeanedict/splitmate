@@ -1,0 +1,12 @@
+/* Game picker (pages/game.php): previous / next arrows sit on the left and right sides of the carousel. Plain CSS (no Tailwind build). */
+.game-car-wrap { position: relative; }
+.game-car-wrap .carousel-side {
+  position: absolute; top: 50%; z-index: 5; width: 2.5rem; height: 2.5rem; margin-top: -1.25rem;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, .18); background: rgb(var(--surface)); border-radius: 9999px;
+  transition: transform .15s ease, opacity .15s ease;
+}
+.game-car-wrap .carousel-side:hover:not(:disabled) { transform: scale(1.08); }
+.game-car-wrap .carousel-side:active:not(:disabled) { transform: scale(.92); }
+.game-car-wrap .carousel-prev { left: -.35rem; }
+.game-car-wrap .carousel-next { right: -.35rem; }
+.game-car-wrap .carousel-side:disabled { opacity: 0; pointer-events: none; }

@@ -55,6 +55,67 @@ html.dark body.badge-bg[data-bg="photo"]::before { opacity: .45; filter: blur(2p
   75%      { transform: translate(calc(var(--dx) * -.7), calc(var(--dy) * .3)) rotate(-3deg); }
 }
 
+/* Receipts backdrop (assets/js/badge-field.js buildReceipt): one long itemised receipt swimming slowly up the page, in
+   the theme's green, over a wallpaper of tiny sketched chameleon faces (tone on tone, like a pattern print). */
+.badge-field-receipt .rcpt {
+  position: absolute; top: 0; left: 62%; width: clamp(190px, 21vw, 270px);
+  animation: rcpt-swim 70s linear infinite;
+}
+.rcpt-sway { animation: rcpt-sway 9s ease-in-out infinite; transform-origin: 50% 0; }
+.rcpt-paper {
+  padding: 18px 16px 30px; background: #fff; color: rgb(var(--brand-700) / .8);
+  font: 600 12px/1.35 'Courier New', ui-monospace, monospace; letter-spacing: .01em;
+  border-top: 3px solid rgb(var(--brand-500) / .45);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, .1), inset 0 0 0 1px rgb(var(--brand-500) / .18);
+  opacity: .82;
+  /* torn zig-zag at the bottom */
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), 95% 100%, 90% calc(100% - 10px), 85% 100%, 80% calc(100% - 10px), 75% 100%, 70% calc(100% - 10px), 65% 100%, 60% calc(100% - 10px), 55% 100%, 50% calc(100% - 10px), 45% 100%, 40% calc(100% - 10px), 35% 100%, 30% calc(100% - 10px), 25% 100%, 20% calc(100% - 10px), 15% 100%, 10% calc(100% - 10px), 5% 100%, 0 calc(100% - 10px));
+}
+.rcpt-head { text-align: center; font-size: 17px; font-weight: 800; letter-spacing: .3em; color: rgb(var(--brand-600)); }
+.rcpt-sub { text-align: center; font-size: 10px; font-weight: 500; opacity: .75; margin: 2px 0 8px; }
+.rcpt-paper ul { list-style: none; margin: 0; padding: 8px 0; border-top: 1px dashed rgb(var(--brand-500) / .45); border-bottom: 1px dashed rgb(var(--brand-500) / .45); }
+.rcpt-paper li, .rcpt-total { display: flex; justify-content: space-between; gap: 8px; }
+.rcpt-paper li { padding: 2px 0; }
+.rcpt-paper li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rcpt-paper li b, .rcpt-total b { font-weight: 800; white-space: nowrap; color: rgb(var(--brand-600)); }
+.rcpt-total { margin: 8px 0 4px; font-size: 14px; font-weight: 800; }
+@keyframes rcpt-swim { from { transform: translateY(100vh) rotate(-7deg); } to { transform: translateY(-100%) rotate(-7deg); } }
+@keyframes rcpt-sway { 0%, 100% { transform: translateX(-10px) rotate(-1.5deg); } 50% { transform: translateX(10px) rotate(1.5deg); } }
+html.dark .rcpt-paper { background: #12302d; color: rgb(var(--brand-500) / .85); opacity: .7; box-shadow: 0 12px 28px rgba(0, 0, 0, .35), inset 0 0 0 1px rgb(var(--brand-500) / .25); }
+@media (max-width: 700px) { .badge-field-receipt .rcpt { left: 48%; width: 190px; } }
+
+/* The face sketch repeated over the white page in the theme's green, thick lines, evenly spaced. The PNG has air around the
+   face, so 150px tiles show a ~96px face with a gap on every side. */
+body.badge-bg[data-bg="receipts"] { background-color: #fff; background-image: none; }
+html.dark body.badge-bg[data-bg="receipts"] { background-color: rgb(var(--canvas)); }
+body.badge-bg[data-bg="receipts"]::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -2; /* under the receipt layer */
+  pointer-events: none;
+  background: rgb(var(--brand-500));
+  opacity: .3;
+  -webkit-mask: url('../mascot/face-sketch.png') 0 0 / 150px auto repeat;
+  mask: url('../mascot/face-sketch.png') 0 0 / 150px auto repeat;
+}
+html.dark body.badge-bg[data-bg="receipts"]::after { opacity: .22; }
+/* The sidebar is the theme green with white text; the active page is a white pill. */
+body.badge-bg[data-bg="receipts"] .nav2 {
+  background: linear-gradient(180deg, rgb(var(--brand-500)), rgb(var(--brand-600)));
+  border-color: rgb(255 255 255 / .18);
+}
+body.badge-bg[data-bg="receipts"] .nav2 a, body.badge-bg[data-bg="receipts"] .nav2 button,
+body.badge-bg[data-bg="receipts"] .nav2 .nav2-logo, body.badge-bg[data-bg="receipts"] .nav2 .nav-burger { color: #fff; }
+body.badge-bg[data-bg="receipts"] .nav2 .nav-section { color: rgb(255 255 255 / .7); }
+body.badge-bg[data-bg="receipts"] .nav2 a:hover, body.badge-bg[data-bg="receipts"] .nav2 button:hover { background: rgb(255 255 255 / .16); }
+body.badge-bg[data-bg="receipts"] .nav2 a.active { background: #fff; color: rgb(var(--brand-700)); }
+body.badge-bg[data-bg="receipts"] .nav2 .nav2-logo:hover { background: transparent; }
+body.badge-bg[data-bg="receipts"] .nav2 form { border-color: rgb(255 255 255 / .25); }
+body.badge-bg[data-bg="receipts"] .nav2 form button { color: #fff !important; }
+html.sb-collapsed body.badge-bg[data-bg="receipts"] .nav2 .nav-section { background: rgb(255 255 255 / .25); }
 @media (prefers-reduced-motion: reduce) {
   .badge-field img { animation: none; }
+  .badge-field-receipt .rcpt { animation: none; transform: translateY(8vh) rotate(-7deg); }
+  .rcpt-sway { animation: none; }
 }

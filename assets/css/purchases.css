@@ -1,0 +1,59 @@
+/* My purchases (pages/purchases.php) and its card on the dashboard. Plain CSS: the Tailwind build is not run for new classes. */
+.pc-month { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.pc-month button { width: 2.25rem; height: 2.25rem; border-radius: 9999px; background: rgb(var(--brand-500) / .12); color: rgb(var(--brand-700)); font-weight: 800; }
+.pc-month button:disabled { opacity: .35; }
+.pc-chips { display: flex; gap: .45rem; overflow-x: auto; padding-bottom: .25rem; scrollbar-width: none; }
+.pc-chips::-webkit-scrollbar { display: none; }
+.pc-chip { flex: none; border-radius: 9999px; padding: .4rem .85rem; font-size: 12px; font-weight: 700; background: #fff; color: #64748b; border: 1px solid #e2e8f0; }
+.pc-chip.on { background: rgb(var(--brand-600)); border-color: rgb(var(--brand-600)); color: #fff; }
+.pc-bar { height: 8px; border-radius: 9999px; background: #eef2f4; overflow: hidden; }
+.pc-bar > span { display: block; height: 100%; border-radius: 9999px; }
+.pc-dot { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; border-radius: .9rem; font-size: 12px; font-weight: 800; }
+.pc-row { display: flex; align-items: center; gap: .8rem; width: 100%; padding: .85rem 1rem; text-align: left; }
+.pc-row:hover { background: #f8fafc; }
+.pc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+.pc-details { margin-top: 1rem; border-radius: 1rem; background: #f8fafc; padding: .75rem .9rem; }
+.pc-details summary { cursor: pointer; font-size: 13px; font-weight: 700; color: #334155; }
+html.dark .pc-chip { background: rgb(var(--surface)); border-color: rgb(var(--slate-200)); color: rgb(var(--slate-500)); }
+html.dark .pc-row:hover { background: rgb(var(--field)); }
+html.dark .pc-details { background: rgb(var(--field)); }
+html.dark .pc-details summary { color: rgb(var(--ink)); }
+html.dark .pc-bar { background: rgb(var(--field)); }
+
+/* To-pay tags, tab count, journal icons, scanned receipt link */
+.pc-count { margin-left: .35rem; display: inline-flex; min-width: 1.15rem; height: 1.15rem; align-items: center; justify-content: center; border-radius: 9999px; padding: 0 .3rem; font-size: 10.5px; font-weight: 800; background: rgb(var(--brand-600)); color: #fff; }
+.seg button.on .pc-count { background: rgb(var(--brand-600)); }
+.pc-tag { display: inline-block; margin-top: .15rem; border-radius: 9999px; padding: .08rem .5rem; font-size: 10.5px; font-weight: 800; }
+.pc-tag-due { background: #fdf0c4; color: #92600e; }
+.pc-tag-late { background: #ffe4e6; color: #be123c; }
+.pc-ev { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 1.9rem; height: 1.9rem; border-radius: 9999px; font-size: 13px; font-weight: 800; background: #eef2f4; color: #64748b; }
+.pc-ev-added, .pc-ev-scanned { background: rgb(var(--brand-500) / .15); color: rgb(var(--brand-700)); }
+.pc-ev-settled { background: #dcfce7; color: #15803d; }
+.pc-ev-reopened { background: #fdf0c4; color: #92600e; }
+.pc-ev-deleted { background: #ffe4e6; color: #be123c; }
+.pc-receipt-link { font-size: 13px; font-weight: 700; color: rgb(var(--brand-700)); }
+/* Motion: the month slides in from the side you pressed, sheets rise, the scanner sweeps. */
+.pc-in-next { animation: pc-in-next .38s cubic-bezier(.2, .8, .3, 1) both; }
+.pc-in-prev { animation: pc-in-prev .38s cubic-bezier(.2, .8, .3, 1) both; }
+@keyframes pc-in-next { from { opacity: 0; transform: translateX(34px); } to { opacity: 1; transform: none; } }
+@keyframes pc-in-prev { from { opacity: 0; transform: translateX(-34px); } to { opacity: 1; transform: none; } }
+.pc-dim { opacity: .45; transition: opacity .15s ease; pointer-events: none; }
+.pc-month button { transition: transform .12s ease, background-color .15s ease; }
+.pc-month button:active:not(:disabled) { transform: scale(.82); }
+.pc-fade { animation: pc-fade .2s ease both; }
+.pc-rise { animation: pc-rise .34s cubic-bezier(.2, .9, .3, 1.15) both; }
+@keyframes pc-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pc-rise { from { opacity: 0; transform: translateY(46px) scale(.97); } to { opacity: 1; transform: none; } }
+.pc-scan-art { position: relative; width: 62px; height: 78px; margin: .35rem auto 1rem; }
+.pc-scan-paper { position: absolute; inset: 0; border-radius: 6px 6px 3px 3px; background: #fff; border: 2px solid rgb(var(--brand-500) / .55);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, .12);
+  background-image: repeating-linear-gradient(180deg, transparent 0 9px, rgb(var(--brand-500) / .28) 9px 11px); background-size: 70% 100%; background-position: 15% 6px; background-repeat: no-repeat;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), 88% 100%, 76% calc(100% - 6px), 64% 100%, 52% calc(100% - 6px), 40% 100%, 28% calc(100% - 6px), 16% 100%, 0 calc(100% - 6px)); }
+.pc-scan-line { position: absolute; left: -10px; right: -10px; top: 0; height: 3px; border-radius: 3px; background: rgb(var(--brand-500));
+  box-shadow: 0 0 12px 3px rgb(var(--brand-500) / .6); animation: pc-sweep 1.5s ease-in-out infinite alternate; }
+.pc-scan-busy .pc-scan-line { animation-duration: .9s; }
+@keyframes pc-sweep { from { top: 2px; } to { top: calc(100% - 5px); } }
+html.dark .pc-scan-paper { background-color: rgb(var(--field)); }
+@media (prefers-reduced-motion: reduce) {
+  .pc-in-next, .pc-in-prev, .pc-fade, .pc-rise, .pc-scan-line { animation: none; }
+}

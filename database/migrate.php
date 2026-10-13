@@ -245,6 +245,42 @@ $steps = [
     // Page backdrop: floating badges, plain, or the user's own photo
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS bg_mode ENUM('badges','plain','photo') NOT NULL DEFAULT 'badges' AFTER featured_achievement",
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS bg_image VARCHAR(255) NULL AFTER bg_mode',
+    // Backdrop preset with floating receipts and the camouflaged chameleon
+    "ALTER TABLE users MODIFY COLUMN bg_mode ENUM('badges','receipts','plain','photo') NOT NULL DEFAULT 'badges'",
+    // Personal purchases (pages/purchases.php): one person's own expenses, outside any bill
+    'CREATE TABLE IF NOT EXISTS purchases (
+       id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       user_id        INT UNSIGNED NOT NULL,
+       title          VARCHAR(80) NOT NULL,
+       category       VARCHAR(30) NOT NULL,
+       amount         DECIMAL(12,2) NOT NULL,
+       purchased_on   DATE NOT NULL,
+       merchant       VARCHAR(60) NULL,
+       receipt_no     VARCHAR(40) NULL,
+       payment_method VARCHAR(30) NULL,
+       note           VARCHAR(300) NULL,
+       created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       INDEX (user_id, purchased_on)
+     ) ENGINE=InnoDB',
+    // Purchases can be to pay later (then settled), carry a scanned receipt photo, and leave a journal trail
+    "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS status ENUM('paid','unpaid') NOT NULL DEFAULT 'paid' AFTER category",
+    'ALTER TABLE purchases ADD COLUMN IF NOT EXISTS due_on DATE NULL AFTER purchased_on',
+    'ALTER TABLE purchases ADD COLUMN IF NOT EXISTS paid_on DATE NULL AFTER due_on',
+    'ALTER TABLE purchases ADD COLUMN IF NOT EXISTS receipt_image VARCHAR(80) NULL AFTER note',
+    "CREATE TABLE IF NOT EXISTS purchase_events (
+       id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       user_id     INT UNSIGNED NOT NULL,
+       purchase_id INT UNSIGNED NULL,
+       event       ENUM('added','scanned','edited','settled','reopened','deleted') NOT NULL,
+       title       VARCHAR(80) NOT NULL,
+       amount      DECIMAL(12,2) NOT NULL,
+       detail      VARCHAR(120) NULL,
+       created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       INDEX (user_id, created_at)
+     ) ENGINE=InnoDB",
     // Rounding the bill to whole pesos, and who actually received the change when several people paid
     'ALTER TABLE bills ADD COLUMN IF NOT EXISTS round_total TINYINT(1) NOT NULL DEFAULT 0 AFTER interest_rate',
     'ALTER TABLE bills ADD COLUMN IF NOT EXISTS change_holder_id INT UNSIGNED NULL AFTER round_total',

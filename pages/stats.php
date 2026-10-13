@@ -80,10 +80,15 @@ require __DIR__ . '/../partials/head.php';
         <button @click="asTable = !asTable" class="text-[12px] font-bold text-brand-700">{{ asTable ? 'Show chart' : 'Show table' }}</button>
       </div>
 
+      <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-slate-500">
+        <span class="inline-flex items-center gap-1.5"><i class="inline-block h-2.5 w-2.5 rounded-sm bg-brand-600"></i>Bill shares</span>
+        <span class="inline-flex items-center gap-1.5"><i class="inline-block h-2.5 w-2.5 rounded-sm" style="background:#f59e0b"></i>My purchases</span>
+      </div>
+
       <table v-if="asTable" class="mt-3 w-full text-[13px]">
-        <thead><tr class="text-left text-[11px] text-slate-400"><th class="pb-1 font-medium">Month</th><th class="pb-1 text-right font-medium">Your share</th></tr></thead>
+        <thead><tr class="text-left text-[11px] text-slate-400"><th class="pb-1 font-medium">Month</th><th class="pb-1 text-right font-medium">Bill shares</th><th class="pb-1 text-right font-medium">My purchases</th><th class="pb-1 text-right font-medium">Total</th></tr></thead>
         <tbody class="divide-y divide-slate-100">
-          <tr v-for="m in s.months" :key="m.month"><td class="py-1.5 text-slate-600">{{ monthLong(m.month) }}</td><td class="py-1.5 text-right font-semibold text-ink">{{ peso(m.amount) }}</td></tr>
+          <tr v-for="m in s.months" :key="m.month"><td class="py-1.5 text-slate-600">{{ monthLong(m.month) }}</td><td class="py-1.5 text-right text-slate-600">{{ peso(m.amount) }}</td><td class="py-1.5 text-right text-slate-600">{{ peso(m.solo) }}</td><td class="py-1.5 text-right font-semibold text-ink">{{ peso(m.amount + m.solo) }}</td></tr>
         </tbody>
       </table>
 
@@ -91,19 +96,39 @@ require __DIR__ . '/../partials/head.php';
         <!-- Tooltip -->
         <div v-if="hover !== null" class="pointer-events-none absolute -top-2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg bg-night px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg"
              :style="{ left: ((hover + 0.5) / s.months.length * 100) + '%' }">
-          {{ monthLong(s.months[hover].month) }} · {{ peso(s.months[hover].amount) }}
+          {{ monthLong(s.months[hover].month) }} · Bills {{ peso(s.months[hover].amount) }} · Mine {{ peso(s.months[hover].solo) }}
         </div>
-        <div class="flex h-40 items-end gap-2 border-b border-slate-200" role="img" :aria-label="'Monthly spending: ' + s.months.map((m) => monthShort(m.month) + ' ' + peso(m.amount)).join(', ')">
+        <div class="flex h-40 items-end gap-2 border-b border-slate-200" role="img" :aria-label="'Monthly spending: ' + s.months.map((m) => monthShort(m.month) + ' bills ' + peso(m.amount) + ', purchases ' + peso(m.solo)).join('; ')">
           <button v-for="(m, i) in s.months" :key="m.month" class="group relative flex h-full flex-1 items-end focus:outline-none"
-                  @mouseenter="hover = i" @focus="hover = i" @blur="hover = null" :aria-label="monthLong(m.month) + ' ' + peso(m.amount)">
-            <span class="w-full rounded-t-[4px] bg-brand-600 transition-opacity group-hover:opacity-80 group-focus-visible:ring-2 group-focus-visible:ring-brand-300"
-                  :style="{ height: m.amount > 0 ? Math.max(2, m.amount / maxMonth * 100) + '%' : '0' }"></span>
+                  @mouseenter="hover = i" @focus="hover = i" @blur="hover = null" :aria-label="monthLong(m.month) + ': bills ' + peso(m.amount) + ', purchases ' + peso(m.solo)">
+            <span class="flex w-full flex-col overflow-hidden rounded-t-[4px] transition-opacity group-hover:opacity-80 group-focus-visible:ring-2 group-focus-visible:ring-brand-300"
+                  :style="{ height: m.amount + m.solo > 0 ? Math.max(2, (m.amount + m.solo) / maxMonth * 100) + '%' : '0' }">
+              <span v-if="m.solo > 0" :style="{ flex: m.solo + ' 1 0', background: '#f59e0b' }"></span>
+              <span v-if="m.amount > 0" class="bg-brand-600" :style="{ flex: m.amount + ' 1 0' }"></span>
+            </span>
           </button>
         </div>
         <div class="mt-1.5 flex gap-2">
           <span v-for="(m, i) in s.months" :key="m.month" class="flex-1 text-center text-[11px]" :class="i === s.months.length - 1 ? 'font-bold text-ink' : 'text-slate-400'">{{ monthShort(m.month) }}</span>
         </div>
       </div>
+    </section>
+
+    <!-- My purchases: the personal expenses logged on the purchases page -->
+    <section v-if="s.personal" class="tile p-4 lg:col-span-2">
+      <div class="flex items-center justify-between">
+        <h2 class="text-[14px] font-extrabold text-ink">My purchases</h2>
+        <a href="purchases" class="text-[12px] font-bold text-brand-700">{{ s.personal.count ? 'Manage' : 'Add one' }} ›</a>
+      </div>
+      <template v-if="s.personal.count">
+        <p class="mt-2 text-[12px] font-medium text-slate-500">Your own purchases this month, outside any bill</p>
+        <p class="text-[24px] font-extrabold leading-tight tracking-tight text-ink">{{ peso(s.personal.this_month) }}</p>
+        <p class="text-[11.5px] text-slate-400">Last month {{ peso(s.personal.last_month) }}</p>
+        <ul v-if="s.personal.by_category.length" class="mt-3 divide-y divide-slate-100 text-[13px]">
+          <li v-for="c in s.personal.by_category" :key="c.name" class="flex items-center justify-between py-1.5"><span class="text-slate-600">{{ c.name }}</span><span class="font-semibold text-ink">{{ peso(c.amount) }}</span></li>
+        </ul>
+      </template>
+      <p v-else class="mt-2 text-[12px] text-slate-400">Log what you buy on your own and it shows up here.</p>
     </section>
 
     <!-- Ranked lists -->
@@ -144,7 +169,7 @@ Setlo.mount({
     lists: [{ key: 'places', title: 'Where your money goes' }, { key: 'items', title: 'What you order most' }],
   }),
   computed: {
-    maxMonth() { return Math.max(1, ...this.s.months.map((m) => m.amount)); },
+    maxMonth() { return Math.max(1, ...this.s.months.map((m) => m.amount + (m.solo || 0))); },
     change() {
       if (!this.s.last_month) return null;
       return Math.round(((this.s.this_month - this.s.last_month) / this.s.last_month) * 100);
