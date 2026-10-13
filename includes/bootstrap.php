@@ -302,7 +302,7 @@ function initials(string $name): string
 /** Only allow in-app "continue to" targets (invite and Pay-me links, a bill's pages), never external URLs. */
 function safe_next(string $next): string
 {
-    return preg_match('/^((join\?code|pay\?u)=[A-Za-z0-9]{12}|(bill-items|bill-detail|bill-breakdown)\?bill=\d{1,10})$/', $next) ? $next : '';
+    return preg_match('/^((join\?code|pay\?u)=[A-Za-z0-9]{12}|(bill-items|bill-detail|bill-breakdown)\?bill=\d{1,10}|reviews|community)$/', $next) ? $next : '';
 }
 
 /** The guest-link token in ?claim= (pages/register, pages/login), or '' when it isn't one that exists. */

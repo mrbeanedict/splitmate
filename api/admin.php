@@ -166,13 +166,13 @@ if (method() === 'GET') {
         case 'reviews':
             // Landing-page ratings and feedback, pending first so they get seen
             $rows = q(
-                "SELECT f.id, f.rating, f.comment, f.status, f.created_at, f.updated_at, u.full_name, u.email
-                 FROM feedback f JOIN users u ON u.id = f.user_id
+                "SELECT f.id, f.rating, f.comment, f.status, f.created_at, f.updated_at, f.user_id, f.guest_name, u.full_name, u.email
+                 FROM feedback f LEFT JOIN users u ON u.id = f.user_id
                  ORDER BY f.status = 'pending' DESC, f.updated_at DESC LIMIT 200"
             )->fetchAll();
             json_ok(['reviews' => array_map(fn ($r) => [
                 'id' => (int) $r['id'], 'rating' => (int) $r['rating'], 'comment' => (string) $r['comment'], 'status' => $r['status'],
-                'name' => $r['full_name'], 'email' => $r['email'], 'updated_at' => $r['updated_at'],
+                'name' => $r['user_id'] ? $r['full_name'] : (($r['guest_name'] ?: 'Guest') . ' (no account)'), 'email' => $r['email'] ?? '', 'is_guest' => !$r['user_id'], 'updated_at' => $r['updated_at'],
             ], $rows)]);
     }
     fail('Unknown view.', 404);

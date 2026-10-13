@@ -33,7 +33,6 @@ require __DIR__ . '/../partials/head.php';
 $chevron = '<svg class="acct-chev" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></svg>';
 $acctRows = [
     ['profile', 'c-brand', '<circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/>', 'Profile &amp; payment QR', 'Photo, name and Pay-me QR'],
-    ['landing#reviews', 'c-amber', '<path stroke-linejoin="round" d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>', 'Rate Setlo', "Tell us how we're doing"],
     ['stats', 'c-indigo', '<path stroke-linecap="round" stroke-linejoin="round" d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', 'Spending stats', 'Monthly totals and favorite spots'],
     [null, 'c-violet', '<path stroke-linecap="round" stroke-linejoin="round" d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>', 'Replay the tour', 'Walk through Setlo again'],
 ];

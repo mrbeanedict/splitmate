@@ -21,6 +21,7 @@ $sections = [
     ],
     'Social' => [
         'community' => ['community', 'Community', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-1v3l-3-3h-5a2 2 0 01-2-2v-1M15 4H5a2 2 0 00-2 2v6a2 2 0 002 2h1v3l3-3h6a2 2 0 002-2V6a2 2 0 00-2-2z"/>'],
+        'reviews'   => ['reviews', 'Ratings & reviews', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>'],
     ],
     'Account' => [
         'profile'       => ['profile', 'Profile & payments', null, '<circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/>'],
