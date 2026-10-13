@@ -162,9 +162,9 @@ switch (input('action', '')) {
         json_ok(['profile' => profile_of($me['id'])]);
 
     case 'set_background':
-        // mode: 'badges' (floating badges), 'plain', or 'photo' (needs a photo uploaded first)
+        // mode: 'badges' (floating badges), 'receipts' (floating receipts + chameleon), 'plain', or 'photo' (needs a photo uploaded first)
         $mode = (string) input('mode', '');
-        if (!in_array($mode, ['badges', 'plain', 'photo'], true)) {
+        if (!in_array($mode, ['badges', 'receipts', 'plain', 'photo'], true)) {
             fail('Pick a background.', 422);
         }
         if ($mode === 'photo' && !q('SELECT bg_image FROM users WHERE id = ?', [$me['id']])->fetchColumn()) {

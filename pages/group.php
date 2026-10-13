@@ -29,15 +29,14 @@ require __DIR__ . '/../partials/head.php';
   <div v-else class="flex-1 space-y-4 px-5 pb-6 pt-4">
     <a :href="'my-bills?new=1&group=' + groupId" class="btn-pill" :class="g.fun_mode ? 'btn-fun' : 'btn-pill-primary'">+ New bill with this group</a>
 
-    <!-- Fun Mode: after the receipt scan, a game decides who pays (pages/game.php). Only the group's maker switches it. -->
-    <div v-if="g.is_owner || g.fun_mode" class="tile flex items-center gap-3 p-3.5" :class="{ '!border-fuchsia-200 !bg-fuchsia-50/60': g.fun_mode }">
+    <!-- Fun Mode: after the receipt scan, a game decides who pays (pages/game.php). Any member can switch it. -->
+    <div class="tile flex items-center gap-3 p-3.5" :class="{ '!border-fuchsia-200 !bg-fuchsia-50/60': g.fun_mode }">
       <span class="text-[24px]" aria-hidden="true">{{ g.fun_mode ? '🎉' : '🎲' }}</span>
       <div class="min-w-0 flex-1">
         <p class="text-[13.5px] font-bold text-ink">Fun Mode</p>
         <p class="text-[11.5px] text-slate-500">After the receipt scan, play Guess the Bill, Roulette or Mystery Card to decide who pays.</p>
       </div>
-      <button v-if="g.is_owner" @click="setFun(!g.fun_mode)" role="switch" :aria-checked="g.fun_mode ? 'true' : 'false'" aria-label="Fun Mode" class="switch" :disabled="busy"><span></span></button>
-      <span v-else class="fun-badge">On</span>
+      <button @click="setFun(!g.fun_mode)" role="switch" :aria-checked="g.fun_mode ? 'true' : 'false'" aria-label="Fun Mode" class="switch" :disabled="busy"><span></span></button>
     </div>
 
     <!-- Trail: every payment on the group's bills, with receipts -->
@@ -85,10 +84,10 @@ require __DIR__ . '/../partials/head.php';
           <button @click="showPerson(m.id)" class="min-w-0 flex-1 truncate text-left text-[13.5px] font-semibold text-ink hover:underline">
             {{ m.name }} <span v-if="m.id === me" class="text-[11px] font-medium text-brand-600">(You)</span><span v-if="m.id === g.owner_id" class="text-[11px] font-medium text-slate-400"> · made the group</span>
           </button>
-          <button v-if="g.is_owner && m.id !== g.owner_id" @click="removeMember(m)" class="text-slate-300 hover:text-rose-500" :aria-label="'Remove ' + m.name" :disabled="busy">✕</button>
+          <button v-if="m.id !== g.owner_id && m.id !== me" @click="removeMember(m)" class="text-slate-300 hover:text-rose-500" :aria-label="'Remove ' + m.name" :disabled="busy">✕</button>
         </div>
       </div>
-      <template v-if="g.is_owner">
+      <template v-if="true">
         <input v-model="search" @input="lookup" class="input-soft !bg-white" placeholder="Add someone by name or email" aria-label="Add someone" />
         <div v-if="results.length" class="tile divide-y divide-slate-100 overflow-hidden">
           <button v-for="u in results" :key="u.id" @click="addMember(u)" class="flex w-full items-center gap-3 px-3.5 py-2.5 text-left hover:bg-slate-50">
@@ -97,10 +96,10 @@ require __DIR__ . '/../partials/head.php';
         </div>
         <div class="grid grid-cols-2 gap-3">
           <button @click="rename" class="btn btn-outline" :disabled="busy">Rename</button>
-          <button @click="remove" class="btn btn-ghost !text-rose-600" :disabled="busy">Delete group</button>
+          <button v-if="g.is_owner" @click="remove" class="btn btn-ghost !text-rose-600" :disabled="busy">Delete group</button>
+          <button v-else @click="leave" class="btn btn-ghost !text-rose-600" :disabled="busy">Leave group</button>
         </div>
       </template>
-      <button v-else @click="leave" class="btn btn-ghost w-full !text-rose-600" :disabled="busy">Leave group</button>
     </template>
   </div>
 

@@ -28,8 +28,34 @@
     document.body.appendChild(field);
   }
 
-  /** Redraw the floating badges, from $badges (api/achievements.php) or fetched; hidden ones never float. */
+  // Receipts preset: one long receipt, itemised with prices, swimming slowly up the page (see badge-bg.css), over a
+  // wallpaper of tiny sketched chameleon faces. Plain DOM, no resize handling needed (it is taller than any screen).
+  const ITEMS = [['Pork sinigang', 385], ['Garlic rice x4', 160], ['Sisig', 295], ['Iced tea pitcher', 120], ['Halo-halo x3', 255],
+    ['Lechon kawali', 340], ['Calamansi juice', 90], ['Milk tea x2', 210], ['Chicken inasal', 275], ['Leche flan', 130],
+    ['Pancit canton', 220], ['Service charge', 117], ['Grab fare', 148], ['Coffee x3', 285], ['Pizza slice x2', 190], ['Bottled water', 45]];
+
+  function buildReceipt() {
+    document.querySelector('.badge-field')?.remove();
+    const field = document.createElement('div');
+    field.className = 'badge-field badge-field-receipt';
+    field.setAttribute('aria-hidden', 'true');
+    let rows = '', total = 0;
+    for (let i = 0; i < 40; i++) {
+      const [name, price] = ITEMS[(i * 7 + 3) % ITEMS.length];
+      total += price;
+      rows += `<li><span>${name}</span><b>₱${price.toFixed(2)}</b></li>`;
+    }
+    field.innerHTML = `<div class="rcpt"><div class="rcpt-sway"><div class="rcpt-paper">`
+      + `<p class="rcpt-head">SETLO</p><p class="rcpt-sub">Split the bill, not the friendship</p>`
+      + `<ul>${rows}</ul><p class="rcpt-total"><span>TOTAL</span><b>₱${total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</b></p>`
+      + `<p class="rcpt-sub">Thank you! Settle up soon ♥</p></div></div></div>`;
+    document.body.appendChild(field);
+  }
+
+  /** Redraw the backdrop: the receipt, or the floating badges ($badges from api/achievements.php, or fetched;
+      hidden ones never float). Anything else removes the layer. */
   async function refresh(badges) {
+    if (document.body.dataset.bg === 'receipts') { buildReceipt(); return; }
     if (document.body.dataset.bg !== 'badges') {
       document.querySelector('.badge-field')?.remove();
       return;

@@ -46,8 +46,14 @@ $activity = q(
     [$me['id']]
 )->fetchAll();
 
+// My purchases: this month's total and the latest few (pages/purchases.php)
+$monthStart = date('Y-m-01');
+$purchaseTotal = (int) q('SELECT COALESCE(SUM(ROUND(amount * 100)), 0) FROM purchases WHERE user_id = ? AND purchased_on >= ?', [$me['id'], $monthStart])->fetchColumn();
+$purchases = q('SELECT id, title, category, amount, purchased_on FROM purchases WHERE user_id = ? ORDER BY purchased_on DESC, id DESC LIMIT 4', [$me['id']])->fetchAll();
+
 json_ok([
     'user'     => public_user($me) + ['currency' => $home],
+    'purchases' => ['month_total' => pesos($purchaseTotal), 'recent' => array_map(fn ($p) => ['id' => (int) $p['id'], 'title' => $p['title'], 'category' => $p['category'], 'amount' => (float) $p['amount'], 'date' => $p['purchased_on']], $purchases)],
     'owe'      => $sum('from_user_id'),
     'owed'     => $sum('to_user_id'),
     'bills'    => array_map(fn ($b) => bill_card($b) + ['link' => bill_link($b, $me['id'])], $bills),

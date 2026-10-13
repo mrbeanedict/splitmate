@@ -123,13 +123,13 @@ require __DIR__ . '/../partials/head.php';
       </div>
       <p class="section-label mt-5">MODE</p>
       <div class="seg seg-light" role="radiogroup" aria-label="Light or dark mode">
-        <button v-for="m in modes" :key="m.key" type="button" role="radio" :aria-checked="theme.mode === m.key" :class="{ on: theme.mode === m.key }" @click="setTheme({ mode: m.key })">{{ m.label }}</button>
+        <button v-for="m in modes" :key="m.key" type="button" role="radio" :aria-checked="theme.mode === m.key" :class="{ on: theme.mode === m.key }" @click="setTheme({ mode: m.key })"><svg class="seg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:inline-block;width:15px;height:15px;margin:-3px 6px 0 0;vertical-align:middle" v-html="icons[m.key]"></svg>{{ m.label }}</button>
       </div>
       <!-- Backdrop behind the pages: saved to the account (api/profile.php), applied live (assets/js/badge-field.js) -->
       <p class="section-label mt-5">BACKGROUND</p>
       <div class="seg seg-light" role="radiogroup" aria-label="Page background">
         <button v-for="b in backgrounds" :key="b.key" type="button" role="radio" :aria-checked="bg.mode === b.key" :class="{ on: bg.mode === b.key }"
-                :disabled="!!busyBg" @click="setBackground(b.key)">{{ b.label }}</button>
+                :disabled="!!busyBg" @click="setBackground(b.key)"><svg class="seg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:inline-block;width:15px;height:15px;margin:-3px 6px 0 0;vertical-align:middle" v-html="icons[b.key]"></svg>{{ b.label }}</button>
       </div>
       <p class="mt-2 text-[11.5px] text-slate-400">{{ bgHint }} Saved to your account.</p>
       <div v-if="bg.mode === 'photo' && bg.image" class="mt-3 flex items-center gap-3.5 rounded-2xl border border-slate-200 bg-slate-50 p-2.5">
@@ -139,7 +139,7 @@ require __DIR__ . '/../partials/head.php';
           <p class="truncate text-[11.5px] text-slate-400">Shown softly behind your pages</p>
           <div class="mt-2 flex flex-wrap gap-2">
             <button type="button" class="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1.5 text-[12px] font-bold text-brand-700 transition hover:bg-brand-100 disabled:opacity-50"
-                    :disabled="!!busyBg" @click="$refs.bgFile.click()">
+                    :disabled="!!busyBg" @click="pickBackgroundPhoto">
               <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.6-4.6a2 2 0 012.8 0L16 16m-2-2l1.6-1.6a2 2 0 012.8 0L20 14M14 8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
               Change
             </button>
@@ -255,8 +255,18 @@ Setlo.mount({
     loading: true, busy: false, busyAch: false, p: null, money: null, ach: null, canShare: !!navigator.share,
     presets: [], picking: false,
     theme: SetloTheme.get(), accents: SetloTheme.ACCENTS, hexDraft: SetloTheme.get().custom,
-    modes: [{ key: 'light', label: '☀️ Light' }, { key: 'dark', label: '🌙 Dark' }, { key: 'system', label: '🖥 System' }],
-    backgrounds: [{ key: 'badges', label: '🏅 Badges' }, { key: 'plain', label: 'Plain' }, { key: 'photo', label: '🖼 Photo' }],
+    // Line icons for the Mode and Background buttons (24×24, stroke = the button's text colour)
+    icons: {
+      light: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+      dark: '<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
+      system: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+      badges: '<circle cx="12" cy="9" r="6"/><path d="M8.5 14.5L7 22l5-3 5 3-1.5-7.5"/>',
+      receipts: '<path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+      plain: '<rect x="4" y="4" width="16" height="16" rx="3"/>',
+      photo: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/>',
+    },
+    modes: [{ key: 'light', label: 'Light' }, { key: 'dark', label: 'Dark' }, { key: 'system', label: 'System' }],
+    backgrounds: [{ key: 'badges', label: 'Badges' }, { key: 'receipts', label: 'Setlo' }, { key: 'plain', label: 'Plain' }, { key: 'photo', label: 'Photo' }],
     busyBg: null,
     f: { full_name: '', payment_method: 'GCash', payment_account: '' },
     pw: { current: '', new: '', confirm: '' }, serverErrors: {},
@@ -274,6 +284,7 @@ Setlo.mount({
     bgHint() {
       return {
         badges: 'Your shown badges float behind your pages; hidden ones stay out.',
+        receipts: 'The Setlo theme: a long receipt floats over little green chameleon sketches.',
         plain: 'Just the soft colour wash, nothing moving.',
         photo: 'Your photo, softened a little so your cards stay easy to read.',
       }[this.bg.mode];
@@ -304,8 +315,13 @@ Setlo.mount({
     },
     async setBackground(mode) {
       if (mode === this.bg.mode || this.busyBg) return;
-      if (mode === 'photo' && !this.bg.image) { this.$refs.bgFile.click(); return; } // no photo yet: pick one first
+      if (mode === 'photo' && !this.bg.image) { this.pickBackgroundPhoto(); return; } // no photo yet: pick one first
       this.applyBackground(await Setlo.run(this, () => api.post('profile.php', { action: 'set_background', mode }), 'busyBg'));
+    },
+    /** Ask first, then open the file picker / gallery for the background photo. */
+    async pickBackgroundPhoto() {
+      const ok = await Setlo.confirm({ title: 'Allow Setlo to open your photos?', text: 'Setlo needs your permission to open your gallery or files so you can pick a photo for your background. Only the photo you choose is used.', confirmText: 'Allow' });
+      if (ok) this.$refs.bgFile.click();
     },
     async uploadBackground(e) {
       const file = e.target.files[0];

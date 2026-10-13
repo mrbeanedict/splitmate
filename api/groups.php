@@ -1,7 +1,8 @@
 <?php
 // Saved groups: people who split often. New bills start from a group, and the group page keeps one trail of
-// its bills and every payment on them (each received one with its receipt). Members see the group; the owner
-// (who made it) renames it, adds and removes people, or deletes it (its bills stay).
+// its bills and every payment on them (each received one with its receipt). Every member can rename the group,
+// switch Fun Mode, and add or remove people (everyone else in the group is notified); only the owner (who made
+// it) deletes it (its bills stay).
 require __DIR__ . '/../includes/api.php';
 require_once __DIR__ . '/../includes/payments.php';
 
@@ -17,7 +18,7 @@ function group_members(int $groupId): array
     return array_map('public_user', $rows);
 }
 
-/** A group I'm in; fails otherwise. With $owner, only its owner may act. */
+/** A group I'm in; fails otherwise. With $owner, only its owner may act (just deleting the group). */
 function my_group(array $me, bool $owner = false): array
 {
     $g = q('SELECT * FROM user_groups WHERE id = ?', [int_param('id')])->fetch();
@@ -30,6 +31,16 @@ function my_group(array $me, bool $owner = false): array
     $g['id'] = (int) $g['id'];
     $g['owner_id'] = (int) $g['owner_id'];
     return $g;
+}
+
+/** Tell everyone in the group except the $skip ids what just changed. */
+function notify_group(array $g, array $skip, string $message): void
+{
+    foreach (q('SELECT user_id FROM user_group_members WHERE group_id = ?', [$g['id']])->fetchAll(PDO::FETCH_COLUMN) as $uid) {
+        if (!in_array((int) $uid, $skip, true)) {
+            notify((int) $uid, 'added', $message, 'group?id=' . $g['id']);
+        }
+    }
 }
 
 function group_name(): string
@@ -144,33 +155,52 @@ switch (input('action', '')) {
         json_ok(['id' => $id, 'redirect' => 'group?id=' . $id]);
 
     case 'rename':
-        $g = my_group($me, true);
-        q('UPDATE user_groups SET name = ? WHERE id = ?', [group_name(), $g['id']]);
+        $g = my_group($me);
+        $name = group_name();
+        q('UPDATE user_groups SET name = ? WHERE id = ?', [$name, $g['id']]);
+        if ($name !== $g['name']) {
+            notify_group($g, [$me['id']], "$myName renamed the group “{$g['name']}” to “{$name}”.");
+        }
         break;
 
     case 'set_fun_mode':
         // Fun Mode: the group's bills offer a game after the receipt review (pages/game.php).
-        $g = my_group($me, true);
+        $g = my_group($me);
         q('UPDATE user_groups SET fun_mode = ? WHERE id = ?', [input('on') ? 1 : 0, $g['id']]);
+        if ((bool) input('on') !== (bool) $g['fun_mode']) {
+            notify_group($g, [$me['id']], "$myName turned Fun Mode " . (input('on') ? 'on' : 'off') . " in “{$g['name']}”.");
+        }
         json_ok(['fun_mode' => (bool) input('on')]);
 
     case 'add_member':
-        $g = my_group($me, true);
+        $g = my_group($me);
         $uid = real_users([int_param('user_id')])[0] ?? 0;
         if (!$uid) {
             fail('Choose someone with a Setlo account.', 422);
         }
-        q('INSERT IGNORE INTO user_group_members (group_id, user_id) VALUES (?, ?)', [$g['id'], $uid]);
-        notify($uid, 'added', "$myName added you to the group “{$g['name']}”.", 'group?id=' . $g['id']);
+        $added = q('INSERT IGNORE INTO user_group_members (group_id, user_id) VALUES (?, ?)', [$g['id'], $uid])->rowCount() > 0;
+        if ($added) {
+            notify($uid, 'added', "$myName added you to the group “{$g['name']}”.", 'group?id=' . $g['id']);
+            $newName = first_name((string) q('SELECT full_name FROM users WHERE id = ?', [$uid])->fetchColumn());
+            notify_group($g, [$me['id'], $uid], "$myName added $newName to the group “{$g['name']}”.");
+        }
         break;
 
     case 'remove_member':
-        $g = my_group($me, true);
+        $g = my_group($me);
         $uid = int_param('user_id');
         if ($uid === $g['owner_id']) {
-            fail('You made this group — delete it instead of leaving it.', 422);
+            fail('The person who made the group can’t be removed.', 422);
         }
-        q('DELETE FROM user_group_members WHERE group_id = ? AND user_id = ?', [$g['id'], $uid]);
+        if ($uid === $me['id']) {
+            fail('Use Leave group to remove yourself.', 422);
+        }
+        $gone = q('DELETE FROM user_group_members WHERE group_id = ? AND user_id = ?', [$g['id'], $uid])->rowCount() > 0;
+        if ($gone) {
+            $goneName = first_name((string) q('SELECT full_name FROM users WHERE id = ?', [$uid])->fetchColumn());
+            notify($uid, 'added', "$myName removed you from the group “{$g['name']}”.", 'groups');
+            notify_group($g, [$me['id'], $uid], "$myName removed $goneName from the group “{$g['name']}”.");
+        }
         break;
 
     case 'leave':
@@ -179,6 +209,7 @@ switch (input('action', '')) {
             fail('You made this group — delete it instead of leaving it.', 422);
         }
         q('DELETE FROM user_group_members WHERE group_id = ? AND user_id = ?', [$g['id'], $me['id']]);
+        notify_group($g, [$me['id']], "$myName left the group “{$g['name']}”.");
         json_ok(['redirect' => 'groups']);
 
     case 'delete':

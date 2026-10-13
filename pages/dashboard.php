@@ -7,7 +7,7 @@ $hour = (int) date('G');
 $greeting = $hour < 12 ? 'Good morning,' : ($hour < 18 ? 'Good afternoon,' : 'Good evening,');
 // First visit after signing up: the mascot's tour of the app (assets/js/tour.js), until finished or skipped
 $showTour = q('SELECT onboarded_at FROM users WHERE id = ?', [$user['id']])->fetchColumn() === null;
-$headExtra = ['assets/css/tour.css', 'assets/js/tour.js'];
+$headExtra = ['assets/css/tour.css', 'assets/js/tour.js', 'assets/css/purchases.css'];
 require __DIR__ . '/../partials/head.php';
 ?>
 <div id="app" class="device" v-cloak>
@@ -140,6 +140,33 @@ foreach ($acctRows as [$href, $color, $paths, $title, $desc]):
       </div>
     </section>
 
+    <!-- My purchases: fills the column beside Active Bills -->
+    <section>
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-[15px] font-extrabold text-ink">My Purchases</h2>
+        <a href="purchases" class="text-[13px] font-bold text-brand-700">See all</a>
+      </div>
+      <div class="tile p-4">
+        <div class="flex items-end justify-between gap-3">
+          <div>
+            <p class="text-[12px] font-medium text-slate-500">Spent this month</p>
+            <p class="text-[22px] font-extrabold leading-tight tracking-tight text-ink">{{ peso(d.purchases.month_total, d.user.currency) }}</p>
+          </div>
+          <a href="purchases?new=1" class="btn btn-primary btn-sm">+ Add</a>
+        </div>
+        <p v-if="!d.purchases.recent.length" class="mt-3 text-[12px] text-slate-400">Log your own purchases — coffee, groceries, a ride — and see where your money goes.</p>
+        <div v-else class="-mx-4 -mb-4 mt-3 divide-y divide-slate-100 border-t border-slate-100">
+          <a v-for="p in d.purchases.recent" :key="p.id" href="purchases" class="flex items-center gap-3 px-4 py-3">
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-[13.5px] font-bold text-ink">{{ p.title }}</p>
+              <p class="text-[11.5px] text-slate-400">{{ p.category }} · {{ fmtDate(p.date) }}</p>
+            </div>
+            <span class="text-[13.5px] font-extrabold text-ink">{{ peso(p.amount, d.user.currency) }}</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
     <!-- Recent activity -->
     <section v-if="d.activity.length">
       <h2 class="mb-3 text-[15px] font-extrabold text-ink">Recent Activity</h2>
@@ -162,7 +189,7 @@ const SHOW_TOUR = <?= $showTour ? 'true' : 'false' ?>;
 Setlo.mount({
   data: () => ({
     loading: true, menu: false,
-    d: { owe: { total: 0, count: 0 }, owed: { total: 0, count: 0 }, bills: [], activity: [] },
+    d: { owe: { total: 0, count: 0 }, owed: { total: 0, count: 0 }, bills: [], activity: [], purchases: { month_total: 0, recent: [] }, user: { currency: 'PHP' } },
     dot: { marked_paid: 'bg-amber-400', confirmed: 'bg-brand-500', disputed: 'bg-rose-400', resent: 'bg-sky-400', nudged: 'bg-slate-400' },
   }),
   async mounted() {
