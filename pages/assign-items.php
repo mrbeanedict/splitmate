@@ -27,7 +27,7 @@ require __DIR__ . '/../partials/head.php';
   <?php require __DIR__ . '/../partials/steps.php'; ?>
 
   <spinner v-if="loading"></spinner>
-  <div v-else class="flex-1 pb-4 pt-4">
+  <div v-else-if="bill" class="flex-1 pb-4 pt-4">
     <!-- Receipt in another currency: shares are converted at the bill's settlement rate (the market rate, set automatically) -->
     <a v-if="foreign" :href="'bill-detail.php?bill=' + billId + '#currency'" class="mx-5 mb-3 block rounded-2xl border px-3.5 py-2.5 text-[12px] leading-snug"
        :class="bill.fx.missing ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-sky-200 bg-sky-50 text-sky-800'">

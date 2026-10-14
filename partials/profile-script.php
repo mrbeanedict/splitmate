@@ -6,6 +6,7 @@ Setlo.mount({
   data: () => ({
     loading: true, busy: false, busyAch: false, p: null, money: null, ach: null, canShare: !!navigator.share,
     presets: [], picking: false,
+    cardShowAcct: false, received: [], receivedLoaded: false,
     theme: SetloTheme.get(), accents: SetloTheme.ACCENTS, hexDraft: SetloTheme.get().custom,
     // Line icons for the Mode and Background buttons (24×24, stroke = the button's text colour)
     icons: {
@@ -50,6 +51,8 @@ Setlo.mount({
       }[this.bg.mode];
     },
     payUrl() { return this.p ? Setlo.payLink(this.p.pay_code) : ''; },
+    /** The QR points at this computer only (localhost), so a friend's phone can't open it. */
+    localLink() { return !!this.p && Setlo.isLocalLink(this.payUrl); },
     qr() { return this.p ? Setlo.qrSvg(this.payUrl) : ''; },
     featuredBadge() {
       if (!this.ach) return this.p?.badge || null;
@@ -60,6 +63,7 @@ Setlo.mount({
   async mounted() {
     await Setlo.load(this, 'profile.php', null, (r) => { this.set(r.profile); this.money = r.money || null; this.presets = r.presets || []; });
     if (PAGE === 'profile') Setlo.load(this, 'achievements.php', null, (r) => { this.ach = r; }, 'busyAch');
+    if (PAGE === 'payments') this.loadReceived();
   },
   methods: {
     openBadge(a) { Setlo.showAchievement(a); },
@@ -119,6 +123,10 @@ Setlo.mount({
       try { this.money = (await api.get('profile.php')).money || null; } catch (e) { /* the old totals stay until the next visit */ }
     },
     setTheme(patch) { this.theme = SetloTheme.set(patch); },
+    async setEmailReminders(on) {
+      const r = await Setlo.run(this, () => api.post('profile.php', { action: 'email_reminders', on }));
+      if (r) { this.p = r.profile; Setlo.toast(on ? 'Reminder emails are on' : 'Reminder emails are off', 'ok'); }
+    },
     /** Typing a hex code: applies once it is a full #rrggbb (the "#" is added if left out). */
     onHex() {
       let v = this.hexDraft.trim();
@@ -172,19 +180,42 @@ Setlo.mount({
         this.busy = false;
       }
     },
-    downloadQr() {
+    /** Money friends sent through my QR (Payment Methods page). */
+    async loadReceived() {
+      try { this.received = (await api.get('pay.php', { received: 1 })).received; } catch (e) { /* the list just stays empty */ }
+      this.receivedLoaded = true;
+    },
+    /** My shareable "Pay me" card (PNG). The number is on it only if I ticked the box: the image can be sent to anyone. */
+    cardImage() {
+      return Setlo.qrCard({
+        name: this.p.name, initials: this.p.initials, color: this.p.color, photo: this.p.photo, link: this.payUrl,
+        method: this.p.payment_method, account: this.p.payment_account, showAccount: this.cardShowAcct && this.p.payment_method !== 'Cash',
+      });
+    },
+    async downloadQr() {
+      const { dataUrl } = await this.cardImage();
       const a = document.createElement('a');
-      a.href = Setlo.qrPng(this.payUrl, 'Pay ' + this.p.first + ' on Setlo');
+      a.href = dataUrl;
       a.download = 'setlo-pay-' + this.p.first.toLowerCase() + '.png';
       a.click();
     },
+    async copyLink() {
+      try { await navigator.clipboard.writeText(this.payUrl); Setlo.toast('Link copied', 'ok'); }
+      catch (e) { Setlo.showCopy('Your pay link', this.payUrl); }
+    },
+    /** Share the card as an image where the browser can (phones); otherwise download it and copy the link. */
     async shareLink() {
+      const { blob } = await this.cardImage();
+      const file = new File([blob], 'setlo-pay-' + this.p.first.toLowerCase() + '.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: 'Pay ' + this.p.name + ' on Setlo', text: 'Pay me on Setlo: ' + this.payUrl }).catch(() => {});
+        return;
+      }
       if (navigator.share) {
         navigator.share({ title: 'Pay ' + this.p.name + ' on Setlo', url: this.payUrl }).catch(() => {});
         return;
       }
-      try { await navigator.clipboard.writeText(this.payUrl); Setlo.toast('Link copied', 'ok'); }
-      catch (e) { Setlo.showCopy('Your pay link', this.payUrl); }
+      await this.copyLink();
     },
     async rotate() {
       const ok = await Setlo.confirm({

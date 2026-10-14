@@ -16,6 +16,7 @@ header('Cache-Control: no-store');
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="csrf-token" content="<?= h(csrf_token()) ?>" />
 <meta name="api-base" content="<?= h(url('api/')) ?>" />
+<?php if ((string) config('app_url') !== '') : ?><meta name="app-url" content="<?= h(rtrim((string) config('app_url'), '/')) ?>" /><?php endif; ?>
 <?php if (session_area() === 'admin') : ?><meta name="area" content="admin" /><?php endif; ?>
 <meta name="login-page" content="<?= h($loginPage ?? 'login') ?>" />
 <meta name="user-id" content="<?= (int) (current_user()['id'] ?? 0) ?>" />

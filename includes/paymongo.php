@@ -95,7 +95,7 @@ function paymongo_request(string $method, string $path, ?array $body = null): ar
     if (!paymongo_available()) {
         throw new PayMongoException('Online payment is not set up on this server (missing PayMongo key).');
     }
-    $ch = curl_init('https://api.paymongo.com/v1/' . $path);
+    $ch = curl_init(rtrim((string) (config('paymongo.base_url') ?: 'https://api.paymongo.com/v1'), '/') . '/' . $path);
     curl_setopt_array($ch, [
         CURLOPT_CUSTOMREQUEST  => $method,
         CURLOPT_POSTFIELDS     => $body === null ? null : json_encode($body),

@@ -79,7 +79,7 @@ $steps = [
     'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS paid_amount DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER amount',
     'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS interest_rate DECIMAL(5,2) NULL AFTER paid_amount',
     "ALTER TABLE settlements MODIFY settle_method ENUM('online','transfer','cash','mixed') NULL",
-    "ALTER TABLE settlement_events MODIFY event ENUM('created','marked_paid','confirmed','disputed','resent','nudged','interest','covered') NOT NULL",
+    "ALTER TABLE settlement_events MODIFY event ENUM('created','marked_paid','confirmed','disputed','resent','nudged','interest','covered','due_set') NOT NULL",
     "CREATE TABLE IF NOT EXISTS settlement_payments (
        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, settlement_id INT UNSIGNED NOT NULL, paid_by INT UNSIGNED NOT NULL,
        amount DECIMAL(10,2) NOT NULL, method ENUM('online','transfer','cash') NOT NULL,
@@ -252,8 +252,33 @@ $steps = [
     // Username changes: 5 in a row, then a 7-day wait (api/profile.php, case 'username')
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS username_changes TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER username',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS username_locked_until DATETIME NULL AFTER username_changes',
+    // Payment reminders: a due date per debt, the last automatic reminder, and an email opt-out
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS due_on DATE NULL AFTER interest_rate',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS auto_reminded_at DATETIME NULL AFTER due_on',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS email_reminders TINYINT(1) NOT NULL DEFAULT 1 AFTER email',
     // Backdrop preset with floating receipts and the camouflaged chameleon
     "ALTER TABLE users MODIFY COLUMN bg_mode ENUM('badges','receipts','plain','photo') NOT NULL DEFAULT 'badges'",
+    // Money sent through someone's Pay-me QR without a debt (pages/pay.php "Send money")
+    'CREATE TABLE IF NOT EXISTS qr_payments (
+       id               INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       from_user_id     INT UNSIGNED NOT NULL,
+       to_user_id       INT UNSIGNED NOT NULL,
+       amount           DECIMAL(10,2) NOT NULL,
+       currency         CHAR(3) NOT NULL DEFAULT \'PHP\',
+       note             VARCHAR(100) NULL,
+       status           ENUM(\'started\',\'paid\',\'cancelled\') NOT NULL DEFAULT \'started\',
+       paymongo_session VARCHAR(80) NULL,
+       payment_ref      VARCHAR(60) NULL,
+       online_via       VARCHAR(20) NULL,
+       online_detail    VARCHAR(40) NULL,
+       created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       paid_at          DATETIME NULL,
+       FOREIGN KEY (from_user_id) REFERENCES users(id),
+       FOREIGN KEY (to_user_id)   REFERENCES users(id),
+       INDEX (to_user_id, status),
+       INDEX (from_user_id, status)
+     ) ENGINE=InnoDB',
+    "ALTER TABLE qr_payments MODIFY status ENUM('started','paid','cancelled') NOT NULL DEFAULT 'started'",
     // Personal purchases (pages/purchases.php): one person's own expenses, outside any bill
     'CREATE TABLE IF NOT EXISTS purchases (
        id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

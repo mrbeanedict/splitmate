@@ -5,6 +5,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/paymongo.php';
+
 /** Lock a settlement row for the rest of the transaction (so two payments can't both use the same balance) and return it. */
 function lock_settlement(int $id): array
 {
@@ -407,4 +409,75 @@ function settlement_rows_with_parts(array $rows): array
         $row['open'] = pesos(max(0, cents($row['remaining']) - $awaiting));
         return $row;
     }, $rows);
+}
+
+// ---------- Online payments (PayMongo) ----------
+
+/** An amount of this settlement, in its currency: "₱500.00", "¥2,000". */
+function s_money(array $s, int $cents): string
+{
+    return money_str($cents, $s['currency'] ?? 'PHP');
+}
+
+/** "₱500 (part, ₱700 left)" style wording for event notes and notifications. */
+function part_words(int $cents, array $s): string
+{
+    $left = cents($s['amount']) - cents($s['paid_amount']) - $cents;
+    return s_money($s, $cents) . ($left > 0 ? ' (part — ' . s_money($s, $left) . ' left after it)' : '');
+}
+
+/** Absolute URL of an app page, for PayMongo to send the payer back to. */
+function absolute_url(string $path): string
+{
+    return (is_https() ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . url($path);
+}
+
+/**
+ * What one PayMongo checkout is for, in cents: the sum of every payment made under that session, counted ones too. A
+ * checkout covers one debt, or several debts to the same person at once (pages/pay.php); PayMongo reports one amount
+ * for all of it, and the debts may be counted one at a time (each from its own page).
+ */
+function online_session_cents(string $session): int
+{
+    return (int) q('SELECT COALESCE(SUM(ROUND(amount * 100)), 0) FROM settlement_payments WHERE paymongo_session = ?', [$session])->fetchColumn();
+}
+
+/**
+ * Count one payment whose PayMongo checkout was paid: note how it was paid, confirm it (confirm_payment) and tell the
+ * receiver. $paid is paymongo_paid_payment()'s reply; the amount counted is this payment's own share of the checkout.
+ * Runs in its own transaction. Returns null if it was already counted, else
+ * ['payment_id', 'settlement_id', 'bill', 'cents', 'via' (display name), 'left' (cents still to pay on the debt)].
+ */
+function count_online_payment(array $p, array $paid): ?array
+{
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $locked = lock_settlement((int) $p['settlement_id']);
+        $row = q('SELECT * FROM settlement_payments WHERE id = ? FOR UPDATE', [$p['id']])->fetch();
+        if (!$row || $row['status'] !== 'started') {
+            $pdo->rollBack();
+            return null; // another check got there first
+        }
+        $cents = cents($row['amount']);
+        q('UPDATE settlement_payments SET payment_ref = ?, online_via = ?, online_detail = ? WHERE id = ?', [$paid['id'], $paid['via'], $paid['detail'], $row['id']]);
+        $names = first_names([(int) $row['paid_by'], (int) $locked['from_user_id']]);
+        $payer = $names[(int) $row['paid_by']];
+        $via = online_via_name($paid['via'], $paid['detail']);
+        $id = (int) $locked['id'];
+        log_event($id, (int) $row['paid_by'], 'marked_paid', "$payer paid " . part_words($cents, $locked) . " online via PayMongo ($via, ref {$paid['id']})"
+            . ((int) $row['paid_by'] !== (int) $locked['from_user_id'] ? ' for ' . $names[(int) $locked['from_user_id']] : '') . '.');
+        confirm_payment($locked, $row, null);
+        $after = q('SELECT amount, paid_amount FROM settlements WHERE id = ?', [$id])->fetch();
+        $left = max(0, cents($after['amount']) - cents($after['paid_amount']));
+        log_event($id, null, 'confirmed', 'PayMongo confirmed the payment.' . ($left > 0 ? '' : ' Settlement closed.'));
+        notify((int) $locked['to_user_id'], 'confirmed', "$payer paid you " . s_money($locked, $cents) . " online ($via) for {$locked['bill_name']}. Counted automatically.", 'settlement-audit?id=' . $id);
+        $pdo->commit();
+        return ['payment_id' => (int) $row['id'], 'settlement_id' => $id, 'bill' => $locked['bill_name'], 'cents' => $cents, 'via' => $via, 'left' => $left];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
 }

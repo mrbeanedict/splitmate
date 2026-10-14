@@ -18,4 +18,5 @@ return [
     'SMTP_PASS'           => '',      // the 16-character App Password
     'MAIL_FROM'           => '',      // leave empty to send from SMTP_USER
     'MAIL_FROM_NAME'      => 'Setlo',
+    'APP_URL'             => '',      // public address for links in reminder emails, e.g. https://yourdomain.com/setlo-splitmate
 ];
