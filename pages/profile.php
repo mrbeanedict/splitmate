@@ -32,7 +32,7 @@ require __DIR__ . '/../partials/head.php';
 
 
   <spinner v-if="loading"></spinner>
-  <div v-else class="flex-1 space-y-3 px-5 pb-6 pt-4">
+  <div v-else-if="p" class="flex-1 space-y-3 px-5 pb-6 pt-4">
 
     <!-- Balances: always visible, above the personal details -->
     <div class="tile p-4" v-if="money">
