@@ -36,14 +36,25 @@ require __DIR__ . '/../partials/head.php';
           </div>
         </div>
         <input ref="files" type="file" multiple accept="image/jpeg,image/png,image/webp" class="hidden" @change="pickFiles" aria-label="Choose photos" />
+        <div class="cm-fields">
+          <div class="cm-loc">
+            <input class="cm-input" v-model="compose.location" @input="onLocation('compose')" @keydown="suggestKey($event, 'compose')" @blur="closeSuggest" maxlength="160" autocomplete="off" role="combobox" :aria-expanded="suggest.key === 'compose' && suggest.items.length ? 'true' : 'false'" aria-autocomplete="list" placeholder="📍 Search a place (optional)" aria-label="Location" />
+            <ul v-if="suggest.key === 'compose' && suggest.items.length" class="cm-suggest" role="listbox">
+              <li v-for="(s, i) in suggest.items" :key="s.label + i" role="option" :aria-selected="i === suggest.idx ? 'true' : 'false'" :class="{ on: i === suggest.idx }" @mousedown.prevent="pickPlace('compose', s)">📍 {{ s.label }}</li>
+            </ul>
+            <span v-if="compose.lat !== null" class="cm-pinned">✓ Pinned on the map</span>
+          </div>
+          <input class="cm-input cm-price" v-model="compose.price" type="number" min="0" max="99999999.99" step="0.01" inputmode="decimal" placeholder="₱ Price (optional)" aria-label="Price" />
+        </div>
         <div class="cm-compose-bar">
-          <button type="button" class="cm-chip" @click="takePhotos" :disabled="compose.files.length >= 4">📷 Camera</button>
-          <button type="button" class="cm-chip" @click="$refs.files.click()" :disabled="compose.files.length >= 4">🖼 Photos</button>
+          <button type="button" class="cm-chip" @click="takePhotos" :disabled="posting || compose.files.length >= MAX_PHOTOS">📷 Camera</button>
+          <button type="button" class="cm-chip" @click="$refs.files.click()" :disabled="posting || compose.files.length >= MAX_PHOTOS">🖼 Photos</button>
+          <span v-if="compose.files.length" class="cm-meta">{{ compose.files.length }} {{ compose.files.length === 1 ? 'photo' : 'photos' }}</span>
           <select class="cm-select" v-model="compose.audience" aria-label="Who can see this post">
             <option value="public">🌐 Public</option>
             <option value="only_me">🔒 Only me</option>
           </select>
-          <button class="cm-post-btn" :disabled="posting || (!compose.body.trim() && !compose.files.length)">{{ posting ? 'Posting…' : 'Post' }}</button>
+          <button class="cm-post-btn" :disabled="posting || (!compose.body.trim() && !compose.files.length)">{{ posting ? (progress || 'Posting…') : 'Post' }}</button>
         </div>
       </form>
 
@@ -89,6 +100,16 @@ require __DIR__ . '/../partials/head.php';
 
         <div v-if="editing && editing.id === p.id" class="cm-edit">
           <textarea class="cm-text" v-model="editing.body" @input="grow" rows="3" maxlength="2000" aria-label="Edit your post"></textarea>
+          <div v-if="!p.shared" class="cm-fields">
+            <div class="cm-loc">
+              <input class="cm-input" v-model="editing.location" @input="onLocation('edit')" @keydown="suggestKey($event, 'edit')" @blur="closeSuggest" maxlength="160" autocomplete="off" role="combobox" :aria-expanded="suggest.key === 'edit' && suggest.items.length ? 'true' : 'false'" aria-autocomplete="list" placeholder="📍 Search a place (optional)" aria-label="Location" />
+              <ul v-if="suggest.key === 'edit' && suggest.items.length" class="cm-suggest" role="listbox">
+                <li v-for="(s, i) in suggest.items" :key="s.label + i" role="option" :aria-selected="i === suggest.idx ? 'true' : 'false'" :class="{ on: i === suggest.idx }" @mousedown.prevent="pickPlace('edit', s)">📍 {{ s.label }}</li>
+              </ul>
+              <span v-if="editing.lat !== null" class="cm-pinned">✓ Pinned on the map</span>
+            </div>
+            <input class="cm-input cm-price" v-model="editing.price" type="number" min="0" max="99999999.99" step="0.01" inputmode="decimal" placeholder="₱ Price (optional)" aria-label="Price" />
+          </div>
           <div class="row">
             <button type="button" class="cm-chip" @click="editing = null">Cancel</button>
             <button type="button" class="cm-post-btn" style="margin-left:0" :disabled="busy" @click="saveEdit(p)">Save</button>
@@ -96,8 +117,30 @@ require __DIR__ . '/../partials/head.php';
         </div>
         <p v-else-if="p.body" class="cm-body">{{ p.body }}</p>
 
+        <template v-if="!(editing && editing.id === p.id) && (p.location || p.price !== null)">
+          <div class="cm-tags">
+            <span v-if="p.location" class="cm-tag">📍 {{ p.location }}</span>
+            <span v-if="p.price !== null" class="cm-tag">🏷️ {{ peso(p.price) }}</span>
+            <button type="button" class="cm-more" :aria-expanded="open[p.id] ? 'true' : 'false'" @click="open[p.id] = !open[p.id]">{{ open[p.id] ? 'Hide details' : 'View details' }}</button>
+          </div>
+          <dl v-if="open[p.id]" class="cm-details">
+            <div v-if="p.location"><dt>Location</dt><dd>{{ p.location }}</dd></div>
+            <div v-if="p.price !== null"><dt>Price</dt><dd>{{ peso(p.price) }}</dd></div>
+            <div><dt>Posted by</dt><dd>{{ p.author.name }}</dd></div>
+            <div><dt>Posted</dt><dd>{{ fmtDateTime(p.created_at) }}</dd></div>
+            <div><dt>Audience</dt><dd>{{ p.audience === 'public' ? 'Public' : 'Only me' }}</dd></div>
+          </dl>
+          <div v-if="open[p.id] && p.location" class="cm-mapbox">
+            <iframe v-if="p.lat !== null" class="cm-map" :src="mapSrc(p)" :title="'Map of ' + p.location" loading="lazy" referrerpolicy="no-referrer"></iframe>
+            <a class="cm-more" :href="mapLink(p)" target="_blank" rel="noopener noreferrer">{{ p.lat !== null ? '🗺️ Open in Maps' : '🔎 Search in Maps' }}</a>
+          </div>
+        </template>
+
         <div v-if="p.photos.length" class="cm-photos" :class="'n' + Math.min(p.photos.length, 4)">
-          <button v-for="(src, i) in p.photos" :key="src" type="button" @click="openPhotos(p.photos, i)" :aria-label="'Open photo ' + (i + 1)"><img :src="src" alt="" loading="lazy" /></button>
+          <button v-for="(src, i) in p.photos.slice(0, 4)" :key="src" type="button" @click="openPhotos(p.photos, i)" :aria-label="'Open photo ' + (i + 1)">
+            <img :src="src" alt="" loading="lazy" />
+            <span v-if="i === 3 && p.photos.length > 4" class="cm-more-count">+{{ p.photos.length - 4 }}</span>
+          </button>
         </div>
 
         <div v-if="p.shared" class="cm-embed" :class="{ gone: p.shared.unavailable }">
@@ -109,7 +152,10 @@ require __DIR__ . '/../partials/head.php';
             </div>
             <p v-if="p.shared.body" class="cm-body" style="font-size:14px">{{ p.shared.body }}</p>
             <div v-if="p.shared.photos.length" class="cm-photos" :class="'n' + Math.min(p.shared.photos.length, 4)">
-              <button v-for="(src, i) in p.shared.photos" :key="src" type="button" @click="openPhotos(p.shared.photos, i)"><img :src="src" alt="" loading="lazy" /></button>
+              <button v-for="(src, i) in p.shared.photos.slice(0, 4)" :key="src" type="button" @click="openPhotos(p.shared.photos, i)">
+                <img :src="src" alt="" loading="lazy" />
+                <span v-if="i === 3 && p.shared.photos.length > 4" class="cm-more-count">+{{ p.shared.photos.length - 4 }}</span>
+              </button>
             </div>
           </template>
         </div>
@@ -233,12 +279,19 @@ const defaultLang = () => {
   return LANGS.some((l) => l.code === base) ? base : 'en';
 };
 
+// Photos per post (the server allows the same), per upload request, and the size limits (see api/community.php)
+const MAX_PHOTOS = 100;
+const MAX_PHOTO_BYTES = 20 * 1024 * 1024;
+const BATCH_PHOTOS = 10;
+const BATCH_BYTES = 30 * 1024 * 1024;
+
 Setlo.mount({
   data: () => ({
     me: <?= json_encode(public_user($user + ['avatar' => $user['avatar'] ?? null])) ?>,
     tab: 'feed', tabs: [{ id: 'feed', label: 'Feed' }, { id: 'saved', label: 'Saved' }, { id: 'mine', label: 'My posts' }],
     posts: [], loading: true, loadingMore: false, hasMore: false, newCount: 0, missing: false, focusId: 0,
-    compose: { body: '', audience: 'public', files: [] }, posting: false, busy: false,
+    compose: { body: '', location: '', lat: null, lng: null, price: '', audience: 'public', files: [] }, posting: false, busy: false, open: {},
+    suggest: { key: '', items: [], idx: -1 }, suggestTimer: null, suggestSeq: 0, progress: '', MAX_PHOTOS,
     menuFor: null, pickerFor: null, editing: null, editingComment: null, sharing: null,
     cm: {}, tr: {}, replyBox: null, lang: defaultLang(), langs: LANGS, reactionMap: REACTIONS,
     poller: null, pickerTimer: null, holdTimer: null, held: false,
@@ -289,31 +342,114 @@ Setlo.mount({
     replace(post) { const i = this.posts.findIndex((p) => p.id === post.id); if (i >= 0) this.posts.splice(i, 1, post); },
     grow(e) { const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 240) + 'px'; },
 
+    /* ---- places: suggestions while typing a location, and the map on a post ---- */
+    placeTarget(key) { return key === 'edit' ? this.editing : this.compose; },
+    onLocation(key) {
+      const t = this.placeTarget(key);
+      t.lat = null; t.lng = null; // typing again drops the old pin
+      clearTimeout(this.suggestTimer);
+      const q = (t.location || '').trim();
+      const seq = ++this.suggestSeq;
+      if (q.length < 3) { this.closeSuggest(); return; }
+      this.suggestTimer = setTimeout(async () => {
+        try {
+          const r = await api.get('places.php', { q });
+          if (seq !== this.suggestSeq) return; // a newer search replaced this one
+          this.suggest = { key, items: r.places, idx: -1 };
+        } catch (e) { if (seq === this.suggestSeq) this.closeSuggest(); }
+      }, 350);
+    },
+    closeSuggest() { clearTimeout(this.suggestTimer); this.suggestSeq++; this.suggest = { key: '', items: [], idx: -1 }; },
+    pickPlace(key, place) {
+      const t = this.placeTarget(key);
+      t.location = place.label; t.lat = place.lat; t.lng = place.lng;
+      this.closeSuggest();
+    },
+    suggestKey(e, key) {
+      const s = this.suggest;
+      if (s.key !== key || !s.items.length) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); s.idx = (s.idx + 1) % s.items.length; }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); s.idx = (s.idx - 1 + s.items.length) % s.items.length; }
+      else if (e.key === 'Enter' && s.idx >= 0) { e.preventDefault(); this.pickPlace(key, s.items[s.idx]); }
+      else if (e.key === 'Escape') { this.closeSuggest(); }
+    },
+    mapSrc(p) {
+      const d = 0.004;
+      const bbox = [p.lng - d, p.lat - d, p.lng + d, p.lat + d].join(',');
+      return 'https://www.openstreetmap.org/export/embed.html?bbox=' + bbox + '&layer=mapnik&marker=' + p.lat + ',' + p.lng;
+    },
+    mapLink(p) {
+      return p.lat !== null
+        ? 'https://www.openstreetmap.org/?mlat=' + p.lat + '&mlon=' + p.lng + '#map=17/' + p.lat + '/' + p.lng
+        : 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(p.location);
+    },
+
     /* ---- composing ---- */
     async addFiles(files) {
       for (const f of files) {
-        if (this.compose.files.length >= 4) { Setlo.toast('You can add up to 4 photos.', 'warn'); break; }
+        if (this.compose.files.length >= MAX_PHOTOS) { Setlo.toast('You can add up to ' + MAX_PHOTOS + ' photos to a post.', 'warn'); break; }
         if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { Setlo.toast(f.name + ' isn’t a JPG, PNG or WebP photo.'); continue; }
-        if (f.size > 8 * 1024 * 1024) { Setlo.toast(f.name + ' is too large (max 8 MB).'); continue; }
+        if (f.size > MAX_PHOTO_BYTES) { Setlo.toast(f.name + ' is too large (max 20 MB).'); continue; }
         const small = await Setlo.compressImage(f);
         this.compose.files.push({ file: small, url: URL.createObjectURL(small) });
       }
     },
     async pickFiles(e) { const files = [...e.target.files]; e.target.value = ''; await this.addFiles(files); },
-    async takePhotos() { await this.addFiles(await Setlo.captureCamera({ max: 4 - this.compose.files.length, title: 'Take photos' })); },
+    async takePhotos() { await this.addFiles(await Setlo.captureCamera({ max: MAX_PHOTOS - this.compose.files.length, title: 'Take photos' })); },
+    /** Photos in groups the server accepts in one request: at most BATCH_PHOTOS files and BATCH_BYTES in total. */
+    photoBatches(files) {
+      const batches = [];
+      let cur = []; let bytes = 0;
+      for (const f of files) {
+        if (cur.length && (cur.length >= BATCH_PHOTOS || bytes + f.file.size > BATCH_BYTES)) { batches.push(cur); cur = []; bytes = 0; }
+        cur.push(f); bytes += f.file.size;
+      }
+      if (cur.length) batches.push(cur);
+      return batches;
+    },
+    batchForm(action, batch, offset) {
+      const fd = new FormData();
+      fd.append('action', action);
+      batch.forEach((f, i) => fd.append('photos[]', f.file, f.file.name || 'photo-' + (offset + i + 1) + '.jpg'));
+      return fd;
+    },
     removeFile(i) { URL.revokeObjectURL(this.compose.files[i].url); this.compose.files.splice(i, 1); },
     async submitPost() {
       const fd = new FormData();
       fd.append('action', 'create');
       fd.append('body', this.compose.body.trim());
+      fd.append('location', this.compose.location.trim());
+      fd.append('lat', this.compose.lat === null ? '' : String(this.compose.lat));
+      fd.append('lng', this.compose.lng === null ? '' : String(this.compose.lng));
+      fd.append('price', this.compose.price === null ? '' : String(this.compose.price).trim());
       fd.append('audience', this.compose.audience);
-      this.compose.files.forEach((f, i) => fd.append('photos[]', f.file, f.file.name || 'photo-' + (i + 1) + '.jpg'));
+      const batches = this.photoBatches(this.compose.files);
+      (batches[0] || []).forEach((f, i) => fd.append('photos[]', f.file, f.file.name || 'photo-' + (i + 1) + '.jpg'));
+      const total = this.compose.files.length;
       this.posting = true;
+      this.progress = '';
       const r = await Setlo.run(this, () => api.post('community.php', fd), 'posting');
+      if (!r) { this.posting = false; return; }
+      // The rest of a big photo set goes up in batches onto the post just created
+      let sent = batches.length ? batches[0].length : 0;
+      this.posting = true; // Setlo.run cleared it when the post itself went through
+      for (const batch of batches.slice(1)) {
+        this.progress = 'Uploading ' + sent + '/' + total + '…';
+        try {
+          const fd2 = this.batchForm('add_photos', batch, sent);
+          fd2.append('id', r.post.id);
+          r.post = (await api.post('community.php', fd2)).post;
+          sent += batch.length;
+        } catch (e) {
+          Setlo.toast(sent + ' of ' + total + ' photos uploaded (' + e.message + '). The post was still shared.', 'warn');
+          break;
+        }
+      }
+      this.progress = '';
       this.posting = false;
-      if (!r) return;
       this.compose.files.forEach((f) => URL.revokeObjectURL(f.url));
-      this.compose = { body: '', audience: this.compose.audience, files: [] };
+      this.compose = { body: '', location: '', lat: null, lng: null, price: '', audience: this.compose.audience, files: [] };
+      this.closeSuggest();
       if (this.tab === 'saved') this.tab = 'feed';
       if (this.tab === 'feed' || this.tab === 'mine') this.posts.unshift(r.post); else await this.reload();
       Setlo.toast(r.post.audience === 'public' ? 'Posted to the community' : 'Saved as a private post', 'ok');
@@ -337,9 +473,14 @@ Setlo.mount({
     },
 
     /* ---- post menu actions ---- */
-    startEdit(p) { this.menuFor = null; this.editing = { id: p.id, body: p.body }; },
+    startEdit(p) { this.menuFor = null; this.closeSuggest(); this.editing = { id: p.id, body: p.body, location: p.location || '', lat: p.lat, lng: p.lng, price: p.price === null ? '' : p.price }; },
     async saveEdit(p) {
-      const r = await Setlo.run(this, () => api.post('community.php', { action: 'edit', id: p.id, body: this.editing.body }));
+      const e = this.editing;
+      const r = await Setlo.run(this, () => api.post('community.php', {
+        action: 'edit', id: p.id, body: e.body, location: (e.location || '').trim(),
+        lat: e.lat === null ? '' : String(e.lat), lng: e.lng === null ? '' : String(e.lng),
+        price: e.price === null ? '' : String(e.price).trim(),
+      }));
       if (r) { this.replace(r.post); this.editing = null; Setlo.toast('Post updated', 'ok'); }
     },
     async setAudience(p, audience) {

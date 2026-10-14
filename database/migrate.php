@@ -354,6 +354,11 @@ $steps = [
        PRIMARY KEY (comment_id, lang),
        FOREIGN KEY (comment_id) REFERENCES community_comments(id) ON DELETE CASCADE
      ) ENGINE=InnoDB',
+    // Where a community post is about, and what it costs
+    'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS location VARCHAR(160) NULL AFTER body',
+    'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS lat DECIMAL(9,6) NULL AFTER location',
+    'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS lng DECIMAL(9,6) NULL AFTER lat',
+    'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS price DECIMAL(10,2) NULL AFTER lng',
     // Replies to community comments (one level; deleting a comment removes its replies)
     'ALTER TABLE community_comments ADD COLUMN IF NOT EXISTS parent_id INT UNSIGNED NULL AFTER user_id',
     'ALTER TABLE community_comments ADD CONSTRAINT community_comments_parent_fk FOREIGN KEY IF NOT EXISTS (parent_id) REFERENCES community_comments(id) ON DELETE CASCADE',

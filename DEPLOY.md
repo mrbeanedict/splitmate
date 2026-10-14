@@ -65,10 +65,12 @@ performance_schema = OFF
 max_connections = 30
 EOF
 
-# PHP: allow 8 MB photos (Debian's default is 2 MB), and give the Gemini call time to finish
+# PHP: allow 8 MB photos (Debian's default is 2 MB; community photos go up to 20 MB, sent in batches of up to 10 files
+# and 30 MB per request), and give the Gemini call time to finish
 sudo tee "$(ls -d /etc/php/*/apache2/conf.d)/99-setlo.ini" <<'EOF'
-upload_max_filesize = 10M
-post_max_size = 12M
+upload_max_filesize = 20M
+post_max_size = 40M
+max_file_uploads = 20
 memory_limit = 256M
 max_execution_time = 60
 expose_php = Off
