@@ -128,7 +128,7 @@ function current_user(): ?array
     if ($user === false) {
         $user = null;
         if (!empty($_SESSION['user_id'])) {
-            $row = q('SELECT id, full_name, email, payment_method, currency, avatar_color, avatar, bg_mode, bg_image, role, status FROM users WHERE id = ?', [$_SESSION['user_id']])->fetch();
+            $row = q('SELECT id, full_name, email, payment_method, currency, avatar_color, avatar, bg_mode, bg_style, bg_image, role, status FROM users WHERE id = ?', [$_SESSION['user_id']])->fetch();
             // An admin account is only ever signed in under the admin cookie. Under the user cookie it can only be a
             // stale session (e.g. the database was reset and its id now belongs to the admin), so treat it as signed out.
             if ($row && $row['status'] === 'active' && !($row['role'] === 'admin' && session_area() === 'user')) {
@@ -272,12 +272,16 @@ function avatar_url(?string $avatar, int $userId): ?string
 }
 
 /** A user's users.avatar value, fetched once per request. */
-/** A user's page backdrop: mode 'badges' (their floating badges), 'plain' or 'photo', and their photo's URL if any. */
+/** The calm backdrop styles (users.bg_style), the first being the default. */
+const CALM_STYLES = ['aurora', 'ocean', 'sunset', 'forest', 'dusk', 'clouds'];
+
+/** A user's page backdrop: mode 'calm', 'badges' (their floating badges), 'plain' or 'photo', the calm style, and their photo's URL if any. */
 function user_background(array $u): array
 {
     // ?v= changes with the file, so a new photo isn't hidden behind the cached old one.
     $image = $u['bg_image'] ? url('api/background.php') . '?v=' . substr(md5($u['bg_image']), 0, 8) : null;
-    return ['mode' => $u['bg_mode'] === 'photo' && !$image ? 'badges' : $u['bg_mode'], 'image' => $image];
+    $style = in_array($u['bg_style'] ?? '', CALM_STYLES, true) ? $u['bg_style'] : CALM_STYLES[0];
+    return ['mode' => $u['bg_mode'] === 'photo' && !$image ? 'badges' : $u['bg_mode'], 'style' => $style, 'image' => $image];
 }
 
 function user_avatar(int $userId): ?string

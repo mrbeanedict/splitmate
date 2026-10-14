@@ -254,6 +254,12 @@ $steps = [
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS username_locked_until DATETIME NULL AFTER username_changes',
     // Backdrop preset with floating receipts and the camouflaged chameleon
     "ALTER TABLE users MODIFY COLUMN bg_mode ENUM('badges','receipts','plain','photo') NOT NULL DEFAULT 'badges'",
+    // Calm: a soft aurora backdrop, now the default for new accounts
+    "ALTER TABLE users MODIFY COLUMN bg_mode ENUM('badges','receipts','plain','photo','calm') NOT NULL DEFAULT 'calm'",
+    // Calm backdrops come in several styles; the old Setlo (receipts) backdrop is gone, its users get calm
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS bg_style ENUM('aurora','ocean','sunset','forest','dusk','clouds') NOT NULL DEFAULT 'aurora' AFTER bg_mode",
+    "UPDATE users SET bg_mode = 'calm' WHERE bg_mode = 'receipts'",
+    "ALTER TABLE users MODIFY COLUMN bg_mode ENUM('calm','badges','plain','photo') NOT NULL DEFAULT 'calm'",
     // Personal purchases (pages/purchases.php): one person's own expenses, outside any bill
     'CREATE TABLE IF NOT EXISTS purchases (
        id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

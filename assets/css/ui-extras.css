@@ -1,0 +1,47 @@
+/* Currency picker (assets/js/ui.js CurrencySelect) and accordion transitions (details.acc) */
+.cur2 { position: relative; width: 100%; }
+.cur2-compact { width: auto; }
+.cur2-btn { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 6px 12px 6px 8px; text-align: left; cursor: pointer;
+  background: rgb(var(--surface)); color: rgb(var(--ink)); border: 1.5px solid rgb(148 163 184 / .4); border-radius: 14px;
+  transition: border-color .18s, box-shadow .18s, transform .18s; }
+.cur2-btn:hover { border-color: rgb(var(--brand-400)); }
+.cur2-btn:focus-visible, .cur2-open .cur2-btn { outline: none; border-color: rgb(var(--brand-500)); box-shadow: 0 0 0 3px rgb(var(--brand-500) / .18); }
+.cur2-compact .cur2-btn { min-height: 42px; padding: 4px 10px 4px 6px; gap: 8px; border-radius: 12px; }
+.cur2-disabled .cur2-btn { opacity: .55; cursor: not-allowed; }
+.cur2-badge { display: grid; place-items: center; flex: none; min-width: 32px; height: 32px; padding: 0 6px; border-radius: 10px; font-size: 14px; font-weight: 800;
+  color: rgb(var(--brand-700)); background: linear-gradient(135deg, rgb(var(--brand-50)), rgb(var(--brand-300) / .45)); }
+.cur2-compact .cur2-badge { min-width: 28px; height: 28px; font-size: 13px; }
+.cur2-main { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.2; }
+.cur2-main b { font-size: 14px; font-weight: 800; }
+.cur2-main small { font-size: 11.5px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cur2-chev { flex: none; color: #94a3b8; transition: transform .22s ease; }
+.cur2-open .cur2-chev { transform: rotate(180deg); }
+.cur2-panel { position: fixed; z-index: 1200; display: flex; flex-direction: column; overflow: hidden; background: rgb(var(--surface)); color: rgb(var(--ink));
+  border: 1px solid rgb(148 163 184 / .35); border-radius: 16px; box-shadow: 0 18px 40px rgb(15 23 42 / .18), 0 2px 6px rgb(15 23 42 / .06); transform-origin: top center; }
+.cur2-panel.up { transform: translateY(-100%); transform-origin: bottom center; }
+.cur2-search { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid rgb(148 163 184 / .25); color: #94a3b8; }
+.cur2-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 14px; color: rgb(var(--ink)); }
+.cur2-list { overflow-y: auto; padding: 4px 6px 8px; overscroll-behavior: contain; }
+.cur2-group { padding: 8px 8px 4px; font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; }
+.cur2-opt { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; text-align: left; cursor: pointer; background: none; border: 0; border-radius: 12px; color: inherit; }
+.cur2-opt.hl { background: rgb(var(--brand-50)); }
+.cur2-opt.on .cur2-main b { color: rgb(var(--brand-700)); }
+.cur2-tick { flex: none; color: rgb(var(--brand-600)); }
+.cur2-empty { padding: 18px 10px; text-align: center; font-size: 13px; color: #94a3b8; }
+.cur2-pop-enter-active { transition: opacity .16s ease, transform .18s cubic-bezier(.2,.8,.2,1); }
+.cur2-pop-leave-active { transition: opacity .12s ease, transform .12s ease; }
+.cur2-pop-enter-from, .cur2-pop-leave-to { opacity: 0; }
+.cur2-pop-enter-from:not(.up), .cur2-pop-leave-to:not(.up) { transform: translateY(-6px) scale(.98); }
+.cur2-pop-enter-from.up, .cur2-pop-leave-to.up { transform: translateY(calc(-100% + 6px)) scale(.98); }
+html.dark .cur2-opt.hl { background: rgb(var(--brand-500) / .16); }
+html.dark .cur2-badge { color: rgb(var(--brand-300)); background: rgb(var(--brand-500) / .18); }
+html.dark .cur2-main small { color: #94a3b8; }
+@media (prefers-reduced-motion: reduce) { .cur2-pop-enter-active, .cur2-pop-leave-active, .cur2-chev, .cur2-btn { transition: none; } }
+
+/* Accordions: ui.js animates the body's height; these keep the chevron and header padding in step */
+.acc[open] .acc-body { animation: none; }
+.acc > summary { transition: padding .26s ease; }
+.acc.acc-closing > summary { padding-bottom: 1rem; }
+.acc.acc-closing .acc-chev { transform: none; }
+.acc > summary:hover .acc-title { color: rgb(var(--brand-700)); }
+.acc-title { transition: color .18s; }

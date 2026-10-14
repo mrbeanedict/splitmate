@@ -48,6 +48,8 @@ header('Cache-Control: no-store');
 <script>
   // Currencies the app knows (includes/currency.php) and the signed-in user's own: assets/js/ui.js formats money with them.
   window.SETLO_CURRENCIES = <?= json_encode(currency_list(), JSON_UNESCAPED_UNICODE) ?>;
+  // Payment method logos (assets/pay), by the value stored in users.payment_method
+  window.SETLO_PAY_LOGOS = <?= json_encode(['GCash' => url('assets/pay/gcash.png'), 'Maya' => url('assets/pay/maya.png'), 'Bank Transfer' => url('assets/pay/bank.svg'), 'Cash' => url('assets/pay/cash.svg')], JSON_UNESCAPED_SLASHES) ?>;
   window.SETLO_HOME_CURRENCY = <?= json_encode(is_currency(current_user()['currency'] ?? null) ? current_user()['currency'] : 'PHP') ?>;
 </script>
 <script src="<?= h(url('assets/js/api.js')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/js/api.js') ?>"></script>
@@ -58,6 +60,8 @@ header('Cache-Control: no-store');
 <script src="<?= h(url('assets/js/people.js')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/js/people.js') ?>"></script>
 <?php if (!empty($nav) && session_area() !== 'admin'): // sidebar pages: floating badge backdrop ?>
 <link rel="stylesheet" href="<?= h(url('assets/css/badge-bg.css')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/css/badge-bg.css') ?>" />
+<link rel="stylesheet" href="<?= h(url('assets/css/pay-methods.css')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/css/pay-methods.css') ?>" />
+<link rel="stylesheet" href="<?= h(url('assets/css/ui-extras.css')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/css/ui-extras.css') ?>" />
 <script src="<?= h(url('assets/js/badge-field.js')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/js/badge-field.js') ?>"></script>
 <?php endif; ?>
 <?php foreach ($headExtra ?? [] as $extra): ?>
@@ -86,4 +90,4 @@ header('Cache-Control: no-store');
 // Sidebar pages: the user's chosen backdrop (badge-bg.css), set here so it's there from the first paint
 $bg = !empty($nav) && session_area() !== 'admin' && current_user() ? user_background(current_user()) : null;
 ?>
-<body class="<?= h(trim(($bodyClass ?? '') . ($bg ? ' badge-bg' : ''))) ?>"<?php if ($bg): ?> data-bg="<?= h($bg['mode']) ?>"<?php if ($bg['image']): ?> style="--bg-photo: url('<?= h($bg['image']) ?>')"<?php endif; endif; ?>>
+<body class="<?= h(trim(($bodyClass ?? '') . ($bg ? ' badge-bg' : ''))) ?>"<?php if ($bg): ?> data-bg="<?= h($bg['mode']) ?>" data-calm="<?= h($bg['style']) ?>"<?php if ($bg['image']): ?> style="--bg-photo: url('<?= h($bg['image']) ?>')"<?php endif; endif; ?>>

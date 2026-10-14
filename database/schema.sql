@@ -24,7 +24,8 @@ CREATE TABLE users (
   featured_achievement VARCHAR(30) NULL,          -- badge shown next to their name (user_achievements.code)
   username_changes TINYINT UNSIGNED NOT NULL DEFAULT 0, -- changes used since the last wait; 5 locks it
   username_locked_until DATETIME NULL,                  -- no username change until then (7 days after the 5th)
-  bg_mode         ENUM('badges','receipts','plain','photo') NOT NULL DEFAULT 'badges', -- page backdrop: floating badges, floating receipts + chameleon, none, or their photo
+  bg_mode         ENUM('calm','badges','plain','photo') NOT NULL DEFAULT 'calm', -- page backdrop: calm (see bg_style), floating badges, none, or their photo
+  bg_style        ENUM('aurora','ocean','sunset','forest','dusk','clouds') NOT NULL DEFAULT 'aurora',
   bg_image        VARCHAR(255) NULL,              -- their backdrop photo (uploads/backgrounds), kept while another mode is picked
   onboarded_at    DATETIME NULL,                  -- finished or skipped the first-visit dashboard tour; NULL = show it
   role            ENUM('user','admin','guest') NOT NULL DEFAULT 'user',  -- guest: name-only bill member, cannot sign in
