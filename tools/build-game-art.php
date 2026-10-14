@@ -338,6 +338,22 @@ $files['assets/games/cards.svg'] = scene('', '
   .twinkle path{transform-box:fill-box;transform-origin:center;animation:tw 1.8s ease-in-out infinite alternate}.twinkle path:nth-child(2){animation-delay:-.9s}
   @keyframes tw{from{transform:scale(.6);opacity:.6}to{transform:scale(1.1);opacity:1}}');
 
+// ---------- Ball Drop: balls raining into cups, cheering from the side ----------
+$m = pose('cheer', 312, 10, 184, 'r');
+$files['assets/games/balls.svg'] = scene('<linearGradient id="cup" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#e9d5ff"/></linearGradient>', '
+  <circle cx="30" cy="30" r="5" fill="#fde047"/><circle cx="296" cy="186" r="4" fill="#d946ef" opacity=".5"/><circle cx="24" cy="172" r="4" fill="#fff"/>
+  <rect x="96" y="14" width="64" height="12" rx="6" fill="#7e22ce"/>
+  <g class="drop" fill="#facc15" stroke="#f59e0b" stroke-width="2">
+    <circle cx="116" cy="40" r="7"/><circle cx="132" cy="64" r="7"/><circle cx="76" cy="52" r="7"/><circle cx="150" cy="90" r="7"/><circle cx="58" cy="84" r="7"/>
+  </g>
+  <g stroke="#7e22ce" stroke-width="3" stroke-linejoin="round">
+    <path d="M20 118h60l-8 62H28z" fill="url(#cup)"/><path d="M96 118h60l-8 62h-44z" fill="url(#cup)"/><path d="M172 118h60l-8 62h-44z" fill="url(#cup)"/>
+  </g>
+  <g fill="#facc15" stroke="#f59e0b" stroke-width="2"><circle cx="38" cy="168" r="7"/><circle cx="54" cy="168" r="7"/><circle cx="46" cy="154" r="7"/><circle cx="126" cy="168" r="7"/><circle cx="202" cy="168" r="7"/><circle cx="188" cy="168" r="7"/><circle cx="196" cy="154" r="7"/><circle cx="210" cy="154" r="7"/></g>
+  ' . $m, '
+  .drop circle{animation:fall 1.6s ease-in infinite}.drop circle:nth-child(2){animation-delay:-.3s}.drop circle:nth-child(3){animation-delay:-.7s}.drop circle:nth-child(4){animation-delay:-1s}.drop circle:nth-child(5){animation-delay:-1.3s}
+  @keyframes fall{0%{transform:translateY(-30px);opacity:0}15%{opacity:1}100%{transform:translateY(40px);opacity:1}}');
+
 // ---------- Login splash (partials/splash.php): the puppet, its camouflage and the white "o" ----------
 // Her tail spiral is the "o" of "setlo": centre (138, 600), radius ~106 on the artwork, placed at (305, 329) with a
 // 33-unit radius in the splash scene. While camouflaged, a background-coloured copy of her silhouette (.sp-camo)

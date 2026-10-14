@@ -395,7 +395,7 @@ CREATE TABLE game_sessions (
   id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   bill_id      INT UNSIGNED NOT NULL,
   host_id      INT UNSIGNED NOT NULL,
-  game         ENUM('race','closest','roulette','cards','skip') NOT NULL,   -- skip: the creator chose to split normally
+  game         ENUM('race','closest','roulette','cards','balls','skip') NOT NULL,   -- skip: the creator chose to split normally
   mode         ENUM('screen','live') NOT NULL DEFAULT 'screen',    -- screen: one phone passed around; live: everyone's phone
   status       ENUM('lobby','playing','choosing','done','cancelled') NOT NULL DEFAULT 'lobby',
   state        TEXT NULL,

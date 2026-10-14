@@ -163,6 +163,8 @@ $steps = [
     'ALTER TABLE game_players DROP COLUMN IF EXISTS guess_cents',
     "UPDATE game_sessions SET game = 'skip' WHERE game = 'guess'",
     "ALTER TABLE game_sessions MODIFY game ENUM('race','closest','roulette','cards','skip') NOT NULL",
+    // Ball Drop
+    "ALTER TABLE game_sessions MODIFY game ENUM('race','closest','roulette','cards','balls','skip') NOT NULL",
     // Mystery Card v2: cards move money around an equal split, so a game can set each member's share outright
     'ALTER TABLE bill_members ADD COLUMN IF NOT EXISTS game_share INT NULL AFTER game_weight',
     'ALTER TABLE bills DROP COLUMN IF EXISTS game_bonus_user_id',

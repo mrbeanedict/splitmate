@@ -10,3 +10,8 @@
 .game-car-wrap .carousel-prev { left: -.35rem; }
 .game-car-wrap .carousel-next { right: -.35rem; }
 .game-car-wrap .carousel-side:disabled { opacity: 0; pointer-events: none; }
+
+/* Desktop: the chosen game is as wide as the cards around it (the phone keeps the 82% slide with the next one peeking) */
+@media (min-width: 1024px) {
+  .game-carousel .game-slide { width: 100%; }
+}

@@ -13,6 +13,7 @@ const GAMES = [
     'race'     => ['emoji' => '🏁', 'title' => 'Receipt Race',               'description' => 'Same items for everyone. The fastest correct total pays nothing.'],
     'closest'  => ['emoji' => '🎯', 'title' => 'Closest Without Going Over', 'description' => 'Build a basket closest to the target without going over. The closest pays nothing.'],
     'cards'    => ['emoji' => '🃏', 'title' => 'Mystery Card',               'description' => 'Everyone picks a face-down card. One of them says “You Pay”.'],
+    'balls'    => ['emoji' => '⚽', 'title' => 'Ball Drop',                  'description' => 'Balls drop at random into everyone’s cup. The more balls in your cup, the bigger your share of the bill.'],
 ];
 
 // One card per player, flipped as it's picked. {x} is the game's card amount (about a quarter of an equal share).
@@ -33,6 +34,8 @@ const CARD_GRAB_CENTS = 1000;
 const GAME_CARD_SECONDS = 45;
 const GAME_CHOOSE_SECONDS = 30;
 const ROULETTE_SPIN_MS = 3500;    // after the host taps Spin, the wheel spins this long, then the screens stop it on the loser(s)
+const BALLS_PER_PLAYER = 20;      // Ball Drop: this many balls for every player, each dropped into a random cup
+const BALLS_DROP_MS = 9000;       // after the host taps Drop, the balls fall over this long, then the shares are final
 
 const GAME_ANSWER_SECONDS = 90;  // Receipt Race / Closest: the live clock; in a one-phone race, each turn's limit
 const RACE_TOLERANCE_CENTS = 100; // a race answer within ₱1 counts as correct (rounding)
@@ -180,13 +183,23 @@ function build_closest(array $items): array
     return ['items' => $list, 'target' => max($target, (int) ceil($cheapest / 100) * 100)];
 }
 
+/** Ball Drop: BALLS_PER_PLAYER balls per player, each aimed at a uniformly random player's cup (user ids, in falling order). */
+function build_drops(array $ids): array
+{
+    $drops = [];
+    for ($i = 0, $n = count($ids) * BALLS_PER_PLAYER; $i < $n; $i++) {
+        $drops[] = $ids[random_int(0, count($ids) - 1)];
+    }
+    return $drops;
+}
+
 /** Milliseconds until the playing phase's deadline, or null for none (one screen, no clock; roulette waits for Spin). */
 function game_play_ms(string $game, bool $live, int $players): ?int
 {
     return match ($game) {
         'race', 'closest' => $live ? GAME_ANSWER_SECONDS * 1000 : null,
         'cards'    => $live ? GAME_CARD_SECONDS * 1000 : null,
-        'roulette' => null,
+        'roulette', 'balls' => null,
     };
 }
 
@@ -246,6 +259,7 @@ function start_game(array $bill, array $me, string $game, string $mode, int $pay
             'closest'  => ['closest' => build_closest($items)],
             'roulette' => ['order' => game_shuffle($ids), 'payers' => $payers],   // knock-out order; the last $payers pay
             'cards'    => ['deck' => build_deck(count($ids)), 'x' => card_amount(compute_percent_shares($bill, $members, $items)['total'], count($ids))],
+            'balls'    => ['drops' => build_drops($ids)],   // which player's cup each ball lands in, in the order they fall
         };
         $ms = $live ? null : game_play_ms($game, false, count($ids));
         q(
@@ -317,17 +331,20 @@ function game_actor(array $g, array $me, ?int $forUserId): array
     return $player;
 }
 
-/** Roulette: the host taps Spin — the wheel turns for ROULETTE_SPIN_MS, then the game picks the payers. */
+/**
+ * Roulette / Ball Drop: the host taps Spin (or Drop). Roulette's wheel turns for ROULETTE_SPIN_MS and the balls fall for
+ * BALLS_DROP_MS; the first request after that finishes the game.
+ */
 function game_spin(array $g, array $me): void
 {
-    if ($g['game'] !== 'roulette' || $g['status'] !== 'playing') {
-        fail('The wheel isn’t ready to spin.', 409);
+    if (!in_array($g['game'], ['roulette', 'balls'], true) || $g['status'] !== 'playing') {
+        fail('The game isn’t ready to start.', 409);
     }
     if ($g['host_id'] !== $me['id']) {
-        fail('Only the person who started the game can spin the wheel.', 403);
+        fail('Only the person who started the game can start it.', 403);
     }
     if ($g['deadline_ms'] === null) {
-        game_update($g, 'deadline_at = DATE_ADD(NOW(3), INTERVAL ? MICROSECOND)', [ROULETTE_SPIN_MS * 1000]);
+        game_update($g, 'deadline_at = DATE_ADD(NOW(3), INTERVAL ? MICROSECOND)', [($g['game'] === 'balls' ? BALLS_DROP_MS : ROULETTE_SPIN_MS) * 1000]);
     }
 }
 
@@ -572,9 +589,50 @@ function resolve_cards(int $total, array $ids, array $cards, array $targets, int
     return [$base, $shares, $log];
 }
 
+/**
+ * Ball Drop: before the host taps Drop, the cups follow the bill's members (guests added or removed since the game
+ * started). Each member gets a cup and a fair share of the balls, which are drawn again for the new line-up.
+ * Returns the fresh session (unchanged when there is nothing to do).
+ */
+function game_sync_members(array $g): array
+{
+    if ($g['game'] !== 'balls' || !in_array($g['status'], ['lobby', 'playing'], true) || $g['deadline_ms'] !== null) {
+        return $g;
+    }
+    $members = bill_members($g['bill_id']);
+    $ids = array_column($members, 'id');
+    $have = array_column(game_players($g['id']), 'id');
+    if (!array_diff($ids, $have) && !array_diff($have, $ids)) {
+        return $g;
+    }
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        if (!game_update($g, 'state = ?', [json_encode(['drops' => build_drops($ids)] + $g['state'])])) {
+            $pdo->rollBack();   // another request moved it first; the next poll syncs again
+            return game_by_id($g['id']);
+        }
+        foreach ($members as $m) {
+            if (!in_array($m['id'], $have, true)) {
+                $joined = $g['mode'] === 'screen' || $m['id'] === $g['host_id'] || $m['is_guest'];
+                q('INSERT INTO game_players (session_id, user_id, joined_at) VALUES (?, ?, IF(?, NOW(), NULL))', [$g['id'], $m['id'], (int) $joined]);
+            }
+        }
+        foreach (array_diff($have, $ids) as $gone) {
+            q('DELETE FROM game_players WHERE session_id = ? AND user_id = ?', [$g['id'], $gone]);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+    return game_by_id($g['id']);
+}
+
 /** Move the game on as far as it can go right now (several steps at most). Returns the fresh session. */
 function advance_game(array $g): array
 {
+    $g = game_sync_members($g);
     for ($i = 0; $i < 3 && game_next_step($g); $i++) {
         $g = game_by_id($g['id']);
     }
@@ -592,7 +650,7 @@ function game_next_step(array $g): bool
         return false;
     }
     $players = game_players($g['id']);
-    if ($g['game'] === 'roulette') {
+    if ($g['game'] === 'roulette' || $g['game'] === 'balls') {
         return $g['expired'] ? finish_game($g) : false;
     }
     if ($g['game'] === 'race' || $g['game'] === 'closest') {
@@ -706,6 +764,26 @@ function finish_game(array $g): bool
             foreach ($payers as $uid) {
                 award($uid, 'main_character', $bill['id']);
             }
+        } elseif ($g['game'] === 'balls') {
+            // Each cup's share of all the balls is that player's share of the bill (a cup with none pays nothing).
+            $counts = array_fill_keys($ids, 0);
+            foreach ($g['state']['drops'] as $uid) {
+                if (isset($counts[$uid])) {
+                    $counts[$uid]++;
+                }
+            }
+            $balls = array_sum($counts);
+            if (array_diff($ids, array_column($players, 'id')) || !$balls) {
+                // Someone joined the bill after the drop began and has no cup: don't charge them ₱0 by accident.
+                $result = ['normal' => true, 'late' => true];
+                clear_game_result($bill);
+            } else {
+                $total = compute_percent_shares($bill, $members, bill_items($bill['id']))['total'];
+                $shares = split_proportional($total, $counts);
+                $percent = array_map(fn ($n) => round($n * 100 / max(1, $balls), 1), $counts);
+                $result = ['counts' => $counts, 'balls' => $balls, 'percent' => $percent];
+                apply_game_result($bill, [], $shares);
+            }
         } else {
             $cards = player_cards($g, $players);
             $targets = [];
@@ -776,6 +854,12 @@ function game_payload(array $g, array $me): array
     }
     if ($g['game'] === 'roulette') {
         $out['payers_count'] = (int) ($g['state']['payers'] ?? 1);
+    }
+    if ($g['game'] === 'balls') {
+        // The falling order is only sent once the host has tapped Drop, so nobody can peek at the outcome beforehand.
+        $out['drop_ms'] = BALLS_DROP_MS;
+        $out['drops'] = $done || $g['deadline_ms'] !== null ? $g['state']['drops'] : null;
+        $out['balls_total'] = count($g['state']['drops']);
     }
     if ($g['game'] === 'cards') {
         $out['x'] = $g['state']['x'];

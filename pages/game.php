@@ -10,10 +10,10 @@ $billId = (int) ($_GET['bill'] ?? 0);
 if (!$billId) {
     redirect('pages/my-bills');
 }
-$headExtra = ['assets/css/game-carousel.css'];
+$headExtra = ['assets/css/game-carousel.css', 'assets/css/game-balls.css'];
 require __DIR__ . '/../partials/head.php';
 ?>
-<div id="app" class="device device-narrow" v-cloak>
+<div id="app" class="device" v-cloak>
 
   <div class="app-hero fun-hero px-5 pb-6 pt-8">
     <div class="flex items-center gap-3">
@@ -48,6 +48,7 @@ require __DIR__ . '/../partials/head.php';
             <span v-if="key === 'race'" class="mt-1.5 block text-[11px] font-bold text-fuchsia-600">🧮 Winner: Human Calculator</span>
             <span v-if="key === 'closest'" class="mt-1.5 block text-[11px] font-bold text-fuchsia-600">🎯 Winner: Bullseye</span>
             <span v-if="key === 'roulette'" class="mt-1.5 block text-[11px] font-bold text-fuchsia-600">🌟 Picked: Main Character</span>
+            <span v-if="key === 'balls'" class="mt-1.5 block text-[11px] font-bold text-fuchsia-600">⚽ 20 balls each · share = balls in your cup</span>
           </span>
         </button>
       </div>
@@ -262,6 +263,52 @@ require __DIR__ . '/../partials/head.php';
       </div>
     </template>
 
+    <!-- ===== Ball Drop: balls fall into everyone's cup; a cup's share of the balls is that player's share of the bill ===== -->
+    <template v-else-if="(view === 'playing' || view === 'done') && game.game === 'balls'">
+      <div class="bd-stage">
+        <p class="bd-status">{{ ballsStatus }}</p>
+        <!-- one scrolling strip: with many players the cups keep a minimum width and the strip scrolls sideways -->
+        <div class="bd-scroll">
+          <div class="bd-inner" :class="{ compact: game.players.length > 8 }" :style="{ '--n': game.players.length }">
+            <div class="bd-field" aria-hidden="true">
+              <div class="bd-launcher"></div>
+              <span v-for="b in flying" :key="b.i" class="bd-ball" :style="{ left: b.x + '%', top: b.y + 'px' }"></span>
+            </div>
+            <div class="bd-cups">
+              <div v-for="p in game.players" :key="p.user.id" class="bd-cup" :class="{ 'zero-final': ballsLanded && !(cupCounts[p.user.id] || 0) }">
+                <span class="bd-fill" :style="{ height: cupFill(p.user.id) + '%' }"></span>
+                <avatar :user="p.user" :size="game.players.length > 8 ? 22 : 28"></avatar>
+                <span class="bd-name">{{ who(p.user) }}</span>
+                <span class="bd-count" :aria-label="(cupCounts[p.user.id] || 0) + ' balls'">{{ cupCounts[p.user.id] || 0 }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div v-if="view === 'done' && result && result.late && ballsLanded" class="pop-in tile !border-amber-300 !bg-amber-50 p-4 text-[13px] font-semibold text-amber-800">
+        Someone joined the bill while the balls were dropping and had no cup, so the bill is split normally. Tap “Drop again” to include everyone.
+      </div>
+      <!-- nothing drops until the host taps Drop -->
+      <button v-if="ballsPhase === 'ready' && game.is_host" @click="post('spin')" class="btn-pill btn-fun" :disabled="busy">Drop the balls ⚽</button>
+      <div v-if="view === 'done' && result && ballsLanded && result.counts" class="pop-in tile p-4">
+        <p class="section-label">BALLS → SHARE OF THE BILL</p>
+        <div v-for="(m, i) in ballsRanked" :key="m.id" class="bd-row">
+          <span class="w-5 shrink-0 text-center text-[12px] font-bold tabular-nums text-slate-400">{{ i + 1 }}</span>
+          <avatar :user="m" :size="30"></avatar>
+          <div class="bd-meta">
+            <p class="text-[13px] font-semibold text-ink">{{ who(m) }}</p>
+            <p class="text-[11.5px] text-slate-500">{{ result.counts[m.id] || 0 }} of {{ result.balls }} balls<span v-if="!(result.counts[m.id] || 0)"> — pays nothing 🎉</span></p>
+            <div class="bd-bar"><span :style="{ width: (result.percent[m.id] || 0) + '%' }"></span></div>
+          </div>
+          <span class="shrink-0 text-right">
+            <span class="block text-[17px] font-extrabold tabular-nums text-fuchsia-600">{{ (result.percent[m.id] || 0).toFixed(1) }}%</span>
+            <span class="block text-[11.5px] font-semibold tabular-nums text-slate-500">{{ shares ? peso(shares[m.id] || 0, bill.currency) : '' }}</span>
+          </span>
+        </div>
+        <p class="mt-2 text-[11.5px] text-slate-400">Each person pays their percentage of the {{ shares ? peso(billTotalCents / 100, bill.currency) : 'bill' }} total.</p>
+      </div>
+    </template>
+
     <!-- ===== Mystery Card ===== -->
     <template v-else-if="(view === 'playing' || view === 'choosing' || view === 'done') && game.game === 'cards'">
       <div class="tile p-4 text-center">
@@ -392,7 +439,7 @@ require __DIR__ . '/../partials/head.php';
     <!-- ===== Result: the new shares ===== -->
     <template v-if="view === 'done'">
       <!-- roulette: the shares would give the payers away, so they wait until the wheel has stopped for good -->
-      <div v-if="shares && bill.split_mode === 'game' && (game.game !== 'roulette' || landed)" class="pop-in tile p-4">
+      <div v-if="shares && bill.split_mode === 'game' && game.game !== 'balls' && (game.game !== 'roulette' || landed)" class="pop-in tile p-4">
         <p class="section-label">WHAT EVERYONE PAYS</p>
         <div v-for="m in members" :key="m.id" class="flex items-center gap-3 py-1.5">
           <avatar :user="m" :size="26"></avatar>
@@ -403,9 +450,11 @@ require __DIR__ . '/../partials/head.php';
       </div>
       <!-- roulette: nothing to continue to until the wheel has picked everyone -->
       <button v-if="game.game === 'roulette' && !landed" class="btn-pill btn-fun" disabled>The wheel is spinning…</button>
+      <button v-else-if="game.game === 'balls' && !ballsLanded" class="btn-pill btn-fun" disabled>The balls are dropping…</button>
       <a v-else :href="bill.next" class="btn-pill btn-fun">{{ me.is_creator ? 'Continue to split' : 'See the bill' }}</a>
       <button v-if="game.game === 'roulette' && me.is_creator && bill.status !== 'settling' && bill.status !== 'closed'" @click="spinAgain" class="btn btn-ghost w-full !text-fuchsia-600" :disabled="busy || !landed">🔁 Spin again</button>
-      <button v-if="me.is_creator && bill.status !== 'settling' && bill.status !== 'closed'" @click="replay" class="btn btn-ghost w-full !text-slate-500" :disabled="busy || (game.game === 'roulette' && !landed)">Play another game</button>
+      <button v-if="game.game === 'balls' && me.is_creator && bill.status !== 'settling' && bill.status !== 'closed'" @click="dropAgain" class="btn btn-ghost w-full !text-fuchsia-600" :disabled="busy || !ballsLanded">🔁 Drop again</button>
+      <button v-if="me.is_creator && bill.status !== 'settling' && bill.status !== 'closed'" @click="replay" class="btn btn-ghost w-full !text-slate-500" :disabled="busy || (game.game === 'roulette' && !landed) || (game.game === 'balls' && !ballsLanded)">Play another game</button>
     </template>
 
     <button v-if="game && me.is_creator && ['lobby', 'playing', 'choosing'].includes(view)" @click="cancel" class="btn btn-ghost w-full !text-slate-400" :disabled="busy">Stop this game</button>
@@ -422,6 +471,7 @@ Setlo.mount({
     pick: { game: 'roulette', mode: 'screen', payers: 1 }, gameArt: <?= json_encode(url('assets/games/')) ?>, seen: {}, gameArtV: <?= (int) max(array_map('filemtime', glob(__DIR__ . '/../assets/games/*.svg'))) ?>, scrollFrame: null,
     offset: 0, now: Date.now(), poller: null, ticker: null,
     angle: 0, spinning: false, landed: false, wheelRaf: null, wheelTimer: null, hits: [],
+    cupCounts: {}, flying: [], ballsLanded: false, ballsRaf: null, ballsLandedN: 0,
     answerInput: '', basket: {}, revealed: false, replaying: false, lastNudge: 0, reveal: null,
   }),
   computed: {
@@ -435,7 +485,7 @@ Setlo.mount({
     hostName() { return this.game ? this.nameOf(this.game.host_id) : ''; },
     joinedCount() { return this.game.players.filter((p) => p.joined || p.user.is_guest).length; },
     secondsLeft() {
-      if (!this.game || !this.game.deadline_ms || !['playing', 'choosing'].includes(this.game.status) || this.game.game === 'roulette') return null;
+      if (!this.game || !this.game.deadline_ms || !['playing', 'choosing'].includes(this.game.status) || ['roulette', 'balls'].includes(this.game.game)) return null;
       return Math.max(0, Math.ceil((this.game.deadline_ms - (this.now + this.offset)) / 1000));
     },
     /** Whose turn it is on this phone: on one phone, the next player in order; live, me first, then guests I play for. */
@@ -457,6 +507,24 @@ Setlo.mount({
       if (this.game.status === 'done' && this.result) return 'done';
       if (this.game.status !== 'playing') return 'none';
       return this.game.deadline_ms ? 'playing' : 'ready';
+    },
+    /** Ball Drop result: members from the most balls (highest percentage) to the fewest; ties keep the bill's order. */
+    ballsRanked() {
+      if (!this.result || !this.result.counts) return [];
+      const c = this.result.counts;
+      return this.members.map((m, i) => ({ m, i })).sort((a, b) => (c[b.m.id] || 0) - (c[a.m.id] || 0) || a.i - b.i).map((x) => x.m);
+    },
+    /** Ball Drop: 'ready' until the host taps Drop, 'playing' while the balls fall, 'done' once the shares are final. */
+    ballsPhase() {
+      if (!this.game || this.game.game !== 'balls') return 'none';
+      if (this.game.status === 'done' && this.result) return 'done';
+      if (this.game.status !== 'playing') return 'none';
+      return this.game.deadline_ms ? 'playing' : 'ready';
+    },
+    ballsStatus() {
+      if (this.ballsLanded) return 'All ' + this.game.balls_total + ' balls have dropped!';
+      if (this.ballsPhase === 'ready') return this.game.is_host ? this.game.balls_total + ' balls · ready when you are' : 'Waiting for ' + this.hostName + ' to drop the balls…';
+      return this.ballsLandedN + ' / ' + this.game.balls_total + ' balls dropped…';
     },
     /** Who the wheel picked, in landing order (older results only have `payer`). */
     payers() { return this.result ? this.result.payers || [this.result.payer] : []; },
@@ -511,6 +579,9 @@ Setlo.mount({
     'actor.user.id'() { this.revealed = false; this.answerInput = ''; this.basket = {}; },
     // The carousel is (re)drawn: start it on the current pick, e.g. after "Play another game".
     wheelPhase(now, before) { this.syncWheel(before !== 'playing'); },
+    ballsPhase() { this.syncBalls(); },
+    // The falling order arrives with the first poll after the host taps Drop (or a player opens the page mid-drop).
+    'game.drops'(now, before) { if (now && !before) this.syncBalls(); },
     // Her green-to-purple fade plays once as each slide first comes to the middle (the pictures load lazily, off-screen).
     'pick.game'(key) { if (key !== 'roulette' && !this.seen[key]) this.seen[key] = true; },
     view(v) { if (v === 'options') this.$nextTick(() => this.scrollToGame(this.pick.game, false)); },
@@ -519,6 +590,7 @@ Setlo.mount({
     await this.load();
     this.loading = false;
     this.syncWheel(true);
+    this.syncBalls();
     if (this.view === 'options') this.$nextTick(() => this.scrollToGame(this.pick.game, false));
     this.ticker = setInterval(this.tick, 250);
     this.schedule();
@@ -528,6 +600,7 @@ Setlo.mount({
     clearInterval(this.ticker);
     clearTimeout(this.poller);
     cancelAnimationFrame(this.wheelRaf);
+    cancelAnimationFrame(this.ballsRaf);
     clearTimeout(this.wheelTimer);
     document.removeEventListener('visibilitychange', this.schedule);
   },
@@ -622,12 +695,66 @@ Setlo.mount({
         this.landed = false;
       }
     },
-    /** Poll fast while a game is on (faster during roulette), slowly otherwise; never while the tab is hidden. */
+    // ----- Ball Drop -----
+    cupFill(uid) {
+      const per = this.game.balls_total / Math.max(1, this.game.players.length); // an average cup's balls
+      return Math.min(100, Math.round((this.cupCounts[uid] || 0) / (per * 2) * 100));
+    },
+    /**
+     * Draw the drop from the server's clock: ball i is released at start + i * step and takes FALL ms to land in the
+     * cup the server picked for it, so every phone shows the same moment. Opening the page mid-drop (or after it)
+     * just shows the balls that have landed by now; reduced motion skips straight to the final counts.
+     */
+    syncBalls() {
+      cancelAnimationFrame(this.ballsRaf);
+      const g = this.game, phase = this.ballsPhase;
+      this.flying = [];
+      if (!g || g.game !== 'balls' || !g.drops || !['playing', 'done'].includes(phase)) {
+        this.cupCounts = {}; this.ballsLanded = false; this.ballsLandedN = 0;
+        return;
+      }
+      const drops = g.drops, total = drops.length, FALL = 800;
+      const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const finalCounts = () => { const c = {}; drops.forEach((u) => { c[u] = (c[u] || 0) + 1; }); return c; };
+      if (calm || phase === 'done') { // finished: every ball has landed (the live drop ends at the deadline, before 'done')
+        this.cupCounts = finalCounts(); this.ballsLandedN = total; this.ballsLanded = true;
+        return;
+      }
+      const start = g.deadline_ms - g.drop_ms;           // server time the host tapped Drop
+      const step = (g.drop_ms - FALL) / Math.max(1, total - 1);
+      const n = Math.max(1, g.players.length);
+      const xOf = (u) => ((g.players.findIndex((p) => p.user.id === u) + 0.5) / n) * 100;
+      let landed = 0;
+      this.cupCounts = {}; this.ballsLanded = false; this.ballsLandedN = 0;
+      const frame = () => {
+        const e = Date.now() + this.offset - start;
+        const released = Math.min(total, e < 0 ? 0 : Math.floor(e / step) + 1);
+        const counts = { ...this.cupCounts };
+        while (landed < total && e - landed * step >= FALL) { counts[drops[landed]] = (counts[drops[landed]] || 0) + 1; landed++; }
+        this.cupCounts = counts;
+        this.ballsLandedN = landed;
+        const field = 150, out = [];
+        for (let i = landed; i < released; i++) {
+          const k = Math.min(1, (e - i * step) / FALL);
+          const from = 50 + (((i * 37) % 21) - 10);      // the launcher sprays a little either side of centre
+          out.push({ i, x: from + (xOf(drops[i]) - from) * (1 - Math.pow(1 - k, 2)), y: Math.round(k * k * field) });
+        }
+        this.flying = out;
+        if (landed >= total) { this.ballsLanded = true; this.flying = []; return; }
+        this.ballsRaf = requestAnimationFrame(frame);
+      };
+      this.ballsRaf = requestAnimationFrame(frame);
+    },
+    async dropAgain() {
+      if (!(await Setlo.confirm({ title: 'Drop again?', text: 'This result is thrown away and the balls drop again.', confirmText: 'Drop again' }))) return;
+      await this.post('start', { game: 'balls', mode: this.game.mode });
+    },
+    /** Poll fast while a game is on (faster during roulette and Ball Drop), slowly otherwise; never while the tab is hidden. */
     schedule() {
       clearTimeout(this.poller);
       if (document.hidden) return;
       const on = this.game && ['lobby', 'playing', 'choosing'].includes(this.game.status);
-      const ms = on ? (this.game.game === 'roulette' ? 800 : 1500) : 4000;
+      const ms = on ? (['roulette', 'balls'].includes(this.game.game) ? 800 : 1500) : 4000;
       this.poller = setTimeout(async () => { await this.load(); this.schedule(); }, ms);
     },
     tick() {
