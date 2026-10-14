@@ -13,7 +13,7 @@ header('Cache-Control: no-store');
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="csrf-token" content="<?= h(csrf_token()) ?>" />
 <meta name="api-base" content="<?= h(url('api/')) ?>" />
 <?php if (session_area() === 'admin') : ?><meta name="area" content="admin" /><?php endif; ?>
@@ -29,6 +29,7 @@ header('Cache-Control: no-store');
 <link rel="preload" href="<?= h(url('assets/fonts/jakarta-latin.woff2')) ?>" as="font" type="font/woff2" crossorigin />
 <link rel="preload" href="<?= h(url('assets/fonts/jakarta-latin-ext.woff2')) ?>" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="<?= h(url('assets/css/app.css')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/css/app.css') ?>" />
+<link rel="stylesheet" href="<?= h(url('assets/css/responsive.css')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/css/responsive.css') ?>" />
 <?php if (!empty($splash)): // login splash, once per browser session (partials/splash.php) ?>
 <link rel="stylesheet" href="<?= h(url('assets/css/splash.css')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/css/splash.css') ?>" />
 <script>
