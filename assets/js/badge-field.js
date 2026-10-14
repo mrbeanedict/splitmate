@@ -4,8 +4,16 @@
 (function () {
   const rnd = (min, max) => min + Math.random() * (max - min);
 
+  /** Fade the current backdrop layer out, then drop it (the new one fades in via CSS). */
+  function clearField() {
+    document.querySelectorAll('.badge-field:not(.is-leaving)').forEach((f) => {
+      f.classList.add('is-leaving');
+      setTimeout(() => f.remove(), 400);
+    });
+  }
+
   function build(badges) {
-    document.querySelector('.badge-field')?.remove();
+    clearField();
     if (!badges.length) return;
     const big = window.matchMedia('(min-width: 1024px)').matches;
     const cols = big ? 6 : 4, rows = 4;
@@ -35,7 +43,7 @@
     ['Pancit canton', 220], ['Service charge', 117], ['Grab fare', 148], ['Coffee x3', 285], ['Pizza slice x2', 190], ['Bottled water', 45]];
 
   function buildReceipt() {
-    document.querySelector('.badge-field')?.remove();
+    clearField();
     const field = document.createElement('div');
     field.className = 'badge-field badge-field-receipt';
     field.setAttribute('aria-hidden', 'true');
@@ -57,7 +65,7 @@
   async function refresh(badges) {
     if (document.body.dataset.bg === 'receipts') { buildReceipt(); return; }
     if (document.body.dataset.bg !== 'badges') {
-      document.querySelector('.badge-field')?.remove();
+      clearField();
       return;
     }
     try {
