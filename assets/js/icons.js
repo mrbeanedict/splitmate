@@ -49,6 +49,14 @@
     camera: P('M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z') + '<circle cx="12" cy="13" r="3.5"/>',
     flask: P('M9 3h6M10 3v6l-5 9a2 2 0 001.8 3h10.4A2 2 0 0019 18l-5-9V3M8 15h8'),
     party: P('M4 20l4-12 8 8-12 4zM14 5l1-2M18 9l2-1M16 3.5v.01M20.5 13v.01'),
+    pin: P('M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0113 0c0 5.4-6.5 11-6.5 11z') + '<circle cx="12" cy="10" r="2.4"/>',
+    image: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="8.5" cy="9.5" r="1.6"/>' + P('M21 16l-5-5-8 8'),
+    edit: P('M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4'),
+    bookmark: P('M7 4h10a1 1 0 011 1v15l-6-4-6 4V5a1 1 0 011-1z'),
+    trash: P('M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V4h6v3'),
+    tag: P('M3 12V4h8l10 10-8 8L3 12z') + '<circle cx="7.5" cy="8.5" r="1.3"/>',
+    map: P('M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14'),
+    share: P('M14 4l7 7-7 7v-4c-6 0-9 2-11 6 .5-6 4-11 11-11V4z'),
     hand: P('M8 13V6a1.5 1.5 0 013 0v5M11 11V4.5a1.5 1.5 0 013 0V11M14 11V6a1.5 1.5 0 013 0v7a6 6 0 01-6 6h-.5a5 5 0 01-4-2L4.5 13.5a1.5 1.5 0 012.2-2L8 13'),
   };
   /** An inline icon. size in px; the stroke follows the surrounding text colour. */
