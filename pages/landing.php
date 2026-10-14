@@ -386,23 +386,20 @@ $guides = [
                 <small>{{ v.name }} · {{ timeAgo(v.created_at) }}</small>
               </article>
             </div>
-            <div v-else class="lp-empty">Approved reviews will show up here.</div>
+            <div v-else class="lp-empty">Reviews will show up here.</div>
 
             <div class="lp-card lp-form">
               <h3>{{ r.mine ? 'Your review' : 'Rate Setlo' }}</h3>
-              <div v-if="!r.signed_in">
-                <p class="lp-sub" style="margin-top:.4rem">Log in to leave a rating and feedback. It takes less than a minute.</p>
-                <div class="lp-cta"><a class="lp-btn lp-btn-primary lp-btn-sm" href="<?= $loginHref ?>">Log in</a><a class="lp-btn lp-btn-ghost lp-btn-sm" href="<?= $registerHref ?>">Create an account</a></div>
-              </div>
-              <form v-else @submit.prevent="send" novalidate>
+              <form @submit.prevent="send" novalidate>
+                <p class="lp-sub" style="margin:.3rem 0 0">{{ r.mine ? 'Change your stars or comment any time.' : 'Tap a star to rate Setlo. No account needed.' }}</p>
                 <div class="lp-starpick" role="radiogroup" aria-label="Your rating" @mouseleave="hover = 0">
-                  <button v-for="n in 5" :key="n" type="button" role="radio" :aria-checked="form.rating === n ? 'true' : 'false'" :aria-label="n + (n === 1 ? ' star' : ' stars')" :class="{ on: n <= (hover || form.rating) }" @mouseenter="hover = n" @click="form.rating = n">★</button>
+                  <button v-for="n in 5" :key="n" type="button" role="radio" :aria-checked="form.rating === n ? 'true' : 'false'" :aria-label="n + (n === 1 ? ' star' : ' stars')" :class="{ on: n <= (hover || form.rating) }" @mouseenter="hover = n" @click="pickStar(n)">★</button>
                 </div>
+                <input v-if="!r.signed_in" class="lp-text" style="min-height:0;margin-bottom:.6rem" v-model="form.name" maxlength="40" placeholder="Your name (optional)" aria-label="Your name" />
                 <textarea class="lp-text" v-model="form.comment" maxlength="500" placeholder="What do you like? What could be better? (optional)" aria-label="Your feedback"></textarea>
                 <div class="lp-meta"><span>{{ form.comment.length }}/500</span><button class="lp-btn lp-btn-primary lp-btn-sm" :disabled="busy || !form.rating">{{ busy ? 'Saving…' : (r.mine ? 'Update review' : 'Submit review') }}</button></div>
                 <p v-if="err" class="lp-err" role="alert">{{ err }}</p>
-                <p v-if="r.mine && r.mine.status === 'pending' && r.mine.comment" class="lp-note">Thanks! Your comment is waiting for approval before it appears publicly.</p>
-                <p v-else-if="r.mine && r.mine.status === 'approved'" class="lp-note">Your review is live. Thank you for helping others find Setlo!</p>
+                <p v-if="r.mine && r.mine.status === 'approved'" class="lp-note">Your review is live. Thank you for helping others find Setlo! <a v-if="r.signed_in" href="<?= h(url('pages/reviews')) ?>" style="font-weight:800;text-decoration:underline">See all ratings &amp; reviews</a></p>
                 <p v-else-if="r.mine && r.mine.status === 'hidden'" class="lp-note">Your comment isn’t shown publicly, but your rating still counts toward our feedback.</p>
               </form>
             </div>
@@ -454,7 +451,7 @@ Setlo.mount({
   data: () => ({
     menu: false, nudge: false, busy: false, err: '', hover: 0,
     r: { average: 0, count: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }, reviews: [], signed_in: false, mine: null },
-    form: { rating: 0, comment: '' },
+    form: { rating: 0, comment: '', name: '' },
   }),
   async mounted() {
     window.SetloLanding.init(document.getElementById("app"));
@@ -466,7 +463,12 @@ Setlo.mount({
     async load() {
       const r = await api.get('feedback.php');
       this.r = r;
-      if (r.mine) this.form = { rating: r.mine.rating, comment: r.mine.comment || '' };
+      if (r.mine) this.form = { rating: r.mine.rating, comment: r.mine.comment || '', name: r.mine.name || this.form.name };
+    },
+    /** A star was tapped: select it and move on to the optional comment. */
+    pickStar(n) {
+      this.form.rating = n;
+      this.$nextTick(() => { const box = document.querySelector('.lp-form textarea'); if (box && !this.form.comment) box.focus({ preventScroll: true }); });
     },
     stars(n, empty) { return (empty ? '☆' : '★').repeat(Math.max(0, n)); },
     pct(n) { return this.r.count ? Math.round((this.r.distribution[n] / this.r.count) * 100) : 0; },
@@ -477,7 +479,7 @@ Setlo.mount({
       this.err = '';
       this.busy = true;
       try {
-        const res = await api.post('feedback.php', { rating: this.form.rating, comment: this.form.comment.trim() });
+        const res = await api.post('feedback.php', { rating: this.form.rating, comment: this.form.comment.trim(), name: (this.form.name || '').trim() });
         this.r.mine = res.mine;
         Setlo.toast('Thanks for your feedback!', 'ok');
         await this.load();

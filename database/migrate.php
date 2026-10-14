@@ -372,6 +372,14 @@ $steps = [
        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
        INDEX (status, created_at)
      ) ENGINE=InnoDB",
+    // Reviews go live right away now: publish the ones that were waiting for approval
+    "UPDATE feedback SET status = 'approved' WHERE status = 'pending'",
+    // Anyone can rate from the landing page: reviews without an account are tied to a cookie token instead
+    'ALTER TABLE feedback MODIFY user_id INT UNSIGNED NULL',
+    'ALTER TABLE feedback ADD COLUMN IF NOT EXISTS guest_key CHAR(64) NULL UNIQUE AFTER user_id',
+    'ALTER TABLE feedback ADD COLUMN IF NOT EXISTS guest_name VARCHAR(40) NULL AFTER guest_key',
+    'ALTER TABLE feedback ADD COLUMN IF NOT EXISTS ip_hash CHAR(64) NULL AFTER guest_name',
+    'ALTER TABLE feedback ADD INDEX IF NOT EXISTS ip_day_idx (ip_hash, created_at)',
     // First-visit dashboard tour (assets/js/tour.js): when the user finished or skipped it
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarded_at DATETIME NULL AFTER bg_image',
     // Guest access: a guest member's private link to see their share without an account (pages/guest.php)

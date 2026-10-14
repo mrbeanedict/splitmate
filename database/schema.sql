@@ -422,14 +422,18 @@ CREATE TABLE game_players (
 -- Ratings and feedback on the landing page (api/feedback.php): one per user, shown publicly once an admin approves it.
 CREATE TABLE feedback (
   id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  user_id    INT UNSIGNED NOT NULL UNIQUE,
+  user_id    INT UNSIGNED NULL UNIQUE,            -- NULL for a review left without an account
+  guest_key  CHAR(64) NULL UNIQUE,                -- SHA-256 of that visitor's cookie token (one review per browser)
+  guest_name VARCHAR(40) NULL,
+  ip_hash    CHAR(64) NULL,                       -- HMAC of the IP, only to cap anonymous reviews per day
   rating     TINYINT UNSIGNED NOT NULL,           -- 1 to 5
   comment    VARCHAR(500) NULL,
   status     ENUM('pending','approved','hidden') NOT NULL DEFAULT 'pending',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  INDEX (status, created_at)
+  INDEX (status, created_at),
+  INDEX (ip_hash, created_at)
 ) ENGINE=InnoDB;
 
 -- Extra proof-of-payment photos for one payment (the first photo stays in settlement_payments.proof_image).
