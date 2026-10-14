@@ -390,7 +390,7 @@
   };
 
   /**
-   * One person in a member search (api/users.php): picture, name with their featured achievement tag, and email
+   * One person in a member search (api/users.php): picture, name with their featured achievement tag, and @username · email
    * underneath, so people with the same name can be told apart. Sits inside the result's flex button.
    */
   const PersonResult = {
@@ -401,7 +401,7 @@
           <span class="truncate text-[13px] font-bold text-ink">{{ user.name }}</span>
           <status-badge :badge="user.badge" class="max-w-[55%] shrink-0"></status-badge>
         </span>
-        <span v-if="user.email" class="block truncate text-[11.5px] text-slate-400">{{ user.email }}</span>
+        <span v-if="user.username || user.email" class="block truncate text-[11.5px] text-slate-400">{{ user.username ? '@' + user.username : '' }}{{ user.username && user.email ? ' · ' : '' }}{{ user.email }}</span>
       </span>`,
   };
 
@@ -1062,7 +1062,7 @@
   }
 
   /**
-   * Dropdown to pick who paid the restaurant (one person, or several with `multiple`).
+   * Dropdown to pick who paid the bill (one person, or several with `multiple`).
    * props: people ([{ id, name, first, initials, color, photo }]), modelValue (selected ids), me (your id), multiple.
    * Emits update:modelValue. Closes on outside click / Esc / Tab, arrow keys move, Space/Enter toggles.
    */
@@ -1105,7 +1105,7 @@
           if (this.modelValue.length === 1) {
             this.shake = true;
             setTimeout(() => { this.shake = false; }, 400);
-            toast('Someone has to pay the restaurant.', 'warn');
+            toast('Someone has to pay the bill.', 'warn');
             return;
           }
           this.$emit('update:modelValue', this.modelValue.filter((x) => x !== id));
@@ -1242,9 +1242,22 @@
     return app.mount(selector || '#app');
   }
 
+  // Back / forward can show a frozen copy of a page (a bill that has since started settling still looks editable): reload it.
+  addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
+
+  // The same action asked for twice in a row (a double click, a key and a click together) must happen once: the second
+  // copy used to hit the server after the first had finished it ("This bill is locked because settlement has started").
+  const recentRuns = new WeakMap();
+
   /** Run an API call with a busy flag and error toast. Returns the result or undefined on error. */
   async function run(vm, fn, busyKey) {
     const key = busyKey || 'busy';
+    const id = key + '|' + fn.toString();
+    const seen = recentRuns.get(vm) || new Map();
+    recentRuns.set(vm, seen);
+    // Same action still running, or started under half a second ago: this is the repeat, so it is dropped.
+    if (seen.has(id) && (vm[key] || Date.now() - seen.get(id) < 500)) return undefined;
+    seen.set(id, Date.now());
     vm[key] = true;
     try {
       return await fn();
@@ -1274,6 +1287,28 @@
       vm[key] = false;
     }
   }
+
+  // Collapsible nav groups: open state per group is remembered; a group holding the current page stays open.
+  const groupKey = (g) => 'setlo-nav-' + g.dataset.navGroup;
+  document.querySelectorAll('.nav-group').forEach((g) => {
+    let saved = null;
+    try { saved = localStorage.getItem(groupKey(g)); } catch (err) { /* storage blocked */ }
+    if (saved && !g.querySelector('a.active')) {
+      g.classList.toggle('open', saved === '1');
+      g.querySelector('[data-group-toggle]').setAttribute('aria-expanded', String(saved === '1'));
+    }
+  });
+  document.addEventListener('click', (e) => {
+    const head = e.target.closest('[data-group-toggle]');
+    if (!head) return;
+    const open = head.closest('.nav-group').classList.toggle('open');
+    head.setAttribute('aria-expanded', String(open));
+    document.querySelectorAll('.nav-group[data-nav-group="' + head.closest('.nav-group').dataset.navGroup + '"]').forEach((g) => {
+      g.classList.toggle('open', open);
+      g.querySelector('[data-group-toggle]').setAttribute('aria-expanded', String(open));
+      try { localStorage.setItem(groupKey(g), open ? '1' : '0'); } catch (err) { /* this page only */ }
+    });
+  });
 
   // Sidebar burger ([data-nav-toggle="lg|md"]): on screens at least that wide it shrinks the sidebar
   // to icons (remembered), on smaller ones it opens the slide-in menu. Delegated, so it works in and out of Vue.

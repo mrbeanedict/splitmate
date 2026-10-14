@@ -39,32 +39,35 @@ require __DIR__ . '/../partials/head.php';
       <button v-if="!receipts.length && bill.has_receipt" @click="showPhotos([])" class="h-10 shrink-0 rounded-xl border-[1.5px] border-brand-300 px-4 text-[13px] font-bold text-brand-700 hover:bg-brand-50">Photo</button>
     </div>
 
-    <!-- Receipt currency: as the scanner read it (and why), correctable. Prices stay as printed. -->
-    <div class="tile p-3.5">
-      <div class="flex items-center gap-3">
-        <div class="min-w-0 flex-1">
-          <p class="text-[13.5px] font-extrabold text-ink">Receipt currency</p>
-          <p class="text-[11.5px] leading-snug text-slate-500">
+    <!-- Receipt currency: as the scanner read it (and why), correctable. Prices stay as printed. For a foreign receipt, the estimate in the settlement currency sits under it. -->
+    <section class="tile p-4">
+      <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <div class="min-w-0 flex-1 basis-[13rem]">
+          <p class="text-[14px] font-extrabold leading-tight text-ink">Receipt currency</p>
+          <p class="mt-1 text-[12px] leading-snug text-slate-500">
             <template v-if="detected">Read as {{ detected.code }}<template v-if="detected.clues"> ({{ detected.clues }})</template>{{ detected.code !== receiptCur ? ' — corrected to ' + receiptCur : '' }}.</template>
             <template v-else-if="receipts.length">No currency printed — assumed {{ receiptCur }}.</template>
             <template v-else>Prices you type are in this currency.</template>
-            <template v-if="receiptCur !== bill.currency"> Settles in {{ bill.currency }}; the rate is set on Bill Detail.</template>
+            <template v-if="receiptCur !== bill.currency"> Payments are settled in {{ bill.currency }}.</template>
           </p>
         </div>
         <div class="shrink-0"><currency-select compact :model-value="receiptCur" @update:model-value="setReceiptCurrency" :disabled="busy" label="Receipt currency"></currency-select></div>
       </div>
-    </div>
-    <!-- A receipt in another currency: what it comes to in the settlement currency (the saved bill, at the current rate) -->
-    <div v-if="foreign && bill.fx.missing" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12.5px] leading-relaxed text-amber-800" role="alert">
-      No exchange rate is available for {{ receiptCur }} → {{ bill.currency }} right now. Try again in a moment, or enter the rate on Bill Detail.
-    </div>
-    <div v-else-if="foreign" class="tile p-3.5">
-      <p class="text-[13.5px] font-extrabold text-ink">≈ {{ peso(bill.fx.converted, bill.currency) }} in {{ bill.currency }}</p>
-      <p class="text-[11.5px] leading-snug text-slate-500">
-        {{ peso(bill.fx.native_total, receiptCur) }} on the receipt · {{ fmtRate(bill.fx.rate, receiptCur, bill.currency) }}<template v-if="bill.fx.source"> ({{ bill.fx.source }})</template>.
-        Shown for the last saved version of this bill; the exact rate or amount charged is set on Bill Detail.
-      </p>
-    </div>
+
+      <template v-if="foreign">
+        <div v-if="bill.fx.missing" class="mt-3.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-amber-800" role="alert">
+          No exchange rate is available for {{ receiptCur }} → {{ bill.currency }} right now. It is fetched automatically — try again in a moment.
+        </div>
+        <div v-else class="mt-3.5 rounded-xl p-3.5" style="background:var(--tint)">
+          <p class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Estimated total in {{ bill.currency }}</p>
+          <p class="mt-0.5 text-[24px] font-extrabold leading-tight tracking-tight text-ink">{{ peso(bill.fx.converted, bill.currency) }}</p>
+          <p class="mt-1.5 text-[12px] leading-snug text-slate-500">
+            {{ peso(bill.fx.native_total, receiptCur) }} on the receipt · {{ fmtRate(bill.fx.rate, receiptCur, bill.currency) }}<template v-if="bill.fx.source"> ({{ bill.fx.source }})</template>
+          </p>
+          <p class="mt-2 border-t border-slate-200/70 pt-2 text-[11.5px] leading-snug text-slate-400">Converted at the market rate, to the cent. It follows the last saved version of this bill.</p>
+        </div>
+      </template>
+    </section>
     <div v-for="rc in receipts.filter((x) => x.currency_note)" :key="'cur' + rc.id" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12.5px] leading-relaxed text-amber-800" role="alert">
       <b class="text-amber-900">{{ rc.number }}. {{ receiptLabel(rc) }}:</b> {{ rc.currency_note }}
     </div>
@@ -130,7 +133,7 @@ require __DIR__ . '/../partials/head.php';
             <span class="flex shrink-0 items-center gap-2 text-slate-400">
               <span class="flex flex-col items-end leading-tight">
                 <!-- Receipt in another currency: what this line comes to in the settlement currency (estimate at the current rate) -->
-                <span v-if="foreign && !bill.fx.missing" class="font-extrabold text-brand-700" title="At today's rate; the bill's exact total is set on Bill Detail">≈ {{ peso(converted(r), bill.currency) }}</span>
+                <span v-if="foreign && !bill.fx.missing" class="font-extrabold text-brand-700" title="At the bill's market rate">≈ {{ peso(converted(r), bill.currency) }}</span>
                 <span>Line total {{ peso(lineTotal(r)) }}</span>
               </span>
               <button @click="remove(r)" class="font-bold text-slate-300 hover:text-rose-500" aria-label="Remove item">✕</button>
@@ -163,6 +166,7 @@ require __DIR__ . '/../partials/head.php';
 
     <!-- Receipt totals -->
     <div class="tile space-y-2 p-4 text-[13px]">
+      <p class="!mb-1 text-[14px] font-extrabold text-ink">Totals</p>
       <p v-if="receipts.length > 1" class="text-[11.5px] text-slate-400">Tax, service charge, discount and total are the {{ receipts.length }} receipts added together.</p>
       <div class="flex items-center justify-between"><span class="text-slate-500">Subtotal</span><span class="font-semibold text-slate-800">{{ peso(subtotal) }}</span></div>
       <label class="flex items-center justify-between"><span class="text-slate-500">Tax <span v-if="taxIncluded" class="text-[11px] font-semibold text-brand-600">(already in prices — not added)</span></span><input :value="tax" @input="tax = filterMoney($event.target.value); $event.target.value = tax; touch('tax')" data-field="tax" :class="{ 'is-invalid': err('tax') }" inputmode="decimal" class="row-in !h-9 w-24 text-right" aria-label="Tax" /></label>
@@ -179,51 +183,89 @@ require __DIR__ . '/../partials/head.php';
       <!-- Round the bill to whole pesos? Every share then becomes whole pesos too (round_to_whole() in includes/domain.php) -->
       <div v-if="canRound" class="!mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
         <div class="min-w-0">
-          <p class="text-[13.5px] font-extrabold text-ink">Round to whole {{ unitName }}?</p>
+          <p class="text-[13.5px] font-extrabold text-ink">Round to whole {{ unitName }}</p>
           <p class="text-[11.5px] leading-snug text-slate-400">{{ roundHint }}</p>
         </div>
-        <div class="seg seg-light w-28 shrink-0 !p-0.5" role="radiogroup" aria-label="Round the total">
-          <button type="button" role="radio" :aria-checked="!roundTotal" :class="{ on: !roundTotal }" @click="roundTotal = false">No</button>
-          <button type="button" role="radio" :aria-checked="roundTotal" :class="{ on: roundTotal }" @click="roundTotal = true">Yes</button>
-        </div>
+        <button type="button" role="switch" :aria-checked="roundTotal" class="switch switch-brand" @click="roundTotal = !roundTotal" :aria-label="'Round to whole ' + unitName"><span></span></button>
       </div>
     </div>
 
-    <!-- Several people paid the restaurant: each one's contribution, if known (ticked on the Create Bill step) -->
-    <div v-if="payers.length > 1" class="tile p-4 text-[13px]">
-      <p class="text-[14px] font-extrabold text-ink">Who paid the restaurant?</p>
-      <p class="mt-0.5 text-[12px] text-slate-400">Enter each payer's contribution, if known — the cash or card amount handed to the cashier. Leave blank to fill in later on Bill Detail.</p>
-      <div class="mt-3 space-y-2">
-        <label v-for="m in payers" :key="m.id" class="flex items-center gap-3">
-          <avatar :user="m" :size="28"></avatar>
-          <span class="min-w-0 flex-1 truncate font-semibold">{{ m.id === meId ? 'You' : m.name }}</span>
-          <!-- Short of the total: one tap puts the rest on this payer -->
-          <button v-if="payShort > 0" type="button" @click.prevent="fillShort(m)" class="shrink-0 rounded-lg border border-brand-300 px-2 py-1 text-[11.5px] font-bold text-brand-700 hover:bg-brand-50"
-                  :aria-label="'Add the ' + peso(payShort) + ' short to ' + m.name">+{{ peso(payShort) }}</button>
-          <span class="text-slate-400">{{ currencySymbol(bill.currency) }}</span>
-          <input :value="payDraft[m.id]" @input="payDraft[m.id] = filterMoney($event.target.value); $event.target.value = payDraft[m.id]; touch('pay' + m.id)" :data-field="'pay' + m.id"
-                 :class="{ 'is-invalid': err('pay' + m.id) }" inputmode="decimal" placeholder="0.00" class="row-in !h-9 w-28 text-right" :aria-label="'Amount paid by ' + m.name" />
+    <!-- 1. Amount tendered: the cash paid at the counter (read off the receipt when it printed one), against the total due, and the change -->
+    <section class="tile p-4 text-[13px]">
+      <p class="text-[14px] font-extrabold text-ink">Amount tendered</p>
+      <p class="mt-0.5 text-[12px] leading-snug text-slate-500">What was paid at the cashier, in cash or by card, and the change that came back. Read from the receipt when it shows them; edit either one and the other follows. Who paid, below, follows this amount.</p>
+
+      <div class="mt-3 space-y-2.5 rounded-xl p-3.5" style="background:var(--tint)">
+        <div class="flex items-center justify-between"><span class="text-slate-500">Total due</span><span class="font-semibold text-ink">{{ peso(total, receiptCur) }}<span v-if="foreign && dockTotal !== null" class="ml-1.5 text-[11.5px] font-medium text-slate-400">≈ {{ peso(dockTotal, bill.currency) }}</span></span></div>
+        <label class="flex items-center gap-3">
+          <span class="min-w-0 flex-1 font-semibold text-ink">Amount tendered</span>
+          <span class="text-slate-400">{{ currencySymbol(receiptCur) }}</span>
+          <input :value="fieldText('tendered')" @focus="focusField('tendered')" @blur="blurField" @input="typeTendered($event)" data-field="tendered" :class="{ 'is-invalid': err('tendered') }"
+                 :disabled="!rate" inputmode="decimal" placeholder="0.00" aria-label="Amount tendered" class="row-in w-32 text-right text-[15px] font-bold" />
+        </label>
+        <label class="flex items-center gap-3 border-t border-slate-200/70 pt-2.5">
+          <span class="min-w-0 flex-1 font-extrabold text-ink">Change <span class="text-[11px] font-medium text-slate-400">(sukli)</span></span>
+          <span class="text-slate-400">{{ currencySymbol(receiptCur) }}</span>
+          <input :value="fieldText('change')" @focus="focusField('change')" @blur="blurField" @input="typeChange($event)" data-field="change"
+                 :disabled="!rate" inputmode="decimal" placeholder="0.00" aria-label="Change" class="row-in w-32 text-right text-[15px] font-bold" :class="change > 0 ? '!text-brand-700' : ''" />
         </label>
       </div>
-      <p v-for="m in payers" :key="'pe' + m.id" v-show="err('pay' + m.id)" class="field-error">{{ m.first }}: {{ err('pay' + m.id) }}</p>
-      <p class="mt-2 text-[12px] font-semibold" :class="payCovers ? 'text-brand-600' : 'text-slate-500'">
-        {{ peso(payTotal, bill.currency) }} put in<template v-if="!foreign"> of {{ peso(total) }}{{ payTotal === 0 ? '' : payCovers ? ' ✓' : ' — ' + peso(Math.round((total - payTotal) * 100) / 100) + ' short' }}</template><template v-else> (in {{ bill.currency }}; the receipt is in {{ receiptCur }})</template>
+      <p v-if="err('tendered')" class="field-error">{{ err('tendered') }}</p>
+      <p v-if="!rate" class="mt-2 text-[12px] text-amber-700">No exchange rate is available for {{ receiptCur }} right now, so these amounts can't be saved yet. Try again in a moment.</p>
+      <p v-if="tenderedAmount > 0 && tenderedAmount < total - 0.005" class="mt-2 text-[12.5px] font-bold text-rose-500">Short by {{ peso(Math.round((total - tenderedAmount) * 100) / 100, receiptCur) }} — the amount tendered doesn't cover the total.</p>
+    </section>
+
+    <!-- 2. Who paid the bill: follows the amount tendered above, which is divided between the payers (one payer: just the person). -->
+    <section class="tile p-4 text-[13px]">
+      <p class="text-[14px] font-extrabold text-ink">Who paid the bill?</p>
+      <p class="mt-0.5 text-[12px] leading-snug text-slate-500">
+        <template v-if="payers.length > 1">The amount tendered above is divided evenly between the payers. If it wasn't even, change a person's amount — the amount tendered follows.</template>
+        <template v-else>The person who paid the cashier. Change who paid on the Create Bill step.</template>
       </p>
-      <!-- More was handed over than the bill: ask who the cashier gave the change to (never assumed) -->
-      <div v-if="change > 0" data-field="holder" class="mt-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-3.5">
-        <p class="text-[13.5px] font-extrabold text-amber-900">{{ peso(change, bill.currency) }} change — who received it?</p>
-        <p class="mt-0.5 text-[11.5px] leading-snug text-amber-800/80">Whoever the cashier handed it to. Setlo works out each person's part of it, and who passes what back, from this.</p>
+
+      <div v-if="payers.length <= 1" class="mt-3 flex items-center gap-3 rounded-xl p-3" style="background:var(--tint)">
+        <avatar v-if="soloPayer" :user="soloPayer" :size="32"></avatar>
+        <span class="min-w-0 flex-1 truncate font-bold text-ink">{{ !soloPayer || soloPayer.id === meId ? 'You' : soloPayer.name }}</span>
+        <span class="shrink-0 rounded-full bg-brand-600 px-2.5 py-1 text-[11px] font-bold text-white">Paid</span>
+      </div>
+
+      <template v-else>
+        <div class="mt-3 space-y-2">
+          <label v-for="m in payers" :key="m.id" class="flex items-center gap-3">
+            <avatar :user="m" :size="28"></avatar>
+            <span class="min-w-0 flex-1 truncate font-semibold">{{ m.id === meId ? 'You' : m.name }}</span>
+            <!-- Short of the total: one tap puts the rest on this payer -->
+            <button v-if="payShort > 0" type="button" @click.prevent="fillShort(m)" class="shrink-0 rounded-lg border border-brand-300 px-2 py-1 text-[11.5px] font-bold text-brand-700 hover:bg-brand-50"
+                    :aria-label="'Add the ' + peso(payShort) + ' short to ' + m.name">+{{ peso(payShort) }}</button>
+            <span class="text-slate-400">{{ currencySymbol(receiptCur) }}</span>
+            <input :value="payDraft[m.id]" @focus="$event.target.select()" @input="payDraft[m.id] = filterMoney($event.target.value); $event.target.value = payDraft[m.id]; touch('pay' + m.id)" :data-field="'pay' + m.id"
+                   :class="{ 'is-invalid': err('pay' + m.id) }" :disabled="!rate" inputmode="decimal" placeholder="0.00" class="row-in !h-10 w-28 text-right" :aria-label="'Amount paid by ' + m.name" />
+          </label>
+        </div>
+        <p v-for="m in payers" :key="'pe' + m.id" v-show="err('pay' + m.id)" class="field-error">{{ m.first }}: {{ err('pay' + m.id) }}</p>
+        <p class="mt-2 text-[12px] font-semibold" :class="payCovers ? 'text-brand-600' : 'text-slate-500'">
+          {{ peso(payTotal, receiptCur) }} put in of {{ peso(total, receiptCur) }}{{ payTotal === 0 ? '' : payCovers ? ' ✓' : ' — ' + peso(Math.round((total - payTotal) * 100) / 100, receiptCur) + ' short' }}
+        </p>
+      </template>
+    </section>
+
+    <!-- 3. Who received the change: never assumed, chosen once there is some -->
+    <section data-field="holder" class="tile p-4 text-[13px]" :class="change > 0 ? '!border-amber-200 !bg-amber-50/70' : ''">
+      <p class="text-[14px] font-extrabold" :class="change > 0 ? 'text-amber-900' : 'text-ink'">Who received the change?</p>
+      <template v-if="change > 0">
+        <p class="mt-0.5 text-[12px] leading-snug text-amber-800/80">{{ peso(change, receiptCur) }} came back. Choose whoever the cashier handed it to. Setlo works out each person's part of it, and who passes what back, from this.</p>
         <change-holder-picker class="mt-2.5" :people="members" v-model="changeHolder" :me="meId" :paid="payAmounts"></change-holder-picker>
         <p v-if="holderAsked && !changeHolder" class="field-error">Choose who received the change.</p>
-      </div>
-    </div>
+      </template>
+      <p v-else class="mt-0.5 text-[12px] leading-snug text-slate-500">{{ tenderedAmount > 0 ? 'No change to hand back, so there is nothing to choose.' : 'Enter the amount tendered above. If it is more than the total, you will choose who received the change here.' }}</p>
+    </section>
   </div>
 
-  <div class="dock">
+  <div v-if="bill" class="dock">
     <div class="dock-inner">
       <div>
-        <p class="text-[11px] font-medium text-slate-400">{{ rows.length }} items · total</p>
-        <p class="text-[21px] font-extrabold leading-tight tracking-tight text-white">{{ rounding && !foreign ? peso(rounded.total) : peso(total) }}</p>
+        <p class="text-[11px] font-medium text-slate-400">{{ rows.length }} items · {{ foreign ? 'est. total in ' + bill.currency : 'total' }}</p>
+        <p class="text-[21px] font-extrabold leading-tight tracking-tight text-white">{{ dockTotal === null ? '—' : peso(dockTotal, bill.currency) }}</p>
       </div>
       <button @click="save" class="dock-btn" :disabled="busy">{{ busy ? 'Saving…' : 'Continue' }}</button>
     </div>
@@ -251,7 +293,7 @@ Setlo.mount({
     billId: <?= $billId ?>, loading: true, busy: false, photos: null, shown: null,
     bill: null, receipts: [], rows: [], tax: '0.00', svc: '0.00', discount: '0.00', receiptTotal: '',
     meId: <?= (int) $user['id'] ?>, payers: [], payDraft: {},
-    members: [], roundTotal: false, changeHolder: null, serverExact: 0, holderAsked: false,
+    members: [], tendered: '', focused: null, typed: '', roundTotal: false, changeHolder: null, serverExact: 0, holderAsked: false,
   }),
   computed: {
     /** The whole amount in the settlement currency, before any rounding: as typed here, or (another currency) as last saved. */
@@ -276,9 +318,23 @@ Setlo.mount({
         ? `${this.peso(this.settleExact, cur)} → ${this.peso(this.rounded.total, cur)} (${by}). Every share becomes whole ${this.unitName}; ${who} ${d > 0 ? 'keeps' : 'covers'} the ${this.peso(Math.abs(d), cur)}.`
         : `Keep ${this.peso(this.settleExact, cur)} exactly, or round to ${this.peso(this.rounded.total, cur)} (${by}) so everyone pays whole ${this.unitName}.`;
     },
-    payAmounts() { return Object.fromEntries(this.payers.map((m) => [m.id, money(this.payDraft[m.id] || 0)])); },
+    /** The one person who paid, when only one did (the main payer of the bill). */
+    soloPayer() { return this.members.find((m) => m.id === this.bill.payer_id) || null; },
+    payAmounts() {
+      if (this.payers.length <= 1) return { [this.bill.payer_id]: this.tenderedAmount };
+      return Object.fromEntries(this.payers.map((m) => [m.id, money(this.payDraft[m.id] || 0)]));
+    },
     /** Handed over beyond what was charged (several payers only): the change somebody received. */
-    change() { return this.payers.length > 1 ? Math.max(0, Math.round((this.payTotal - this.settleExact) * 100) / 100) : 0; },
+    /** What one unit of the receipt's currency is in the settlement currency (1 when they are the same; 0 = no rate right now). */
+    rate() { return this.foreign ? (this.bill.fx.missing ? 0 : this.bill.fx.rate) : 1; },
+    change() { return Math.max(0, Math.round((this.tenderedAmount - this.total) * 100) / 100); },
+    /** What was handed to the cashier: the payers' amounts added up, or the one payer's entered amount (0 = not entered). */
+    tenderedAmount() { return this.payers.length > 1 ? this.payTotal : money(this.tendered); },
+    /** The floating total, always in the settlement currency (an estimate while the receipt is in another one). */
+    dockTotal() {
+      if (this.foreign) return this.bill.fx.missing ? null : Math.round(this.total * this.bill.fx.rate * 100) / 100;
+      return this.rounding ? this.rounded.total : this.total;
+    },
     flaggedCount() { return this.rows.filter((r) => r.needs_review).length; },
     subtotal() { return this.rows.reduce((s, r) => s + this.lineTotal(r), 0); },
     /** Mirrors tax_included() in includes/domain.php: tax already in the prices if leaving it out is what matches the printed total. */
@@ -303,7 +359,7 @@ Setlo.mount({
     /** The amounts handed over only have to cover the bill total (whoever received the change is asked below). */
     payCovers() { return this.payTotal > 0 && this.payTotal >= this.total - 0.005; },
     /** How much the payers' amounts are short of the bill total (0 when covered, or when the receipt is in another currency). */
-    payShort() { return this.foreign ? 0 : Math.max(0, Math.round((this.total - this.payTotal) * 100) / 100); },
+    payShort() { return Math.max(0, Math.round((this.total - this.payTotal) * 100) / 100); },
     foreign() { return !!(this.bill && this.bill.fx && this.bill.fx.foreign); },
     receiptCur() { return this.bill.receipt_currency || this.bill.currency || 'PHP'; },
     /** What the scanner read on the first receipt that printed a currency: { code, clues }. */
@@ -346,8 +402,21 @@ Setlo.mount({
       // Ticked as payers on the Create Bill step (only shown when there are several)
       const payerIds = r.payments.multi ? r.payments.payer_ids : [];
       this.payers = r.members.filter((m) => payerIds.includes(m.id));
-      this.payDraft = Object.fromEntries(this.payers.map((m) => [m.id, r.payments.paid[m.id] ? r.payments.paid[m.id].toFixed(2) : '']));
+      const toNative = (v) => (this.rate ? (Math.round((v / this.rate) * 100) / 100).toFixed(2) : v.toFixed(2));
+      this.payDraft = Object.fromEntries(this.payers.map((m) => [m.id, r.payments.paid[m.id] ? toNative(r.payments.paid[m.id]) : '0.00']));
       this.members = r.members;
+      this.tendered = !r.payments.multi && r.payments.tendered != null ? toNative(Number(r.payments.tendered)) : '';
+      // The cash read off the receipt, in the receipt's own currency: what was saved on the bill (same currency), else what the
+      // receipts themselves say (another currency, where it is converted only when saved).
+      const scannedSum = this.receipts.reduce((t, x) => t + (x.tendered || 0), 0);
+      const scanned = r.payments.tendered != null ? Number(toNative(Number(r.payments.tendered))) : Math.round(scannedSum * 100) / 100;
+      if (scanned > 0) {
+        if (!r.payments.multi) {
+          if (!this.tendered) this.tendered = scanned.toFixed(2);
+        } else if (!this.payers.some((m) => money(this.payDraft[m.id]) > 0)) {
+          this.setTendered(scanned.toFixed(2)); // several payers: divided between them
+        }
+      }
       this.roundTotal = !!r.bill.round_total;
       this.changeHolder = r.payments.change_holder ?? null;
       this.serverExact = r.bill.exact_total ?? r.total;
@@ -356,7 +425,7 @@ Setlo.mount({
     },
     async reload() { this.fill(await api.get('bills.php', { id: this.billId })); },
     formState() {
-      return JSON.stringify([this.rows.map(({ key, ...row }) => row), this.tax, this.svc, this.discount, this.receiptTotal, this.payDraft, this.roundTotal, this.changeHolder]);
+      return JSON.stringify([this.rows.map(({ key, ...row }) => row), this.tax, this.svc, this.discount, this.receiptTotal, this.payDraft, this.tendered, this.roundTotal, this.changeHolder]);
     },
     flagText(r) {
       if (r.suggestion) return 'Looks like “' + r.suggestion + '”?';
@@ -420,6 +489,7 @@ Setlo.mount({
       v.svc = V.money(this.svc, { label: 'Service charge' });
       v.discount = V.money(this.discount, { label: 'Discount' }) || (money(this.discount) > this.subtotal ? 'The discount can’t be more than the items subtotal.' : '');
       v.receipt = V.money(this.receiptTotal, { label: 'Receipt total' });
+      v.tendered = V.money(this.tendered, { label: 'Amount tendered' });
       for (const m of this.payers) v['pay' + m.id] = V.money(this.payDraft[m.id], { label: 'Amount' });
       return v;
     },
@@ -430,7 +500,8 @@ Setlo.mount({
         items: this.rows.map((x) => ({ id: x.id, name: x.name.trim(), qty: Number(x.qty), unit_price: money(x.unit_price), promo: money(x.promo || 0), needs_review: !!x.needs_review })),
         tax: money(this.tax), service_charge: money(this.svc), discount: money(this.discount),
         receipt_total: this.receiptTotal === '' ? null : money(this.receiptTotal),
-        ...(this.payers.length > 1 ? { payments: this.payAmounts, change_holder_id: this.change > 0 ? this.changeHolder || 0 : 0 } : {}),
+        ...(this.payers.length > 1 ? { payments: this.settlePayments() } : { amount_tendered: this.toSettle(money(this.tendered)) }),
+        change_holder_id: this.change > 0 ? this.changeHolder || 0 : 0,
         round_total: this.roundTotal,
       };
     },
@@ -511,6 +582,40 @@ Setlo.mount({
       Setlo.toast(res.value.fun_mode ? 'Group saved · Fun Mode on 🎉 — Continue starts the game' : 'Group saved', 'ok');
     },
     /** Put what's still short of the total on this payer's amount. */
+    // Amount tendered and change are both typed by hand when needed: they share one state, so editing either updates the other.
+    // While a field is focused it shows exactly what was typed (no reformatting under the cursor).
+    fieldText(which) {
+      if (this.focused === which) return this.typed;
+      if (which === 'tendered') return this.payers.length > 1 ? (this.payTotal > 0 ? this.payTotal.toFixed(2) : '') : this.tendered;
+      return this.tenderedAmount > 0 ? this.change.toFixed(2) : '';
+    },
+    focusField(which) { this.focused = which; this.typed = this.fieldText(which); },
+    blurField() { this.focused = null; },
+    /** Set what was paid at the cashier. Several payers: it is divided evenly between them (centavos to the first ones). */
+    setTendered(v) {
+      if (this.payers.length <= 1) { this.tendered = v; return; }
+      const n = this.payers.length;
+      const total = v === '' ? 0 : cents(v);
+      this.payers.forEach((m, i) => {
+        const part = Math.floor(total / n) + (i < total % n ? 1 : 0);
+        this.payDraft[m.id] = (part / 100).toFixed(2);
+      });
+    },
+    typeTendered(e) {
+      this.typed = Setlo.filterMoney(e.target.value);
+      e.target.value = this.typed;
+      this.setTendered(this.typed);
+      this.touch('tendered');
+    },
+    typeChange(e) {
+      this.typed = Setlo.filterMoney(e.target.value);
+      e.target.value = this.typed;
+      // tendered = total due + change (the change is what came back from the cash handed over)
+      this.setTendered(this.typed === '' ? '' : (Math.round((this.total + money(this.typed)) * 100) / 100).toFixed(2));
+    },
+    /** An amount in the receipt's currency, in the settlement currency (what is stored). */
+    toSettle(v) { return Math.round(v * this.rate * 100) / 100; },
+    settlePayments() { return Object.fromEntries(Object.entries(this.payAmounts).map(([id, v]) => [id, this.toSettle(v)])); },
     fillShort(m) {
       this.payDraft[m.id] = (money(this.payDraft[m.id] || 0) + this.payShort).toFixed(2);
       this.touch('pay' + m.id);

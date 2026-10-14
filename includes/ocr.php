@@ -39,7 +39,8 @@ or overlapping, return each one separately; never combine two receipts into one.
   Meal sets: a code or set name (like C1, PM2, "Value Meal 3") with a price, usually followed by unpriced or ₱0
   lines listing what it includes. Return it as ONE item with is_meal_set=true and those included lines in
   set_contents (plain names, e.g. ["Chicken", "Rice", "Iced Tea"]); do not list the included lines as items.
-  Its plain_name is a short name that keeps the code, e.g. "Chicken Meal (C1)", or "Meal set C1" if unknown.
+  Its plain_name is a short name WITHOUT the menu code (no C1, B2, A3, PM2 and the like), e.g. "Chicken Meal", or
+  "Meal set" if unknown.
   Lines under a set with their own price (upgrades, add-ons) are separate items. Otherwise is_meal_set=false
   and set_contents=[]. Skip instruction lines like "No onions" or "Less ice".
   Set unclear=true when the printed name is smudged, cut off or ambiguous, or you are guessing plain_name.
@@ -52,6 +53,12 @@ or overlapping, return each one separately; never combine two receipts into one.
 - service_charge: service charge amounts (0 if none).
 - discount: senior citizen, PWD, whole-receipt promo discounts and "LESS VAT" amounts printed with the totals, as a
   positive number (0 if none). Do not include item promos already given under an item.
+- tendered: what the customer paid at the cashier, in cash or by card. Look below the total for lines like CASH,
+  CASH TENDERED, TENDERED, AMOUNT TENDERED, AMOUNT PAID, PAYMENT, PAID, CREDIT, CREDIT CARD, DEBIT, VISA, MASTERCARD,
+  CARD, GCASH, MAYA or QR with an amount (for example "CASH 1,000.00" or "VISA 875.00" under "Total 875.00"). Add them
+  up if several payment lines are printed. null only if the receipt has no payment line at all. It is NOT the total
+  and it is not the change.
+- change_due: the amount printed on the CHANGE line (or "CHANGE DUE" / "SUKLI"), null if none.
 
 Do not list payment and change lines (CASH, CHANGE, TENDER, CARD, GCASH, MAYA), VATABLE / VAT-EXEMPT / ZERO-RATED
 breakdown lines, subtotals, taxes, service charges or discounts as items.
@@ -101,8 +108,10 @@ const RECEIPT_SCHEMA = [
         'service_charge' => ['type' => 'NUMBER'],
         'discount'       => ['type' => 'NUMBER'],
         'total'          => ['type' => 'NUMBER', 'nullable' => true],
+        'tendered'       => ['type' => 'NUMBER', 'nullable' => true],
+        'change_due'     => ['type' => 'NUMBER', 'nullable' => true],
     ],
-    'required'   => ['currency', 'currency_clues', 'store_name', 'title', 'receipt_no', 'date_time', 'raw_text', 'items', 'tax', 'service_charge', 'discount'],
+    'required'   => ['currency', 'currency_clues', 'store_name', 'title', 'receipt_no', 'date_time', 'raw_text', 'items', 'subtotal', 'tax', 'service_charge', 'discount', 'total', 'tendered', 'change_due'],
 ];
 
 const RECEIPTS_SCHEMA = [
@@ -144,7 +153,7 @@ function merge_receipt_parts(array $parts): array
         foreach (['store_name', 'title', 'receipt_no', 'txn_date', 'currency', 'currency_clues'] as $k) {
             $out[$k] = $out[$k] ?: $p[$k];
         }
-        foreach (['subtotal', 'total'] as $k) {
+        foreach (['subtotal', 'total', 'tendered', 'change_due'] as $k) {
             $out[$k] = $p[$k] ?? $out[$k];
         }
         foreach (['tax', 'service_charge', 'discount'] as $k) {
@@ -187,6 +196,9 @@ function parse_receipt($data): array
         $name = $clean($it['plain_name'] ?? '', 120) ?: $printed;
         $contents = array_values(array_filter(array_map(fn ($c) => $clean($c, 60), (array) ($it['set_contents'] ?? []))));
         $isSet = !empty($it['is_meal_set']);
+        if ($isSet) {
+            $name = strip_meal_code($name); // the menu code isn't a name: "Chicken Meal (C1)" -> "Chicken Meal"
+        }
         $items[] = [
             'name'         => $name,
             'printed_name' => $printed,
@@ -218,6 +230,14 @@ function parse_receipt($data): array
         $discount = 0.0;
     }
 
+    // Cash handed over: as read, or worked out from the total and the printed change when only the change was read.
+    $total = $amount($data['total'] ?? null);
+    $tendered = $amount($data['tendered'] ?? null);
+    $changeDue = $amount($data['change_due'] ?? null);
+    if (!$tendered && $changeDue && $total) {
+        $tendered = round($total + $changeDue, 2);
+    }
+
     // Only currencies the app can handle; anything else is left for the user to pick on Review.
     $currency = strtoupper(preg_replace('/[^A-Za-z]/', '', (string) ($data['currency'] ?? '')));
     return [
@@ -229,12 +249,27 @@ function parse_receipt($data): array
         'service_charge' => $amount($data['service_charge'] ?? null) ?? 0.0,
         'discount'       => $discount,
         'total'          => $amount($data['total'] ?? null),
+        'tendered'       => $tendered,
+        'change_due'     => $changeDue,
         'raw_text'       => trim((string) ($data['raw_text'] ?? '')),
         'store_name'     => $clean($data['store_name'] ?? '', 120),
         'title'          => mb_substr(strip_codes($clean($data['title'] ?? '', 120)), 0, 60),
         'receipt_no'     => $clean($data['receipt_no'] ?? '', 60),
         'txn_date'       => $clean($data['date_time'] ?? '', 40),
     ];
+}
+
+/**
+ * A meal set's name without its menu code: "Chicken Meal (C1)" -> "Chicken Meal", "Meal set B2" -> "Meal set",
+ * "A3 Burger Combo" -> "Burger Combo". A code is one or two letters followed by one or two digits ("C1", "PM2", "B12"),
+ * optionally written as "#C1" or "(C1)". Only used on meal sets, so a real product like "C2 Green Tea" is left alone.
+ * A name that was nothing but the code becomes "Meal set".
+ */
+function strip_meal_code(string $name): string
+{
+    $s = preg_replace('/[#(\[]*\b[A-Za-z]{1,2}\d{1,2}\b[)\]]*/', ' ', $name);
+    $s = trim(preg_replace('/\s+/', ' ', (string) $s), " \t-–·,:");
+    return $s === '' ? 'Meal set' : $s;
 }
 
 /**

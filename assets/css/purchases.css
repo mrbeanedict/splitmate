@@ -57,3 +57,12 @@ html.dark .pc-scan-paper { background-color: rgb(var(--field)); }
 @media (prefers-reduced-motion: reduce) {
   .pc-in-next, .pc-in-prev, .pc-fade, .pc-rise, .pc-scan-line { animation: none; }
 }
+
+/* Category tiles in a grid; the filter chips sit on their own row under the "Recent expenses" heading */
+.pc-cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .75rem; }
+.pc-cat { border: 1px solid #e8eeee; border-radius: .9rem; padding: .65rem .8rem; }
+.pc-toolbar { display: flex; flex-direction: column; gap: .6rem; }
+@media (min-width: 1024px) {
+  .pc-toolbar .pc-chips { flex-wrap: wrap; overflow: visible; padding-bottom: 0; }
+}
+html.dark .pc-cat { border-color: rgb(var(--slate-200)); }

@@ -82,6 +82,29 @@ function record_change_utang(int $ownerId, int $holderId, int $cents, int $payme
 }
 
 /**
+ * Someone paid part of $debtorId's debt, and $debtorId will pay them back: record it as an utang from the debtor to
+ * the payer (a loan, so it shows in Utang and My Debts & Repayments, and is repaid like any settlement). Both people are
+ * notified; a guest has no account, so only the user is. Returns the new settlement id. Call inside a transaction.
+ */
+function record_paid_for_utang(int $payerId, int $debtorId, int $cents, array $s, ?int $actorId, string $currency = 'PHP'): int
+{
+    $name = mb_substr('Paid for ' . first_names([$debtorId])[$debtorId] . ': ' . $s['bill_name'], 0, 120);
+    q("INSERT INTO bills (name, kind, loan_amount, creator_id, payer_id, status, settling_at, currency) VALUES (?, 'loan', ?, ?, ?, 'settling', NOW(), ?)",
+        [$name, pesos($cents), $payerId, $payerId, $currency]);
+    $billId = (int) db()->lastInsertId();
+    q('INSERT INTO bill_members (bill_id, user_id) VALUES (?, ?), (?, ?)', [$billId, $payerId, $billId, $debtorId]);
+    q('INSERT INTO settlements (bill_id, from_user_id, to_user_id, currency, principal, amount) VALUES (?, ?, ?, ?, ?, ?)', [$billId, $debtorId, $payerId, $currency, pesos($cents), pesos($cents)]);
+    $sid = (int) db()->lastInsertId();
+    $names = first_names([$payerId, $debtorId, (int) $s['to_user_id']]);
+    $amount = money_str($cents, $currency);
+    log_event($sid, $actorId, 'created', "{$names[$payerId]} paid $amount of {$names[$debtorId]}’s debt to {$names[(int) $s['to_user_id']]} ({$s['bill_name']}); {$names[$debtorId]} pays {$names[$payerId]} back.");
+    notify($debtorId, 'settling', "{$names[$payerId]} paid $amount of your debt to {$names[(int) $s['to_user_id']]} for {$s['bill_name']}. You now owe {$names[$payerId]} that instead (in Utang).", 'my-settlements');
+    notify($payerId, 'settling', "Recorded in Utang: {$names[$debtorId]} owes you $amount for paying their share of {$s['bill_name']}.", 'my-settlements?tab=owed');
+    apply_credits($debtorId, $payerId, $actorId, $currency);
+    return $sid;
+}
+
+/**
  * Use change $holderId owes $ownerId (open change utang) to pay $ownerId's open debts to $holderId, oldest first.
  * Each use is a payment part on both sides (method credit, with receipts): the debt is paid, the change utang goes
  * down by the same amount. Only debts in the same $currency offset each other. Call inside a transaction. Returns
@@ -272,12 +295,7 @@ function confirm_payment(array $s, array $p, ?int $actorId): void
     $payer = (int) $p['paid_by'];
     $debtor = (int) $s['from_user_id'];
     if ($p['pay_back'] && $payer !== $debtor) {
-        $names = first_names([$payer, $debtor, (int) $s['to_user_id']]);
-        q('INSERT INTO settlements (bill_id, from_user_id, to_user_id, currency, principal, amount) VALUES (?, ?, ?, ?, ?, ?)', [$s['bill_id'], $debtor, $payer, $cur, pesos($cents), pesos($cents)]);
-        $newId = (int) db()->lastInsertId();
-        log_event($newId, $actorId, 'created', "{$names[$payer]} paid " . money_str($cents, $cur) . " of {$names[$debtor]}’s debt to {$names[(int) $s['to_user_id']]}; {$names[$debtor]} pays {$names[$payer]} back.");
-        notify($debtor, 'settling', "{$names[$payer]} paid " . money_str($cents, $cur) . " of your debt to {$names[(int) $s['to_user_id']]} for {$s['bill_name']}. You now owe {$names[$payer]} that instead.", 'my-settlements');
-        apply_credits($debtor, $payer, $actorId, $cur);
+        record_paid_for_utang($payer, $debtor, $cents, $s, $actorId, $cur);
     }
 
     refresh_settlement_status((int) $s['id']);

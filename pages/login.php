@@ -11,7 +11,7 @@ if (current_user()) {
 $bannerText = $peek ? 'Sign in and <b>' . h($peek['bill']) . '</b> from ' . h($peek['creator']) . ' is added to your account.' : '';
 $title = 'Log In';
 $bodyClass = 'landing-body';
-$headExtra = ['assets/fonts/caveat-latin.woff2', 'assets/js/google-auth.js'];
+$headExtra = ['assets/fonts/caveat-latin.woff2', 'assets/css/auth-fit.css', 'assets/js/google-auth.js'];
 $splash = true;
 require __DIR__ . '/../partials/head.php';
 require __DIR__ . '/../partials/splash.php';
@@ -35,10 +35,10 @@ require __DIR__ . '/../partials/auth-landing-top.php';
 <?php endif; ?>
   <form class="mt-7 space-y-3.5" @submit.prevent="submit" novalidate>
     <div class="relative">
-      <label for="email" class="sr-only">Email</label>
-      <svg width="20" height="20" class="landing-input-icon" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M3 7l9 6 9-6"/></svg>
-      <input id="email" data-field="email" v-model.trim="email" @input="touch('email')" @blur="touch('email')" type="email" autocomplete="email" maxlength="190"
-             class="landing-input" :class="{ 'is-invalid': err('email') }" placeholder="you@email.com" required autofocus />
+      <label for="email" class="sr-only">Email or username</label>
+      <svg width="20" height="20" class="landing-input-icon" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></svg>
+      <input id="email" data-field="email" v-model.trim="email" @input="touch('email')" @blur="touch('email')" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="190"
+             class="landing-input" :class="{ 'is-invalid': err('email') }" placeholder="Email or username" required autofocus />
     </div>
     <p v-if="err('email')" class="field-error !mt-1">{{ err('email') }}</p>
     <div class="relative">
@@ -71,10 +71,13 @@ require __DIR__ . '/../partials/auth-landing-top.php';
 
   <div ref="google" class="flex min-h-[52px] justify-center"></div>
 
-  <p class="mt-6 text-center text-[14px] text-slate-600">
-    Don't have an account? <a href="register<?= $claim ? '?claim=' . h($claim) : ($next ? '?next=' . h(urlencode($next)) : '') ?>" class="font-bold text-brand-700 hover:underline">Sign up</a>
-    <span class="mt-2 block"><a href="try" class="font-semibold text-slate-500 hover:text-brand-700 hover:underline"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true" style="display:inline;margin-right:.35rem;vertical-align:-3px"><circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></svg>Sign in as guest</a></span>
-  </p>
+  <div class="auth-alt">
+    <p class="auth-alt-login"><span>Don't have an account? <a href="register<?= $claim ? '?claim=' . h($claim) : ($next ? '?next=' . h(urlencode($next)) : '') ?>">Sign up</a></span></p>
+    <a href="try" class="auth-alt-guest">
+      <span class="auth-alt-title"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></svg>Sign in as guest</span>
+      <span class="auth-alt-sub">Explore with limited features</span>
+    </a>
+  </div>
 </div>
 
 <?php require __DIR__ . '/../partials/auth-landing-bottom.php'; ?>
@@ -100,7 +103,7 @@ Setlo.mount({
   },
   methods: {
     validators() {
-      return { email: V.email(this.email), password: V.required(this.password, 'Password') };
+      return { email: V.required(this.email, 'Email or username'), password: V.required(this.password, 'Password') };
     },
     async submit() {
       this.error = '';

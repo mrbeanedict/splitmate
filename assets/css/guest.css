@@ -183,7 +183,7 @@ html.dark .t-locked button > span { color: rgb(var(--brand-300)); }
   .device-wide .app-hero h1 { font-size: 30px; }
   .device-wide .app-hero p { font-size: 14.5px; }
   .device-wide .g-wrap { padding: 0 0 120px; }
-  .g-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .g-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 24rem); gap: 20px; align-items: start; }   /* results column kept narrow */
   .g-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
   .g-sticky { position: sticky; top: 16px; }
   .g-hero-mascot { display: block; position: absolute; right: 4rem; bottom: 1.25rem; height: 210px; filter: drop-shadow(0 12px 18px rgb(0 0 0 / .28)); animation: tour-bob 3s ease-in-out infinite; pointer-events: none; }

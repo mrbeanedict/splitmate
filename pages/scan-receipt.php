@@ -41,8 +41,19 @@ require __DIR__ . '/../partials/head.php';
     <a href="my-bills?new=1" class="btn-pill btn-pill-primary">+ Create a new bill</a>
   </div>
 
-  <div v-else class="flex flex-1 flex-col px-5 pb-5 pt-4">
-    <div class="viewfinder h-[300px] shrink-0">
+  <div v-else class="relative flex flex-1 flex-col px-5 pb-5 pt-4" @dragenter.prevent="dragIn" @dragover.prevent @dragleave.prevent="dragOut" @drop.prevent="dropped">
+    <!-- The big drop card: drag the receipt photo(s) in, or click it to browse. The camera / scan views use the viewfinder below. -->
+    <div v-if="state === 'capture'" role="button" tabindex="0" @click="$refs.gallery.click()" @keydown.enter.prevent.stop="$refs.gallery.click()" @keydown.space.prevent="$refs.gallery.click()"
+         class="dropzone" :class="{ over: dragging }" aria-label="Upload receipt photos: drag and drop them here, or click to browse">
+      <span class="dropzone-icon">
+        <svg class="h-10 w-10" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
+      </span>
+      <p class="mt-4 text-[20px] font-extrabold leading-tight text-ink">{{ dragging ? 'Drop it here' : receiptCount && addMode ? 'Drag & drop another receipt' : 'Drag & drop your receipt here' }}</p>
+      <p class="mt-1.5 text-[13.5px] text-slate-500">or <span class="font-bold text-brand-700 underline underline-offset-2">click to browse</span> your files</p>
+      <p class="mt-4 text-[12px] text-slate-400">JPG, PNG or WebP · up to {{ maxPhotos }} photos, 8 MB each · several receipts in one photo are read separately</p>
+    </div>
+
+    <div v-if="state !== 'capture'" class="viewfinder h-[300px] shrink-0">
       <template v-if="state !== 'camera' || !guide.found">
         <span class="vf-corner tl"></span><span class="vf-corner tr"></span>
         <span class="vf-corner bl"></span><span class="vf-corner br"></span>
@@ -87,7 +98,7 @@ require __DIR__ . '/../partials/head.php';
         <button @click="addMode = true" role="radio" :aria-checked="addMode" class="rounded-xl py-2" :class="addMode ? 'bg-brand-600 text-white' : 'text-slate-500'">Add to the {{ receiptCount }} receipt{{ receiptCount > 1 ? 's' : '' }}</button>
         <button @click="addMode = false" role="radio" :aria-checked="!addMode" class="rounded-xl py-2" :class="!addMode ? 'bg-rose-600 text-white' : 'text-slate-500'">Replace {{ receiptCount > 1 ? 'them' : 'it' }}</button>
       </div>
-      <p class="mt-5 text-[16px] font-extrabold text-ink">{{ receiptCount && addMode ? 'Add another receipt' : 'Position the receipt in frame' }}</p>
+      <p class="mt-5 text-[16px] font-extrabold text-ink">Or take a photo with your camera</p>
       <p class="mt-1 text-[13px] leading-snug text-slate-500">Item names, prices, tax and total should be clearly visible. Several receipts in one photo are read separately; a long receipt can be taken in parts.</p>
       <div class="mt-5 grid grid-cols-2 gap-3">
         <button @click="$refs.gallery.click()" class="btn-pill btn-pill-outline">
@@ -99,6 +110,11 @@ require __DIR__ . '/../partials/head.php';
           Take Photo
         </button>
       </div>
+      <!-- Nothing to change: carry on with the receipts already on this bill (also Enter) -->
+      <a v-if="receiptCount" :href="'review-items?bill=' + billId" class="btn-pill btn-pill-primary mt-3 w-full">
+        Continue with {{ receiptCount === 1 ? 'this receipt' : 'these ' + receiptCount + ' receipts' }}
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6l6 6-6 6"/></svg>
+      </a>
       <p v-if="!ocrReady" class="mt-4 rounded-2xl bg-amber-50 px-4 py-2.5 text-[12px] text-amber-800">
         Receipt scanning isn't set up on this server yet: {{ ocrProblem }}. Photos are still saved, and you'll type the items on the next screen.
       </p>
@@ -176,7 +192,7 @@ Setlo.mount({
     bill: null, bills: [], loading: true, busy: false,
     state: 'capture', preview: null, progress: 0, failMessage: '',
     // Several receipts per bill: add to the bill's receipts, or replace them (the first scan).
-    receiptCount: 0, addMode: <?= $adding ? 'true' : 'false' ?>,
+    dragging: false, dragDepth: 0, receiptCount: 0, addMode: <?= $adding ? 'true' : 'false' ?>,
     // Photos waiting to be scanned ({ key, file, url }), and whether they are sections of one long receipt.
     queue: [], partsOfOne: false, maxPhotos: 6, step: { i: 1, n: 1 },
     // Bumped by Cancel / Take again: a scan still waiting on the server sees it changed and throws its result away.
@@ -222,11 +238,32 @@ Setlo.mount({
       // Adding is the safe default once the bill has receipts: replacing drops them and their items.
       if (this.receiptCount) this.addMode = true;
     });
+    // Enter = Continue, when there's nothing to change (not while a button, link or field has focus)
+    addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || this.state !== 'capture' || !this.receiptCount || this.busy) return;
+      if (e.target.closest && e.target.closest('input, textarea, select, button, a, [role=button]')) return;
+      location.href = 'review-items?bill=' + this.billId;
+    });
   },
   methods: {
-    async picked(e) {
+    picked(e) {
       const files = [...e.target.files];
       e.target.value = '';
+      return this.addFiles(files);
+    },
+    dragIn() { this.dragDepth++; this.dragging = this.state === 'capture' || this.state === 'queue'; },
+    dragOut() { this.dragDepth = Math.max(0, this.dragDepth - 1); if (!this.dragDepth) this.dragging = false; },
+    dropped(e) {
+      this.dragDepth = 0;
+      this.dragging = false;
+      if (this.state !== 'capture' && this.state !== 'queue') return;
+      const all = [...(e.dataTransfer?.files || [])];
+      const images = all.filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type));
+      if (!images.length) { Setlo.toast('Drop a JPG, PNG or WebP photo of the receipt.', 'warn'); return; }
+      if (images.length < all.length) Setlo.toast('Only JPG, PNG and WebP photos can be scanned — skipped the others.', 'warn');
+      return this.addFiles(images);
+    },
+    async addFiles(files) {
       const room = this.maxPhotos - this.queue.length;
       if (files.length > room) Setlo.toast(`Up to ${this.maxPhotos} photos at a time — added the first ${room}.`, 'warn');
       let warned = false;

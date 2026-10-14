@@ -5,11 +5,13 @@ require __DIR__ . '/../includes/uploads.php';
 
 $me = api_user();
 
+const USERNAME_CHANGES = 5;      // changes allowed in a row
+const USERNAME_WAIT_DAYS = 7;     // then this long before the next one
 const PAYMENT_METHODS = ['GCash', 'Maya', 'Bank Transfer', 'Cash'];
 
 function profile_of(int $userId): array
 {
-    $u = q('SELECT id, full_name, email, payment_method, payment_account, currency, pay_code, avatar_color, avatar, featured_achievement, bg_mode, bg_image, google_sub FROM users WHERE id = ?', [$userId])->fetch();
+    $u = q('SELECT id, full_name, email, username, username_changes, username_locked_until, payment_method, payment_account, currency, pay_code, avatar_color, avatar, featured_achievement, bg_mode, bg_image, google_sub FROM users WHERE id = ?', [$userId])->fetch();
     if ($u['pay_code'] === null) {
         // Safety net: every account has its own Pay-me code.
         $u['pay_code'] = new_pay_code();
@@ -17,6 +19,10 @@ function profile_of(int $userId): array
     }
     return public_user($u) + [
         'email'           => $u['email'],
+        'username'        => $u['username'],
+        // Username changes: 5, then a 7-day wait. "left" counts what remains before the wait; locked_until is set during it.
+        'username_locked_until' => $u['username_locked_until'] && strtotime($u['username_locked_until']) > time() ? $u['username_locked_until'] : null,
+        'username_changes_left' => $u['username_locked_until'] && strtotime($u['username_locked_until']) <= time() ? USERNAME_CHANGES : max(0, USERNAME_CHANGES - (int) $u['username_changes']),
         'payment_method'  => $u['payment_method'],
         'payment_account' => $u['payment_account'],
         'currency'        => $u['currency'],
@@ -139,6 +145,33 @@ switch (input('action', '')) {
         }
         q('UPDATE users SET full_name = ?, payment_method = ?, payment_account = ?, currency = ? WHERE id = ?',
             [trim($name), $method, $method === 'Cash' ? null : (trim($account) ?: null), $cur, $me['id']]);
+        json_ok(['profile' => profile_of($me['id'])]);
+
+    case 'username':
+        // Change my username (what friends can sign in or search with). Lowercase, 3–20 characters, unique.
+        // 5 changes in a row, then a 7-day wait; once the wait is over the count starts again.
+        $row = q('SELECT username, username_changes, username_locked_until FROM users WHERE id = ?', [$me['id']])->fetch();
+        $changes = (int) $row['username_changes'];
+        if ($row['username_locked_until']) {
+            if (strtotime($row['username_locked_until']) > time()) {
+                $when = date('M j, g:i A', strtotime($row['username_locked_until']));
+                fail("You've used all " . USERNAME_CHANGES . " username changes. You can change it again on $when.", 429, ['fields' => ['username' => "You can change your username again on $when."]]);
+            }
+            $changes = 0; // the wait is over
+        }
+        $username = strtolower(trim(str_input('username', 20)));
+        $err = valid_username($username);
+        if (!$err && strcasecmp($username, (string) q('SELECT username FROM users WHERE id = ?', [$me['id']])->fetchColumn()) !== 0 && username_taken($username)) {
+            $err = 'That username is taken.';
+        }
+        if ($err) {
+            fail($err, 422, ['fields' => ['username' => $err], 'suggestions' => str_contains($err, 'taken') ? suggest_usernames($username) : []]);
+        }
+        if ($username === (string) $row['username']) {
+            fail('That is already your username.', 422, ['fields' => ['username' => 'That is already your username.']]);
+        }
+        $changes++;
+        q('UPDATE users SET username = ?, username_changes = ?, username_locked_until = ' . ($changes >= USERNAME_CHANGES ? 'NOW() + INTERVAL ' . USERNAME_WAIT_DAYS . ' DAY' : 'NULL') . ' WHERE id = ?', [$username, $changes, $me['id']]);
         json_ok(['profile' => profile_of($me['id'])]);
 
     case 'set_currency':

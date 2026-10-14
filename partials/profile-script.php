@@ -1,0 +1,220 @@
+<?php // Shared by My Profile, Payment Methods and Account Settings (one Vue app each page) ?>
+<script>
+const PAGE = '<?= h($page) ?>';
+Setlo.mount({
+  mixins: [Setlo.validation],
+  data: () => ({
+    loading: true, busy: false, busyAch: false, p: null, money: null, ach: null, canShare: !!navigator.share,
+    presets: [], picking: false,
+    theme: SetloTheme.get(), accents: SetloTheme.ACCENTS, hexDraft: SetloTheme.get().custom,
+    // Line icons for the Mode and Background buttons (24×24, stroke = the button's text colour)
+    icons: {
+      light: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+      dark: '<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
+      system: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+      badges: '<circle cx="12" cy="9" r="6"/><path d="M8.5 14.5L7 22l5-3 5 3-1.5-7.5"/>',
+      receipts: '<path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+      plain: '<rect x="4" y="4" width="16" height="16" rx="3"/>',
+      photo: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/>',
+    },
+    modes: [{ key: 'light', label: 'Light' }, { key: 'dark', label: 'Dark' }, { key: 'system', label: 'System' }],
+    backgrounds: [{ key: 'badges', label: 'Badges' }, { key: 'receipts', label: 'Setlo' }, { key: 'plain', label: 'Plain' }, { key: 'photo', label: 'Photo' }],
+    busyBg: null,
+    f: { full_name: '', payment_method: 'GCash', payment_account: '' },
+    pw: { current: '', new: '', confirm: '' }, serverErrors: {},
+    username: '', usernameErr: '', usernameSuggest: [],
+  }),
+  computed: {
+    usernameLockedText() {
+      const t = this.p && this.p.username_locked_until;
+      if (!t) return '';
+      const d = new Date(t.replace(' ', 'T'));
+      return 'All 5 changes used. You can change it again on ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + '.';
+    },
+    usernameChanged() { return !!this.p && this.username.toLowerCase() !== (this.p.username || ''); },
+    hexOk() { return SetloTheme.isHex(this.hexDraft); },
+    customAdjusted() { return this.theme.accent === 'custom' && SetloTheme.scale(this.theme.custom).adjusted; },
+    isGcash() { return this.f.payment_method === 'GCash'; },
+    accountLabel() {
+      if (this.isGcash) return 'GCash number';
+      return this.f.payment_method === 'Bank Transfer' ? 'Bank & account number' : this.f.payment_method + ' number / name';
+    },
+    accountPlaceholder() { return this.f.payment_method === 'Bank Transfer' ? 'e.g. BPI 1234-5678-90 · Juan Dela Cruz' : 'e.g. 0917 123 4567 · Juan D.'; },
+    bg() { return this.p?.background || { mode: 'badges', image: null }; },
+    bgHint() {
+      return {
+        badges: 'Your shown badges float behind your pages; hidden ones stay out.',
+        receipts: 'The Setlo theme: a long receipt floats over little green chameleon sketches.',
+        plain: 'Just the soft colour wash, nothing moving.',
+        photo: 'Your photo, softened a little so your cards stay easy to read.',
+      }[this.bg.mode];
+    },
+    payUrl() { return this.p ? Setlo.payLink(this.p.pay_code) : ''; },
+    qr() { return this.p ? Setlo.qrSvg(this.payUrl) : ''; },
+    featuredBadge() {
+      if (!this.ach) return this.p?.badge || null;
+      const a = this.ach.badges.find((b) => b.code === this.ach.featured);
+      return a ? { emoji: a.emoji, title: a.title } : null;
+    },
+  },
+  async mounted() {
+    await Setlo.load(this, 'profile.php', null, (r) => { this.set(r.profile); this.money = r.money || null; this.presets = r.presets || []; });
+    if (PAGE === 'profile') Setlo.load(this, 'achievements.php', null, (r) => { this.ach = r; }, 'busyAch');
+  },
+  methods: {
+    openBadge(a) { Setlo.showAchievement(a); },
+    async toggleHidden(a) {
+      const r = await Setlo.run(this, () => api.post('achievements.php', { action: 'hide', code: a.code, hidden: !a.hidden }), 'busyAch');
+      if (r) { this.ach = r; window.SetloBackground?.refresh(r.badges); }
+    },
+    /** A new backdrop was saved: show it now and keep it in the profile. */
+    applyBackground(r) {
+      if (!r) return;
+      this.p = { ...this.p, background: r.profile.background };
+      window.SetloBackground?.set(r.profile.background);
+    },
+    async setBackground(mode) {
+      if (mode === this.bg.mode || this.busyBg) return;
+      if (mode === 'photo' && !this.bg.image) { this.pickBackgroundPhoto(); return; } // no photo yet: pick one first
+      this.applyBackground(await Setlo.run(this, () => api.post('profile.php', { action: 'set_background', mode }), 'busyBg'));
+    },
+    /** Ask first, then open the file picker / gallery for the background photo. */
+    async pickBackgroundPhoto() {
+      const ok = await Setlo.confirm({ title: 'Allow Setlo to open your photos?', text: 'Setlo needs your permission to open your gallery or files so you can pick a photo for your background. Only the photo you choose is used.', confirmText: 'Allow' });
+      if (ok) this.$refs.bgFile.click();
+    },
+    async uploadBackground(e) {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      if (!file.type.startsWith('image/')) { Setlo.toast('Choose a photo.'); return; }
+      this.busyBg = 'crop';
+      try {
+        const photo = await Setlo.cropPhoto(file, { shape: 'rect', aspect: 16 / 9, width: 1600, title: 'Crop your background' });
+        if (!photo) return;
+        this.busyBg = 'upload';
+        const fd = new FormData();
+        fd.append('action', 'upload_background');
+        fd.append('photo', photo, 'background.jpg');
+        this.applyBackground(await api.post('profile.php', fd));
+        Setlo.toast('Background updated', 'ok');
+      } catch (err) { Setlo.toast(err.message); }
+      finally { this.busyBg = null; }
+    },
+    async removeBackground() {
+      const ok = await Setlo.confirm({ title: 'Remove your photo?', text: 'Your background goes back to the floating badges.', confirmText: 'Remove' });
+      if (ok) this.applyBackground(await Setlo.run(this, () => api.post('profile.php', { action: 'remove_background' }), 'busyBg'));
+    },
+    async feature(a) {
+      const r = await Setlo.run(this, () => api.post('achievements.php', { action: 'feature', code: a.code === this.ach.featured ? '' : a.code }), 'busyAch');
+      if (r) { this.ach = r; Setlo.toast(r.featured ? 'Title set' : 'Title removed', 'ok'); }
+    },
+    showPerson(id) { Setlo.showPerson(id); },
+    async setCurrency(code) {
+      const r = await Setlo.run(this, () => api.post('profile.php', { action: 'set_currency', currency: code }));
+      if (!r) return;
+      this.p = r.profile;
+      Setlo.toast('Currency set to ' + code, 'ok');
+      // Totals owed are shown in it: fetch them again
+      try { this.money = (await api.get('profile.php')).money || null; } catch (e) { /* the old totals stay until the next visit */ }
+    },
+    setTheme(patch) { this.theme = SetloTheme.set(patch); },
+    /** Typing a hex code: applies once it is a full #rrggbb (the "#" is added if left out). */
+    onHex() {
+      let v = this.hexDraft.trim();
+      if (v && v[0] !== '#') v = '#' + v;
+      this.hexDraft = v;
+      if (SetloTheme.isHex(v)) this.setTheme({ custom: v });
+    },
+    /** A new picture was saved: show it, but keep any unsaved edits in the details form. */
+    onPicture(profile) {
+      this.p = profile;
+      Setlo.toast('Picture updated', 'ok');
+    },
+    validators() {
+      return {
+        full_name: V.name(this.f.full_name, 'Full name'),
+        payment_account: this.f.payment_method === 'Cash' ? '' : (this.isGcash ? V.gcash(this.f.payment_account) : V.account(this.f.payment_account)),
+        username: V.username(this.username),
+        pw_current: this.serverErrors.current || V.required(this.pw.current, 'Current password'),
+        pw_new: this.serverErrors.new || V.password(this.pw.new) || (this.pw.new && this.pw.new === this.pw.current ? 'Choose a password different from your current one.' : ''),
+        pw_confirm: V.match(this.pw.confirm, this.pw.new),
+      };
+    },
+    set(p) {
+      this.p = p;
+      this.f = { full_name: p.name, payment_method: p.payment_method, payment_account: p.payment_account || '' };
+      this.username = p.username || '';
+    },
+    // Digits only, so "0917 123 4567" or a pasted "0917-123-4567" becomes 09171234567.
+    onGcashInput() {
+      this.f.payment_account = this.f.payment_account.replace(/\D/g, '').slice(0, 11);
+      this.touch('payment_account');
+    },
+    async saveProfile(fields = ['full_name', 'payment_account']) {
+      if (!this.validateAll(fields)) return;
+      const r = await Setlo.run(this, () => api.post('profile.php', { action: 'update', ...this.f, full_name: this.f.full_name.trim() }));
+      if (r) { this.set(r.profile); Setlo.toast('Details saved', 'ok'); }
+    },
+    async saveUsername() {
+      if (!this.validateAll(['username'])) return;
+      this.usernameErr = '';
+      try {
+        this.busy = true;
+        const r = await api.post('profile.php', { action: 'username', username: this.username });
+        this.set(r.profile);
+        this.usernameSuggest = [];
+        Setlo.toast('Username changed to @' + r.profile.username, 'ok');
+      } catch (e) {
+        this.usernameErr = (e.data && e.data.fields && e.data.fields.username) || e.message;
+        this.usernameSuggest = (e.data && e.data.suggestions) || [];
+      } finally {
+        this.busy = false;
+      }
+    },
+    downloadQr() {
+      const a = document.createElement('a');
+      a.href = Setlo.qrPng(this.payUrl, 'Pay ' + this.p.first + ' on Setlo');
+      a.download = 'setlo-pay-' + this.p.first.toLowerCase() + '.png';
+      a.click();
+    },
+    async shareLink() {
+      if (navigator.share) {
+        navigator.share({ title: 'Pay ' + this.p.name + ' on Setlo', url: this.payUrl }).catch(() => {});
+        return;
+      }
+      try { await navigator.clipboard.writeText(this.payUrl); Setlo.toast('Link copied', 'ok'); }
+      catch (e) { Setlo.showCopy('Your pay link', this.payUrl); }
+    },
+    async rotate() {
+      const ok = await Setlo.confirm({
+        title: 'Get a new QR?', danger: true, confirmText: 'Yes, new QR',
+        text: 'Your current QR and pay link will stop working. Anyone who saved the old one will need the new one.',
+      });
+      if (!ok) return;
+      const r = await Setlo.run(this, () => api.post('profile.php', { action: 'rotate_pay_code' }));
+      if (r) { this.set(r.profile); Setlo.toast('New QR created', 'ok'); }
+    },
+    async changePassword() {
+      this.serverErrors = {};
+      if (!this.validateAll(['pw_current', 'pw_new', 'pw_confirm'])) return;
+      try {
+        this.busy = true;
+        await api.post('profile.php', { action: 'password', ...this.pw });
+        this.pw = { current: '', new: '', confirm: '' };
+        ['pw_current', 'pw_new', 'pw_confirm'].forEach((k) => { this.touched[k] = false; });
+        Setlo.alert('Password updated', 'Use your new password next time you sign in.', 'success');
+      } catch (e) {
+        this.serverErrors = e.data.fields || {};
+        Setlo.toast(e.message);
+      } finally {
+        this.busy = false;
+      }
+    },
+  },
+  watch: {
+    'pw.current'() { this.serverErrors.current = ''; },
+    'pw.new'() { this.serverErrors.new = ''; },
+  },
+});
+</script>

@@ -26,6 +26,13 @@
       if (t.length > 100) return `${label} must be 100 characters or fewer.`;
       return /^[\p{L}][\p{L} .'\-]*$/u.test(t) ? '' : `${label} can only have letters, spaces, periods, apostrophes and hyphens.`;
     },
+    username: (v) => {
+      const t = s(v).trim().toLowerCase();
+      if (!t) return 'Username is required.';
+      if (t.length < 3 || t.length > 20) return 'Username must be 3–20 characters.';
+      if (!/^[a-z0-9_]+$/.test(t)) return 'Use letters, numbers and underscores only.';
+      return ['admin', 'administrator', 'setlo', 'support', 'help', 'root', 'system', 'moderator', 'staff', 'null', 'guest'].includes(t) ? 'That username is reserved.' : '';
+    },
     billName: (v) => {
       const t = s(v).trim();
       if (!t) return 'Give the bill a name.';

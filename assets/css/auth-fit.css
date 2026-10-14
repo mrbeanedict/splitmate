@@ -1,0 +1,37 @@
+/* Login / sign-up (pages/login.php, pages/register.php): on desktop the whole screen fits with no page scroll.
+   The card is tightened to fit, and shrinks a little more on short windows. Phones and tablets scroll normally.
+   Plain CSS, no Tailwind rebuild. */
+@media (min-width: 1024px) {
+  html, body.landing-body { height: 100%; overflow: hidden; }
+  .landing { height: 100vh; height: 100dvh; min-height: 0; }
+  .landing-grid { height: 100%; min-height: 0; padding-top: .75rem; padding-bottom: .75rem; }
+  .landing-grid main { display: flex; flex-direction: column; justify-content: center; }
+  .landing-grid main > p { margin-top: .5rem !important; }
+  .landing-card { padding: 1.25rem 2rem; }
+  .landing-card > * + * { margin-top: .75rem !important; margin-bottom: 0 !important; }
+  .landing-card > div:first-child h2 { margin-top: .25rem !important; }
+  .landing-card form > * + * { margin-top: .5rem !important; }
+  .landing-card .landing-input { height: 44px; }
+  .landing-card .btn-pill { height: 46px !important; margin-top: .75rem !important; }
+}
+@media (min-width: 1024px) and (max-height: 760px) { .landing-card { zoom: .9; } }
+@media (min-width: 1024px) and (max-height: 660px) { .landing-card { zoom: .8; } }
+
+/* Bottom of the sign-up card: "Already have an account? Log in" between two rules, then a tinted guest button. */
+.auth-alt { margin-top: 1.5rem; }
+.auth-alt-login { display: flex; align-items: center; gap: 1rem; margin: 0; font-size: 14px; color: #64748b; }
+.auth-alt-login::before, .auth-alt-login::after { content: ""; flex: 1; height: 1px; background: rgb(var(--brand-100)); }
+.auth-alt-login a { font-weight: 800; color: rgb(var(--brand-700)); text-decoration: none; }
+.auth-alt-login a:hover { text-decoration: underline; }
+.auth-alt-guest { display: flex; flex-direction: column; align-items: center; gap: .15rem; margin-top: 1rem; padding: .85rem 1rem; border-radius: 1.25rem; background: color-mix(in srgb, rgb(var(--brand-500)) 8%, rgb(var(--surface))); text-decoration: none; transition: background .15s; }
+.auth-alt-guest:hover { background: color-mix(in srgb, rgb(var(--brand-500)) 14%, rgb(var(--surface))); }
+.auth-alt-title { display: inline-flex; align-items: center; gap: .6rem; font-size: 16px; font-weight: 800; color: rgb(var(--brand-700)); }
+.auth-alt-sub { font-size: 13px; color: #64748b; }
+html.dark .auth-alt-login, html.dark .auth-alt-sub { color: #94a3b8; }
+@media (min-width: 1024px) {
+  .landing-card > .auth-alt { margin-top: .75rem !important; }
+  .auth-alt-guest { margin-top: .6rem; padding: .6rem 1rem; }
+}
+
+/* The card is always fully solid: no see-through background, no opacity changes when pressed or focused. */
+.landing-card, .landing-card:active, .landing-card:focus-within { background-color: rgb(var(--surface)) !important; opacity: 1 !important; backdrop-filter: none !important; -webkit-tap-highlight-color: transparent; }

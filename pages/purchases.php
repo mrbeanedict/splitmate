@@ -3,7 +3,7 @@ require __DIR__ . '/../includes/bootstrap.php';
 $user = require_login();
 // My purchases: your own expenses outside any bill. Scan a receipt to fill one in, mark ones still to pay and settle
 // them later, and read the journal of it all. Spending (stats) analyzes them next to your bill shares.
-$title = 'My purchases';
+$title = 'Personal expenses';
 $nav = 'purchases';
 $back = 'dashboard.php';
 $headExtra = ['assets/css/purchases.css'];
@@ -15,7 +15,7 @@ require __DIR__ . '/../partials/head.php';
     <div class="flex items-center gap-3">
       <?php require __DIR__ . '/../partials/back.php'; ?>
       <div class="min-w-0 flex-1">
-        <h1 class="text-[21px] font-extrabold tracking-tight">My purchases</h1>
+        <h1 class="text-[21px] font-extrabold tracking-tight">Personal expenses</h1>
         <p class="text-[12px] font-medium text-brand-50/90">Your own spending, outside any bill</p>
       </div>
       <button v-if="d.scan" @click="scanOpen = true" :disabled="scanning" class="shrink-0 rounded-full bg-white/15 px-3.5 py-2 text-[13px] font-bold text-white hover:bg-white/25" aria-label="Scan a receipt">Scan</button>
@@ -32,9 +32,10 @@ require __DIR__ . '/../partials/head.php';
   <spinner v-if="loading"></spinner>
 
   <!-- Purchases of a month -->
-  <div v-else-if="tab === 'purchases'" :key="'m' + d.month" class="flex-1 space-y-4 px-5 pb-6 pt-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5 lg:space-y-0" :class="[dir ? 'pc-in-' + dir : '', { 'pc-dim': navBusy }]">
+  <div v-else-if="tab === 'purchases'" :key="'m' + d.month" class="flex-1 space-y-4 px-5 pb-6 pt-4" :class="[dir ? 'pc-in-' + dir : '', { 'pc-dim': navBusy }]">
 
-    <div class="space-y-4">
+    <!-- Summary + where it went: side by side on laptops -->
+    <div class="space-y-4 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-stretch lg:gap-5 lg:space-y-0">
       <div class="tile p-4">
         <div class="pc-month">
           <button type="button" @click="go(-1)" :disabled="navBusy" aria-label="Previous month">‹</button>
@@ -49,27 +50,35 @@ require __DIR__ . '/../partials/head.php';
         </p>
       </div>
 
-      <div v-if="d.by_category.length" class="tile space-y-3 p-4">
+      <div class="tile p-4">
         <p class="text-[13px] font-extrabold text-ink">Where it went</p>
-        <div v-for="c in d.by_category" :key="c.category">
-          <div class="flex items-center justify-between text-[12.5px]">
-            <span class="font-semibold text-slate-600">{{ c.category }}</span>
-            <span class="font-bold text-ink">{{ peso(c.amount, d.currency) }}</span>
+        <p v-if="!d.by_category.length" class="mt-2 text-[12px] text-slate-400">Nothing spent yet this month.</p>
+        <div v-else class="pc-cats mt-3">
+          <div v-for="c in d.by_category" :key="c.category" class="pc-cat">
+            <div class="flex items-center justify-between gap-2 text-[12.5px]">
+              <span class="truncate font-semibold text-slate-600">{{ c.category }}</span>
+              <span class="font-bold text-ink">{{ peso(c.amount, d.currency) }}</span>
+            </div>
+            <div class="pc-bar mt-1.5"><span :style="{ width: Math.max(4, c.amount / d.total * 100) + '%', background: color(c.category) }"></span></div>
           </div>
-          <div class="pc-bar mt-1"><span :style="{ width: Math.max(4, c.amount / d.total * 100) + '%', background: color(c.category) }"></span></div>
         </div>
-        <a href="stats" class="block text-[12px] font-bold text-brand-700">See it in Spending ›</a>
+        <a v-if="d.by_category.length" href="stats" class="mt-3 block text-[12px] font-bold text-brand-700">See it in Spending ›</a>
       </div>
     </div>
 
+    <!-- Recent expenses: heading, then the filters right under it, then the list -->
     <div class="space-y-3">
-      <div class="pc-chips" role="tablist" aria-label="Filter by category">
-        <button type="button" class="pc-chip" :class="{ on: !cat }" @click="cat = ''">All</button>
-        <button v-for="c in d.categories" :key="c" type="button" class="pc-chip" :class="{ on: cat === c }" @click="cat = c">{{ c }}</button>
+      <div class="pc-toolbar">
+        <h2 class="text-[15px] font-extrabold text-ink">Recent expenses</h2>
+<?php $searchHint = 'Search expenses, places or categories'; require __DIR__ . '/../partials/list-search.php'; ?>
+        <div class="pc-chips" role="tablist" aria-label="Filter by category">
+          <button type="button" class="pc-chip" :class="{ on: !cat }" @click="cat = ''">All</button>
+          <button v-for="c in d.categories" :key="c" type="button" class="pc-chip" :class="{ on: cat === c }" @click="cat = c">{{ c }}</button>
+        </div>
       </div>
 
       <div v-if="!shown.length" class="tile p-6 text-center">
-        <p class="text-sm font-bold text-ink">{{ d.purchases.length ? 'Nothing in this category' : 'No purchases this month' }}</p>
+        <p class="text-sm font-bold text-ink">{{ q.trim() ? 'Nothing matches “' + q.trim() + '”' : d.purchases.length ? 'Nothing in this category' : 'No purchases this month' }}</p>
         <p class="mt-1 text-[12px] text-slate-400">Log what you buy — or scan the receipt — and Spending adds it up.</p>
         <div class="mt-3 flex justify-center gap-2">
           <button v-if="d.scan" @click="scanOpen = true" class="btn btn-outline btn-sm">Scan a receipt</button>
@@ -284,14 +293,18 @@ Setlo.mount({
   mixins: [Setlo.validation],
   data: () => ({
     loading: true, busy: false, navBusy: false, dir: '', scanning: false, scanOpen: false, tab: new URLSearchParams(location.search).get('tab') || 'purchases',
-    month: new URLSearchParams(location.search).get('month') || '', cat: '', form: null, settling: null, today: todayStr(),
+    month: new URLSearchParams(location.search).get('month') || '', cat: '', q: '', form: null, settling: null, today: todayStr(),
     d: { month: '', currency: 'PHP', total: 0, last_month: 0, count: 0, by_category: [], purchases: [], unpaid: { total: 0, rows: [] }, categories: [], methods: [], scan: false },
     events: [], journalLoaded: false, journalMore: false, currency: 'PHP',
     evIcon: { added: '+', scanned: '▣', edited: '✎', settled: '✓', reopened: '↺', deleted: '✕' },
     evText: { added: 'added', scanned: 'added from a scanned receipt', edited: 'edited', settled: 'settled', reopened: 'moved back to pay', deleted: 'deleted' },
   }),
   computed: {
-    shown() { return this.cat ? this.d.purchases.filter((p) => p.category === this.cat) : this.d.purchases; },
+    shown() {
+      const q = this.q.trim().toLowerCase();
+      const hit = (p) => !q || [p.title, p.category, p.merchant, p.payment_method].some((v) => v && String(v).toLowerCase().includes(q));
+      return this.d.purchases.filter((p) => (!this.cat || p.category === this.cat) && hit(p));
+    },
     groups() {
       const out = [];
       this.shown.forEach((p) => {

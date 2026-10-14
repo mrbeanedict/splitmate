@@ -79,7 +79,10 @@ if (method() === 'GET') {
             [$s['id']]
         )->fetchAll();
         $others = array_values(array_filter(bill_settlements((int) $s['bill_id']), fn ($o) => $o['id'] !== (int) $s['id']));
-        json_ok(['settlement' => settlement_rows_with_parts([$s])[0], 'events' => $events, 'others' => $others]);
+        // Who else is on the bill: the people who could have handed over cash for the debtor
+        $members = array_map(fn ($u) => ['id' => (int) $u['id'], 'name' => $u['full_name'], 'first' => first_name($u['full_name']), 'is_guest' => $u['role'] === 'guest'],
+            q('SELECT u.id, u.full_name, u.role FROM bill_members m JOIN users u ON u.id = m.user_id WHERE m.bill_id = ? AND u.id NOT IN (?, ?) ORDER BY u.full_name', [$s['bill_id'], $s['from_user_id'], $s['to_user_id']])->fetchAll());
+        json_ok(['settlement' => settlement_rows_with_parts([$s])[0], 'events' => $events, 'others' => $others, 'members' => $members]);
     }
 
     // Includes settlements of guests on bills I created — I settle on their behalf. Leaves out bills I archived.
@@ -208,6 +211,9 @@ switch (input('action', '')) {
         }
         refresh_settlement_status($id);
         notify((int) $s['to_user_id'], 'paid', "$who marked " . s_money($s, $cents) . " as Paid for {$s['bill_name']}. Confirm you received it.", 'my-settlements?tab=owed');
+        if ($covering) {
+            notify((int) $s['from_user_id'], 'paid', "$myName is paying " . s_money($s, $cents) . " of your debt to $receiverName for {$s['bill_name']}" . (input('pay_back') ? ". You'll owe $myName that instead once it's confirmed (in Utang)." : ' as a treat.'), 'my-settlements');
+        }
         $pdo->commit();
         break;
 
@@ -285,15 +291,27 @@ switch (input('action', '')) {
         $cents = min($tendered, $open);
         $extra = $tendered - $cents;
         $keep = in_array(input('extra', 'change'), ['keep', 'credit'], true); // 'credit': older pages
+        // Cash handed over by someone else on the bill for the debtor (paid_by): they're recorded as the payer, and the
+        // debtor owes them back through Utang unless it was a treat. Change is always given back in that case.
+        $payerId = (int) $s['from_user_id'];
+        $otherPayer = (int) input('paid_by', 0);
+        if ($otherPayer && $otherPayer !== $payerId) {
+            if ($otherPayer === $me['id'] || !is_member((int) $s['bill_id'], $otherPayer)) {
+                fail('Choose someone on this bill who handed over the cash.', 422);
+            }
+            $payerId = $otherPayer;
+            $keep = false;
+        }
+        $payBack = $payerId !== (int) $s['from_user_id'] && in_array(input('pay_back', '1'), ['1', 1, true], true);
         if ($extra > 0 && $keep && $fromGuest) {
             fail('A guest has no account to keep change for — give it back as change.', 422);
         }
         $over = $extra > 0 ? ['tendered' => $tendered] + ($keep ? ['credit' => $extra] : ['change' => $extra]) : [];
-        $pid = add_payment($locked, (int) $s['from_user_id'], $cents, 'cash', 'awaiting', $over);
-        $payer = $debtorName . ($fromGuest ? ' (guest)' : '');
+        $pid = add_payment($locked, $payerId, $cents, 'cash', 'awaiting', $over + ['pay_back' => $payBack]);
+        $payer = $payerId === (int) $s['from_user_id'] ? $debtorName . ($fromGuest ? ' (guest)' : '') : first_names([$payerId])[$payerId] . " (for $debtorName)";
         log_event($id, $me['id'], 'marked_paid', "$myName received " . part_words($cents, $locked) . " in cash from $payer"
             . ($extra > 0 ? ' (handed over ' . s_money($s, $tendered) . '; ' . s_money($s, $extra) . ($keep ? ' kept — owed back as utang' : ' given back as change') . ')' : '') . '.');
-        confirm_payment($locked, ['id' => $pid, 'amount' => pesos($cents), 'paid_by' => $s['from_user_id'], 'pay_back' => 0], $me['id']);
+        confirm_payment($locked, ['id' => $pid, 'amount' => pesos($cents), 'paid_by' => $payerId, 'pay_back' => (int) $payBack], $me['id']);
         if ($extra > 0 && $keep) {
             record_change_utang((int) $s['from_user_id'], $me['id'], $extra, $pid, $s['bill_name'], $me['id'], $s['currency']);
             $used = apply_credits((int) $s['from_user_id'], $me['id'], $me['id'], $s['currency']);
@@ -309,7 +327,16 @@ switch (input('action', '')) {
         }
         $left = settlement_payload($id, $me)['remaining'];
         log_event($id, $me['id'], 'confirmed', "$myName confirmed receiving the cash." . ($left > 0 ? ' ' . s_money($s, cents($left)) . ' still to pay.' : ' Settlement closed.'));
-        notify((int) $s['from_user_id'], 'confirmed', "$myName confirmed receiving your " . s_money($s, $cents) . " cash for {$s['bill_name']}.", 'settlement-audit?id=' . $id);
+        if ($payerId === (int) $s['from_user_id']) {
+            notify($payerId, 'confirmed', "$myName confirmed receiving your " . s_money($s, $cents) . " cash for {$s['bill_name']}.", 'settlement-audit?id=' . $id);
+        } else {
+            // Cash from someone else: both are told who paid (a guest debtor has no account, so only the payer hears)
+            $payerFirst = first_names([$payerId])[$payerId];
+            notify($payerId, 'confirmed', "$myName confirmed receiving your " . s_money($s, $cents) . " cash for $debtorName’s part of {$s['bill_name']}.", 'settlement-audit?id=' . $id);
+            if (!$payBack) {
+                notify((int) $s['from_user_id'], 'confirmed', "$payerFirst paid " . s_money($s, $cents) . " cash of your debt to $myName for {$s['bill_name']} as a treat.", 'settlement-audit?id=' . $id);
+            }
+        }
         $pdo->commit();
         break;
 

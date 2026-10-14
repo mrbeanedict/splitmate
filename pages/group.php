@@ -154,7 +154,7 @@ Setlo.mount({
       }, 250);
     },
     async addMember(u) {
-      this.search = ''; this.results = [];
+      this.results = this.results.filter((r) => r.id !== u.id);
       const r = await Setlo.run(this, () => api.post('groups.php', { action: 'add_member', id: this.groupId, user_id: u.id }));
       if (r) this.members = r.members;
     },

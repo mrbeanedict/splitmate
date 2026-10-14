@@ -204,10 +204,8 @@ function fx_estimate(int $cents, string $from, string $to): ?array
 
 /**
  * How a bill's receipt amounts become its settlement currency. $nativeTotal: the bill total in the receipt currency.
- *  - market: today's rate when the receipt currency was set (or last refreshed) — an estimate;
- *  - actual: the amount the payer was actually charged (fx_actual_total), so rate = actual ÷ receipt total;
- *  - manual: a rate typed by the creator.
- * Separately recorded fees (fx_fees, e.g. a card's foreign-transaction fee) come on top, shared equally.
+ * One rule for everyone: the market rate fetched when the receipt currency was set, applied exactly (to the cent).
+ * Nobody types a rate, an amount charged, fees or a rounding choice; those columns on bills are no longer used.
  */
 function bill_fx(array $bill, int $nativeTotal): array
 {
@@ -220,13 +218,13 @@ function bill_fx(array $bill, int $nativeTotal): array
         'currency'         => $to,
         'receipt_currency' => $from,
         'foreign'          => $from !== $to,
-        'mode'             => $bill['fx_mode'] ?? 'market',
+        'mode'             => 'market',
         'market'           => $market,
-        'actual_total'     => ($bill['fx_actual_total'] ?? null) === null ? null : cents($bill['fx_actual_total']),
-        'manual_rate'      => ($bill['fx_manual_rate'] ?? null) === null ? null : (float) $bill['fx_manual_rate'],
-        'fees'             => cents($bill['fx_fees'] ?? 0),
-        'fees_note'        => $bill['fx_fees_note'] ?? null,
-        'rounding'         => $bill['fx_rounding'] ?? 'exact',
+        'actual_total'     => null,
+        'manual_rate'      => null,
+        'fees'             => 0,
+        'fees_note'        => null,
+        'rounding'         => 'exact',
         'set_at'           => $bill['fx_set_at'] ?? null,
         'native_total'     => $nativeTotal,
         'rate'             => 1.0,
@@ -245,17 +243,7 @@ function bill_fx(array $bill, int $nativeTotal): array
     $conv = fn (float $c) => (int) round($c / $unit) * $unit;
     $out['fees'] = $conv($out['fees']);
     $out['estimated'] = $market ? $conv($nativeTotal * $market['rate']) : null;
-    if ($out['mode'] === 'actual' && $out['actual_total'] !== null) {
-        $out['converted'] = $conv($out['actual_total']);
-        $out['rate'] = $nativeTotal > 0 ? $out['actual_total'] / $nativeTotal : ($market['rate'] ?? 0.0);
-        $out['source'] = 'Actual amount charged';
-        $out['at'] = $out['set_at'];
-    } elseif ($out['mode'] === 'manual' && $out['manual_rate']) {
-        $out['rate'] = $out['manual_rate'];
-        $out['converted'] = $conv($nativeTotal * $out['manual_rate']);
-        $out['source'] = 'Rate entered by hand';
-        $out['at'] = $out['set_at'];
-    } elseif ($market) {
+    if ($market) {
         $out['mode'] = 'market';
         $out['rate'] = $market['rate'];
         $out['converted'] = $out['estimated'];

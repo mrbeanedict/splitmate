@@ -7,6 +7,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/payments.php'; // apply_credits(), used as new debts are created
 require_once __DIR__ . '/achievements.php';
 require_once __DIR__ . '/currency.php';
+require_once __DIR__ . '/validate.php'; // RESERVED_USERNAMES
 
 function cents($amount): int
 {
@@ -561,6 +562,54 @@ function new_pay_code(): string
     return $code;
 }
 
+/** Turns a name or email prefix into a username stem: lowercase a-z 0-9 _, at most 14 characters, at least 3. */
+function username_base(string $s): string
+{
+    $s = strtolower((string) @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s));
+    $s = trim((string) preg_replace('/[^a-z0-9]+/', '_', $s), '_');
+    $s = substr($s, 0, 14);
+    return strlen($s) >= 3 ? $s : 'user' . $s;
+}
+
+function username_taken(string $username): bool
+{
+    return (bool) q('SELECT 1 FROM users WHERE username = ?', [strtolower($username)])->fetchColumn();
+}
+
+/** Up to $n free usernames built around $base (name_4821, name73 style), none taken or reserved. */
+function suggest_usernames(string $base, int $n = 4): array
+{
+    $base = username_base($base);
+    $out = [];
+    for ($round = 0; $round < 5 && count($out) < $n; $round++) {
+        $cands = [];
+        for ($i = 0; $i < 8; $i++) {
+            $digits = (string) random_int(10, $round < 2 ? 99 : 9999);
+            $cands[] = substr($base, 0, 20 - strlen($digits)) . $digits;
+            $cands[] = substr($base, 0, 19 - strlen($digits)) . '_' . $digits;
+        }
+        $cands = array_values(array_diff(array_unique($cands), $out, RESERVED_USERNAMES));
+        $marks = implode(',', array_fill(0, count($cands), '?'));
+        $taken = q("SELECT username FROM users WHERE username IN ($marks)", $cands)->fetchAll(PDO::FETCH_COLUMN);
+        foreach (array_diff($cands, $taken) as $c) {
+            if (count($out) < $n) {
+                $out[] = $c;
+            }
+        }
+    }
+    return $out;
+}
+
+/** A free username for $base: the stem itself when it is free, otherwise a numbered variant. */
+function generate_username(string $base): string
+{
+    $base = username_base($base);
+    if (!username_taken($base)) {
+        return $base;
+    }
+    return suggest_usernames($base, 1)[0] ?? $base . random_int(1000, 9999);
+}
+
 function notify(int $userId, string $type, string $message, ?string $link = null): void
 {
     // Guests have no account, so there is nobody to notify. Long bill names can't overflow the column.
@@ -574,14 +623,16 @@ function log_event(int $settlementId, ?int $actorId, string $event, ?string $not
 }
 
 /**
- * What each member paid the restaurant, in cents. With no bill_payments rows,
- * the single payer is taken to have paid the whole bill total.
+ * What each member paid the bill, in cents. With no bill_payments rows, the single payer is taken to have
+ * handed over bills.amount_tendered, or the whole bill total when none was entered.
  */
 function bill_payments(array $bill, int $totalCents): array
 {
     $rows = q('SELECT user_id, amount FROM bill_payments WHERE bill_id = ? ORDER BY user_id', [$bill['id']])->fetchAll();
     if (!$rows) {
-        return [(int) $bill['payer_id'] => $totalCents];
+        // One payer: what they handed over if it was entered (more than the total = change), else exactly the total.
+        $tendered = isset($bill['amount_tendered']) ? cents($bill['amount_tendered']) : 0;
+        return [(int) $bill['payer_id'] => $tendered > 0 ? $tendered : $totalCents];
     }
     $out = [];
     foreach ($rows as $r) {
@@ -683,12 +734,12 @@ function start_settling(array $bill, array $actor, ?float $interestRate = null):
         fail('The percentages add up to ' . rtrim(rtrim(number_format($calc['percent_total'] / 100, 2), '0'), '.') . '% — make them 100% first.', 422);
     }
     if ($calc['fx_missing']) {
-        fail("The receipt is in {$calc['receipt_currency']} but there's no exchange rate to $cur yet. Refresh the rate, or enter what was actually charged, on Bill Detail.", 422);
+        fail("The receipt is in {$calc['receipt_currency']} but there's no exchange rate to $cur yet. Try again in a moment.", 422);
     }
     $plan = settlement_plan($bill, $members, $calc);
     if ($plan['mismatch'] !== 0) {
         fail('The payments entered (' . money_str($plan['paid_total'], $cur) . ') don’t cover the bill total ('
-            . money_str($calc['exact_total'], $cur) . '). Fix “Who paid the restaurant” first.', 422);
+            . money_str($calc['exact_total'], $cur) . '). Fix “Who paid the bill” first.', 422);
     }
     if ($plan['change'] > 0 && !$plan['holder_named']) {
         fail('There’s ' . money_str($plan['change'], $cur) . ' change — choose who received it first.', 422, ['need' => 'change_holder']);

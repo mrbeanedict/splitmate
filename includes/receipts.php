@@ -36,6 +36,7 @@ function bill_receipts(int $billId): array
         'receipt_no' => $r['receipt_no'],
         'date'       => $r['txn_date'],
         'total'      => $r['total'] === null ? null : (float) $r['total'],
+        'tendered'   => ($r['tendered'] ?? null) === null ? null : (float) $r['tendered'], // cash read off it, in the receipt's currency
         'ocr_status' => $r['ocr_status'],
         'dup_note'   => $r['dup_note'],
         'photos'     => $photos[(int) $r['id']] ?? [],
@@ -120,7 +121,7 @@ function store_receipts(array $bill, array $receipts, string $status, array $has
         q('DELETE FROM receipt_items WHERE bill_id = ?', [$billId]);
         q('DELETE FROM receipts WHERE bill_id = ?', [$billId]);
         // An actual amount charged or rate typed for the old receipt doesn't fit a new one
-        q("UPDATE bills SET tax = 0, service_charge = 0, discount = 0, receipt_total = NULL, ocr_raw = NULL, receipt_image = NULL,
+        q("UPDATE bills SET tax = 0, service_charge = 0, discount = 0, receipt_total = NULL, amount_tendered = NULL, ocr_raw = NULL, receipt_image = NULL,
            receipt_currency = NULL, fx_mode = 'market', fx_actual_total = NULL, fx_manual_rate = NULL, fx_fees = 0, fx_fees_note = NULL, fx_set_at = NULL WHERE id = ?", [$billId]);
     }
     $existing = q('SELECT * FROM receipts WHERE bill_id = ? ORDER BY position, id', [$billId])->fetchAll();
@@ -154,6 +155,11 @@ function store_receipts(array $bill, array $receipts, string $status, array $has
             $total = $r['subtotal'] + $r['tax'] + $r['service_charge'] - $r['discount'];
         }
         $r['total'] = $total;
+        // The payment line read off the receipt. One that doesn't cover the total is a part-payment (or a misread): ignored.
+        $tendered = $r['tendered'] ?? null;
+        if ($tendered !== null && ($total === null || cents($tendered) < cents($total))) {
+            $tendered = null;
+        }
 
         // Same purchase scanned twice: on this bill (a real problem), or on another recent bill of mine (maybe).
         $dup = null;
@@ -177,12 +183,15 @@ function store_receipts(array $bill, array $receipts, string $status, array $has
             }
         }
 
+        // It becomes the bill's amount tendered only when the receipt is in the settlement currency (that's what is entered).
+        $addTendered = $tendered !== null && $readAs === $b['currency'];
+
         // The scanner's suggested title is saved as the title; the user can change or clear it on Review.
         q(
-            'INSERT INTO receipts (bill_id, position, title, store_name, receipt_no, txn_date, subtotal, tax, service_charge, discount, total, currency, currency_detected, currency_clues, ocr_raw, ocr_status, dup_note)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO receipts (bill_id, position, title, store_name, receipt_no, txn_date, subtotal, tax, service_charge, discount, total, tendered, currency, currency_detected, currency_clues, ocr_raw, ocr_status, dup_note)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [$billId, $position++, ($r['title'] ?? '') ?: null, $r['store_name'] ?: null, $r['receipt_no'] ?: null, $r['txn_date'] ?: null, $r['subtotal'], $r['tax'],
-             $r['service_charge'], $r['discount'], $total, $readAs, ($r['currency'] ?? '') ?: null, ($r['currency_clues'] ?? '') ?: null,
+             $r['service_charge'], $r['discount'], $total, $tendered, $readAs, ($r['currency'] ?? '') ?: null, ($r['currency_clues'] ?? '') ?: null,
              $r['raw_text'] ?: null, $status === 'ok' ? 'ok' : 'failed', $dup]
         );
         $rid = (int) $pdo->lastInsertId();
@@ -205,8 +214,9 @@ function store_receipts(array $bill, array $receipts, string $status, array $has
         q(
             'UPDATE bills SET tax = tax + ?, service_charge = service_charge + ?, discount = discount + ?,
              receipt_total = ' . ($total === null ? 'receipt_total' : 'COALESCE(receipt_total, 0) + ?') . ',
+             amount_tendered = ' . ($addTendered ? 'COALESCE(amount_tendered, 0) + ?' : 'amount_tendered') . ',
              ocr_raw = COALESCE(ocr_raw, ?) WHERE id = ?',
-            array_merge([$r['tax'], $r['service_charge'], $r['discount']], $total === null ? [] : [$total], [$r['raw_text'] ?: null, $billId])
+            array_merge([$r['tax'], $r['service_charge'], $r['discount']], $total === null ? [] : [$total], $addTendered ? [$tendered] : [], [$r['raw_text'] ?: null, $billId])
         );
         $existing[] = ['store_name' => $r['store_name'], 'receipt_no' => $r['receipt_no'], 'txn_date' => $r['txn_date'], 'total' => $total];
     }
@@ -266,10 +276,12 @@ function remove_receipt(array $bill, int $receiptId): void
     $pdo->beginTransaction();
     q('DELETE FROM receipts WHERE id = ?', [$receiptId]); // items and photos go with it (ON DELETE CASCADE)
     $total = $r['total'] === null ? null : (float) $r['total'];
+    $tendered = ($r['tendered'] ?? null) !== null && $r['currency'] === $bill['currency'] ? (float) $r['tendered'] : null;
     q(
         'UPDATE bills SET tax = GREATEST(0, tax - ?), service_charge = GREATEST(0, service_charge - ?), discount = GREATEST(0, discount - ?),
-         receipt_total = ' . ($total === null ? 'receipt_total' : 'IF(receipt_total IS NULL, NULL, GREATEST(0, receipt_total - ?))') . ' WHERE id = ?',
-        array_merge([$r['tax'], $r['service_charge'], $r['discount']], $total === null ? [] : [$total], [$bill['id']])
+         receipt_total = ' . ($total === null ? 'receipt_total' : 'IF(receipt_total IS NULL, NULL, GREATEST(0, receipt_total - ?))') . ',
+         amount_tendered = ' . ($tendered === null ? 'amount_tendered' : 'IF(amount_tendered IS NULL, NULL, NULLIF(GREATEST(0, amount_tendered - ?), 0))') . ' WHERE id = ?',
+        array_merge([$r['tax'], $r['service_charge'], $r['discount']], $total === null ? [] : [$total], $tendered === null ? [] : [$tendered], [$bill['id']])
     );
     // Open flags may point at the removed receipt, or at receipt numbers that have now shifted: work them out again.
     q('UPDATE receipt_items SET dup_note = NULL WHERE bill_id = ? AND dup_note IS NOT NULL AND needs_review = 1', [$bill['id']]);

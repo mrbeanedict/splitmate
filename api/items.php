@@ -109,6 +109,11 @@ if (is_array($paid)) {
         q('UPDATE bills SET payer_id = ? WHERE id = ?', [array_key_first($amounts), $bill['id']]);
     }
 }
+// One payer: the amount handed to the cashier (0 / blank = exactly the total). More than the total means change.
+if (input('amount_tendered') !== null) {
+    $tendered = round((float) input('amount_tendered'), 2);
+    q('UPDATE bills SET amount_tendered = ? WHERE id = ?', [$tendered > 0 && $tendered <= 1000000 ? $tendered : null, $bill['id']]);
+}
 // Asked once the items are in: round the total (and every share) to whole pesos?
 if (input('round_total') !== null) {
     q('UPDATE bills SET round_total = ? WHERE id = ?', [in_array(input('round_total'), [true, 1, '1'], true) ? 1 : 0, $bill['id']]);

@@ -28,7 +28,7 @@ require __DIR__ . '/../partials/head.php';
 
   <spinner v-if="loading"></spinner>
   <div v-else class="flex-1 pb-4 pt-4">
-    <!-- Receipt in another currency: shares are converted at the bill's settlement rate (set on Bill Detail) -->
+    <!-- Receipt in another currency: shares are converted at the bill's settlement rate (the market rate, set automatically) -->
     <a v-if="foreign" :href="'bill-detail.php?bill=' + billId + '#currency'" class="mx-5 mb-3 block rounded-2xl border px-3.5 py-2.5 text-[12px] leading-snug"
        :class="bill.fx.missing ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-sky-200 bg-sky-50 text-sky-800'">
       <template v-if="bill.fx.missing"><b>No exchange rate yet</b> for {{ rcur }} → {{ bill.currency }}. Tap to refresh it or enter what was charged.</template>
@@ -456,7 +456,7 @@ Setlo.mount({
       });
       if (!r) return;
       if (r.bill.fx && r.bill.fx.missing) {
-        Setlo.toast('Set an exchange rate on Bill Detail first.');
+        Setlo.toast('No exchange rate is available yet. Try again in a moment.');
         return;
       }
       if (r.payments.mismatch) {

@@ -38,6 +38,8 @@ $steps = [
        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, email VARCHAR(190) NOT NULL, ip VARCHAR(45) NOT NULL,
        attempted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX (email, ip, attempted_at)
      ) ENGINE=InnoDB',
+    // Unique username (sign in with it or the email)
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(20) NULL UNIQUE AFTER email',
     // Personal "Pay me" QR code per account
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS pay_code CHAR(12) NULL UNIQUE AFTER google_sub',
     // The Pay-me QR is generated client-side now (assets/js/ui.js qrSvg/qrPng); the old uploaded-QR
@@ -245,6 +247,9 @@ $steps = [
     // Page backdrop: floating badges, plain, or the user's own photo
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS bg_mode ENUM('badges','plain','photo') NOT NULL DEFAULT 'badges' AFTER featured_achievement",
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS bg_image VARCHAR(255) NULL AFTER bg_mode',
+    // Username changes: 5 in a row, then a 7-day wait (api/profile.php, case 'username')
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS username_changes TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER username',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS username_locked_until DATETIME NULL AFTER username_changes',
     // Backdrop preset with floating receipts and the camouflaged chameleon
     "ALTER TABLE users MODIFY COLUMN bg_mode ENUM('badges','receipts','plain','photo') NOT NULL DEFAULT 'badges'",
     // Personal purchases (pages/purchases.php): one person's own expenses, outside any bill
@@ -284,6 +289,9 @@ $steps = [
     // Rounding the bill to whole pesos, and who actually received the change when several people paid
     'ALTER TABLE bills ADD COLUMN IF NOT EXISTS round_total TINYINT(1) NOT NULL DEFAULT 0 AFTER interest_rate',
     'ALTER TABLE bills ADD COLUMN IF NOT EXISTS change_holder_id INT UNSIGNED NULL AFTER round_total',
+    // Amount tendered by a single payer, so the change can be worked out for them too (and read off the scanned receipt)
+    'ALTER TABLE receipts ADD COLUMN IF NOT EXISTS tendered DECIMAL(10,2) NULL AFTER total',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS amount_tendered DECIMAL(10,2) NULL AFTER change_holder_id',
     'ALTER TABLE bills ADD CONSTRAINT bills_change_holder_fk FOREIGN KEY IF NOT EXISTS (change_holder_id) REFERENCES users(id) ON DELETE SET NULL',
     // Community feed
     "CREATE TABLE IF NOT EXISTS community_posts (
@@ -454,6 +462,14 @@ foreach ($missing as $uid) {
 }
 if ($missing) {
     echo 'Created Pay-me QR codes for ' . count($missing) . " account(s).\n";
+}
+// Give every existing account (not guests) a username made from its email or name.
+$noName = db()->query("SELECT id, full_name, email FROM users WHERE username IS NULL AND role <> 'guest' ORDER BY id")->fetchAll();
+foreach ($noName as $u) {
+    q('UPDATE users SET username = ? WHERE id = ?', [generate_username(username_base($u['email'] ? explode('@', $u['email'])[0] : $u['full_name'])), $u['id']]);
+}
+if ($noName) {
+    echo 'Created usernames for ' . count($noName) . " account(s).\n";
 }
 // Credit left from extra cash kept before change utang existed: turn each into a change utang (shown in Utang).
 $credits = db()->query(

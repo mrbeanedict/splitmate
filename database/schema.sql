@@ -12,6 +12,7 @@ CREATE TABLE users (
   id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   full_name       VARCHAR(100) NOT NULL,
   email           VARCHAR(190) NULL UNIQUE,       -- NULL for guests
+  username        VARCHAR(20) NULL UNIQUE,        -- unique lowercase handle (a-z 0-9 _); signs in like the email does; NULL for guests
   password_hash   VARCHAR(255) NOT NULL,
   google_sub      VARCHAR(64) NULL UNIQUE,        -- Google account id when linked via "Continue with Google"
   pay_code        CHAR(12) NULL UNIQUE,           -- personal "Pay me" QR code (pages/pay.php?u=…); NULL for guests
@@ -21,6 +22,8 @@ CREATE TABLE users (
   avatar_color    CHAR(7) NOT NULL DEFAULT '#0d9488',
   avatar          VARCHAR(120) NULL,              -- profile picture: 'pfp/<file>' (assets/pfp) or 'up/<file>' (uploads/avatars); NULL = initials
   featured_achievement VARCHAR(30) NULL,          -- badge shown next to their name (user_achievements.code)
+  username_changes TINYINT UNSIGNED NOT NULL DEFAULT 0, -- changes used since the last wait; 5 locks it
+  username_locked_until DATETIME NULL,                  -- no username change until then (7 days after the 5th)
   bg_mode         ENUM('badges','receipts','plain','photo') NOT NULL DEFAULT 'badges', -- page backdrop: floating badges, floating receipts + chameleon, none, or their photo
   bg_image        VARCHAR(255) NULL,              -- their backdrop photo (uploads/backgrounds), kept while another mode is picked
   onboarded_at    DATETIME NULL,                  -- finished or skipped the first-visit dashboard tour; NULL = show it
@@ -48,7 +51,8 @@ CREATE TABLE bills (
   split_mode      ENUM('items','percent','game') NOT NULL DEFAULT 'items',  -- percent: each member pays bill_members.percent of the total; game: set by a Fun Mode game
   interest_rate   DECIMAL(5,2) NULL,              -- set by the creator at settling: % added to what's left after each partial payment
   round_total     TINYINT(1) NOT NULL DEFAULT 0,  -- the total and every share rounded to whole units (the payer keeps the difference)
-  change_holder_id INT UNSIGNED NULL,             -- several payers handed over more than the total: who physically got the change
+  change_holder_id INT UNSIGNED NULL,             -- the payer(s) handed over more than the total: who physically got the change
+  amount_tendered DECIMAL(10,2) NULL,             -- one payer: what was handed to the cashier (more than the total = change); NULL = exactly the total
   receipt_total   DECIMAL(10,2) NULL,             -- total printed on the receipt, for the match check
   receipt_image   VARCHAR(255) NULL,              -- legacy single photo; photos now live in receipt_photos
   ocr_raw         MEDIUMTEXT NULL,                -- text of the first receipt (its first line names the place in Stats)
@@ -117,6 +121,7 @@ CREATE TABLE receipts (
   service_charge  DECIMAL(10,2) NOT NULL DEFAULT 0,
   discount        DECIMAL(10,2) NOT NULL DEFAULT 0,
   total           DECIMAL(10,2) NULL,
+  tendered        DECIMAL(10,2) NULL,             -- the cash / card amount printed as paid (NULL = no payment line); adds up into bills.amount_tendered
   currency        CHAR(3) NULL,                   -- the currency its amounts are in (as corrected on Review)
   currency_detected CHAR(3) NULL,                 -- what the scanner read, kept even after a correction; NULL = not printed
   currency_clues  VARCHAR(120) NULL,              -- why, e.g. "¥ sign, Japanese text"

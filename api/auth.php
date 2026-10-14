@@ -5,7 +5,7 @@ $action = $_GET['action'] ?? input('action', '');
 
 if (method() === 'GET' && $action === 'me') {
     $u = current_user();
-    json_ok(['user' => $u ? public_user($u) + ['email' => $u['email'], 'role' => $u['role']] : null]);
+    json_ok(['user' => $u ? public_user($u) + ['email' => $u['email'], 'username' => $u['username'] ?? null, 'role' => $u['role']] : null]);
 }
 
 if (method() !== 'POST') {
@@ -85,13 +85,14 @@ function claim_after_auth(int $userId): ?string
 
 switch ($action) {
     case 'login':
+        // "email" carries whatever was typed: an email address or a username.
         $email = strtolower(str_input('email', 190));
         $password = (string) input('password', '');
         $asAdmin = (bool) input('admin', false);
         $ip = substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
         login_throttle($email, $ip);
 
-        $u = q('SELECT id, password_hash, role, status FROM users WHERE email = ?', [$email])->fetch();
+        $u = q('SELECT id, password_hash, role, status FROM users WHERE email = ? OR username = ?', [$email, $email])->fetch();
         if (!$u || $password === '' || !password_verify($password, $u['password_hash'])) {
             q('INSERT INTO login_attempts (email, ip) VALUES (?, ?)', [$email, $ip]);
             $left = LOGIN_MAX_FAILS - (int) q(
@@ -99,10 +100,10 @@ switch ($action) {
                 [$email, $ip]
             )->fetchColumn();
             if ($left <= 0) {
-                fail('Incorrect email or password. Too many failed attempts — sign-in is locked for ' . LOGIN_WINDOW_MINUTES . ' minutes.', 429);
+                fail('Incorrect email/username or password. Too many failed attempts — sign-in is locked for ' . LOGIN_WINDOW_MINUTES . ' minutes.', 429);
             }
             $warn = $left <= 2 ? " $left attempt" . ($left === 1 ? '' : 's') . ' left before a ' . LOGIN_WINDOW_MINUTES . '-minute lock.' : '';
-            fail('Incorrect email or password.' . $warn, 422);
+            fail('Incorrect email/username or password.' . $warn, 422);
         }
         q('DELETE FROM login_attempts WHERE email = ? AND ip = ?', [$email, $ip]);
         if ($u['status'] !== 'active') {
@@ -124,11 +125,17 @@ switch ($action) {
 
     case 'register':
         $name = str_input('full_name', 100);
+        $username = strtolower(str_input('username', 20));
         $email = strtolower(str_input('email', 190));
         $password = (string) input('password', '');
         $confirm = (string) input('password_confirm', '');
 
-        $errors = array_filter(['full_name' => valid_name($name, 'Full name')]);
+        $errors = array_filter(['full_name' => valid_name($name, 'Full name'), 'username' => valid_username($username)]);
+        $suggest = [];
+        if (!isset($errors['username']) && username_taken($username)) {
+            $errors['username'] = 'That username is taken.';
+            $suggest = suggest_usernames($username);
+        }
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $errors['email'] = 'Enter a valid email address.';
         } elseif (q('SELECT 1 FROM users WHERE email = ?', [$email])->fetchColumn()) {
@@ -143,18 +150,33 @@ switch ($action) {
             $errors['agree'] = 'Please accept the terms to continue.';
         }
         if ($errors) {
-            fail('Please fix the highlighted fields.', 422, ['fields' => $errors]);
+            fail('Please fix the highlighted fields.', 422, ['fields' => $errors, 'suggestions' => $suggest]);
         }
 
         $palette = ['#0d9488', '#f43f5e', '#f59e0b', '#818cf8', '#0ea5e9', '#a855f7', '#10b981', '#ec4899'];
         q(
-            "INSERT INTO users (full_name, email, password_hash, payment_method, avatar_color, pay_code) VALUES (?, ?, ?, 'GCash', ?, ?)",
-            [trim($name), $email, password_hash($password, PASSWORD_DEFAULT), $palette[array_rand($palette)], new_pay_code()]
+            "INSERT INTO users (full_name, email, username, password_hash, payment_method, avatar_color, pay_code) VALUES (?, ?, ?, ?, 'GCash', ?, ?)",
+            [trim($name), $email, $username, password_hash($password, PASSWORD_DEFAULT), $palette[array_rand($palette)], new_pay_code()]
         );
         $newId = (int) db()->lastInsertId();
         login_user($newId, true);
         // First stop for a new account: pick a profile picture (pages/choose-photo.php). From a guest link, the guest's bill comes along.
         json_ok(['redirect' => 'choose-photo', 'new' => true, 'claimed' => claim_after_auth($newId), 'csrf' => csrf_token()]);
+
+    case 'username_check':
+        // Live check while typing a username on the sign-up form; offers free alternatives when it is taken.
+        $username = strtolower(str_input('username', 20));
+        $stem = (string) input('name', '') ?: $username;
+        if ($username === '') {
+            json_ok(['available' => false, 'error' => '', 'suggestions' => suggest_usernames($stem)]);
+        }
+        $err = valid_username($username);
+        $taken = !$err && username_taken($username);
+        json_ok([
+            'available'   => !$err && !$taken,
+            'error'       => $err ?: ($taken ? 'That username is taken.' : ''),
+            'suggestions' => $taken ? suggest_usernames($username) : [],
+        ]);
 
     case 'google':
         // Sign in or sign up with a Google ID token from Google Identity Services.
@@ -181,9 +203,9 @@ switch ($action) {
             $name = trim((string) ($claims['name'] ?? '')) ?: explode('@', $email)[0];
             $palette = ['#0d9488', '#f43f5e', '#f59e0b', '#818cf8', '#0ea5e9', '#a855f7', '#10b981', '#ec4899'];
             q(
-                "INSERT INTO users (full_name, email, password_hash, payment_method, avatar_color, google_sub, pay_code) VALUES (?, ?, ?, 'GCash', ?, ?, ?)",
+                "INSERT INTO users (full_name, email, username, password_hash, payment_method, avatar_color, google_sub, pay_code) VALUES (?, ?, ?, ?, 'GCash', ?, ?, ?)",
                 // Random password nobody knows: the account signs in with Google (or after an admin reset).
-                [function_exists('mb_substr') ? mb_substr($name, 0, 100) : substr($name, 0, 100), $email,
+                [function_exists('mb_substr') ? mb_substr($name, 0, 100) : substr($name, 0, 100), $email, generate_username(explode('@', $email)[0]),
                  password_hash(bin2hex(random_bytes(24)), PASSWORD_DEFAULT), $palette[array_rand($palette)], $sub, new_pay_code()]
             );
             $userId = (int) db()->lastInsertId();

@@ -32,30 +32,56 @@ require __DIR__ . '/../partials/head.php';
 // Each row: [href or null for a button, icon colour, icon paths, title, description, extra attributes]
 $chevron = '<svg class="acct-chev" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"/></svg>';
 $acctRows = [
-    ['profile', 'c-brand', '<circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/>', 'Profile &amp; payment QR', 'Photo, name and Pay-me QR'],
-    ['stats', 'c-indigo', '<path stroke-linecap="round" stroke-linejoin="round" d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', 'Spending stats', 'Monthly totals and favorite spots'],
-    [null, 'c-violet', '<path stroke-linecap="round" stroke-linejoin="round" d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/>', 'Replay the tour', 'Walk through Setlo again'],
+    ['profile', 'c-brand', '<circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/>', 'My Profile', 'Name and photo'],
+    ['payment-methods', 'c-amber', '<rect x="3" y="6" width="18" height="13" rx="2.5"/><path stroke-linecap="round" d="M3 10h18M7 15h3"/>', 'Payment Methods', 'GCash, Maya, QR'],
+    ['account-settings', 'c-indigo', '<circle cx="12" cy="12" r="3"/><path stroke-linecap="round" d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>', 'Account Settings', 'Password, theme'],
+    ['help', 'c-brand', '<circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M9.5 9.5a2.5 2.5 0 115 0c0 1.5-2.5 2-2.5 3.5M12 17h.01"/>', 'Help &amp; Support', 'FAQs, contact'],
 ];
 foreach ($acctRows as [$href, $color, $paths, $title, $desc]):
     $inner = '<span class="acct-ic ' . $color . '"><svg fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24">' . $paths . '</svg></span>'
         . '<span class="acct-body"><span class="acct-title">' . $title . '</span><span class="acct-desc">' . h($desc) . '</span></span>' . $chevron;
 ?>
-<?php if ($href): ?>
             <a href="<?= $href ?>" class="acct-item"><?= $inner ?></a>
-<?php else: ?>
-            <button type="button" class="acct-item" @click="replayTour"><?= $inner ?></button>
-<?php endif; ?>
 <?php endforeach; ?>
             <form method="post" action="logout" class="border-t border-slate-100">
               <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>" />
               <button class="acct-item acct-out">
                 <span class="acct-ic c-rose"><svg fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg></span>
-                <span class="acct-body"><span class="acct-title">Sign out</span><span class="acct-desc">Log out of Setlo on this device</span></span>
+                <span class="acct-body"><span class="acct-title">Sign out</span><span class="acct-desc">This device</span></span>
                 <?= $chevron ?>
               </button>
             </form>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Search: Setlo's pages and features, plus the open bills on this page. No button: results appear as you type. -->
+    <div class="relative mt-4 !z-40" data-search>
+      <label for="dash-search" class="sr-only">Search Setlo</label>
+      <svg class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/70" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="M16 16l4 4"/></svg>
+      <input id="dash-search" v-model="q" @focus="showResults = true" @input="showResults = true" @keydown.enter.prevent="openFirst" @keydown.esc="q = ''" type="search" autocomplete="off" spellcheck="false"
+             class="h-11 w-full rounded-2xl border border-white/20 bg-white/15 pl-10 pr-4 text-[14px] font-medium text-white placeholder-white/70 outline-none backdrop-blur focus:border-white/50 focus:bg-white/20"
+             placeholder="Search bills, utang, groups, settings…" role="combobox" :aria-expanded="results.length > 0" aria-controls="dash-results" />
+      <div v-if="showResults && !q.trim()" role="listbox" class="tile absolute inset-x-0 top-12 z-40 overflow-hidden py-1 text-slate-800 shadow-xl">
+        <p class="px-4 pb-1 pt-2 text-[11px] font-extrabold uppercase tracking-[.08em] text-slate-400">Suggestions</p>
+        <a v-for="r in suggestions" :key="r.href" :href="r.href" role="option" class="flex items-center gap-3 px-4 py-2.5 hover:bg-[color:var(--field)]">
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-[14px] font-bold text-ink">{{ r.title }}</span>
+            <span class="block truncate text-[12px] text-slate-400">{{ r.hint }}</span>
+          </span>
+          <svg class="h-4 w-4 shrink-0 text-slate-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+      <div v-if="q.trim() && showResults" id="dash-results" role="listbox" class="tile absolute inset-x-0 top-12 z-40 max-h-[min(24rem,60vh)] overflow-y-auto py-1 text-slate-800 shadow-xl">
+        <a v-for="r in results" :key="r.href + r.title" :href="r.href" role="option" class="flex items-center gap-3 px-4 py-2.5 hover:bg-[color:var(--field)]">
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-[14px] font-bold text-ink">{{ r.title }}</span>
+            <span class="block truncate text-[12px] text-slate-400">{{ r.hint }}</span>
+          </span>
+          <span class="shrink-0 rounded-full bg-[color:var(--tint)] px-2 py-0.5 text-[10.5px] font-bold text-brand-700">{{ r.kind }}</span>
+        </a>
+        <p v-if="!results.length" class="px-4 py-3 text-[13px] text-slate-400">Nothing matches “{{ q.trim() }}”. Try bills, utang, groups, scan or password.</p>
       </div>
     </div>
   </div>
@@ -186,20 +212,70 @@ foreach ($acctRows as [$href, $color, $paths, $title, $desc]):
 
 <script>
 const SHOW_TOUR = <?= $showTour ? 'true' : 'false' ?>;
+
+// Where each page lives and the words people use for it; the dashboard search matches against these
+const SEARCH_INDEX = [
+  { title: 'Dashboard', href: 'dashboard', hint: 'Your balance and active bills', kw: 'home overview balance summary' },
+  { title: 'Scan a receipt', href: 'scan-receipt', hint: 'Photograph a receipt to start a bill', kw: 'ocr camera photo upload new bill split' },
+  { title: 'New bill', href: 'my-bills?new=1', hint: 'Start splitting a bill', kw: 'create split add expense dinner' },
+  { title: 'My bills', href: 'my-bills', hint: 'Open and past bills', kw: 'bills active history receipts split' },
+  { title: 'Groups', href: 'groups', hint: 'Your groups and their members', kw: 'group members friends roommates invite join' },
+  { title: 'Settle up', href: 'my-settlements', hint: 'Pay what you owe, confirm what you are owed', kw: 'pay payment owe owed gcash maya cash confirm dispute settlement' },
+  { title: 'My debts & repayments', href: 'my-debts', hint: 'Personal loans you lent or borrowed', kw: 'loan lend borrow utang personal repay record' },
+  { title: 'Utang', href: 'utang', hint: 'Debt overview, credits and history', kw: 'debt credits change history overview owe' },
+  { title: 'Personal expenses', href: 'purchases', hint: 'Your own spending outside any bill', kw: 'purchases expenses spending food transport journal to pay' },
+  { title: 'Spending overview', href: 'stats', hint: 'Monthly totals and favorite spots', kw: 'stats analytics chart month food budget' },
+  { title: 'Settlement history', href: 'stats?tab=history', hint: 'Past bills and settlements', kw: 'history past closed bills paid' },
+  { title: 'Community', href: 'community', hint: 'Posts from other Setlo users', kw: 'posts social feed share tips' },
+  { title: 'Notifications', href: 'notifications', hint: 'What happened on your bills', kw: 'alerts bell inbox updates' },
+  { title: 'My profile', href: 'profile', hint: 'Name, username, achievements and balances', kw: 'account name username email picture avatar photo badges achievements' },
+  { title: 'Payment methods', href: 'payment-methods', hint: 'GCash/Maya, bank, Pay-me QR, currency', kw: 'gcash maya bank qr pay-me currency peso preferred' },
+  { title: 'Account settings', href: 'account-settings', hint: 'Password and appearance', kw: 'password security theme dark mode light color background appearance' },
+  { title: 'Help & Support', href: 'help', hint: 'FAQs, contact and replay the tour', kw: 'faq contact report issue problem tour guide' },
+  { title: 'Terms & Privacy', href: 'conditions_policy', hint: 'Terms and conditions', kw: 'terms conditions privacy policy legal' },
+];
 Setlo.mount({
   data: () => ({
-    loading: true, menu: false,
+    loading: true, menu: false, q: '', showResults: false,
     d: { owe: { total: 0, count: 0 }, owed: { total: 0, count: 0 }, bills: [], activity: [], purchases: { month_total: 0, recent: [] }, user: { currency: 'PHP' } },
     dot: { marked_paid: 'bg-amber-400', confirmed: 'bg-brand-500', disputed: 'bg-rose-400', resent: 'bg-sky-400', nudged: 'bg-slate-400' },
   }),
+  computed: {
+    /** Shown when the box is focused and empty: the things people reach for most, and a bill that needs attention. */
+    suggestions() {
+      const pick = ['Scan a receipt', 'New bill', 'Settle up', 'My debts & repayments', 'Personal expenses'];
+      const rows = pick.map((t) => SEARCH_INDEX.find((f) => f.title === t)).filter(Boolean);
+      const open = (this.d.bills || [])[0];
+      return open ? [{ title: open.name, href: open.link, hint: 'Your latest active bill' }, ...rows].slice(0, 5) : rows;
+    },
+    /** Features first (title matches, then keywords), then the open bills on this page. */
+    results() {
+      const words = this.q.toLowerCase().split(/\s+/).filter(Boolean);
+      if (!words.length) return [];
+      const score = (title, rest) => {
+        const t = title.toLowerCase(), r = rest.toLowerCase();
+        let n = 0;
+        for (const w of words) {
+          if (t.startsWith(w)) n += 4; else if (t.includes(w)) n += 3; else if (r.includes(w)) n += 1; else return 0; // every word has to match
+        }
+        return n;
+      };
+      const pages = SEARCH_INDEX.map((f) => ({ ...f, kind: 'Page', n: score(f.title, f.kw + ' ' + f.hint) }));
+      const bills = (this.d.bills || []).map((b) => ({ title: b.name, href: b.link, hint: b.members + ' members · ' + this.peso(b.total, b.currency), kind: 'Bill', n: score(b.name, 'bill ' + b.status) }));
+      return [...pages, ...bills].filter((r) => r.n > 0).sort((a, b) => b.n - a.n).slice(0, 8);
+    },
+  },
   async mounted() {
+    document.addEventListener('click', (e) => { if (!e.target.closest('[data-search]')) this.showResults = false; });
     document.addEventListener('click', (e) => { if (!e.target.closest('[aria-label="Account menu"]') && !e.target.closest('form')) this.menu = false; });
     await Setlo.load(this, 'dashboard.php', null, (r) => { this.d = r; });
     // The tour first, so a badge pop-up never opens on top of it
     if (SHOW_TOUR) await SetloTour.start();
+    else if (new URLSearchParams(location.search).has('tour')) await SetloTour.start({ replay: true }); // Help & Support → Replay the tour
     this.showNewAchievements();
   },
   methods: {
+    openFirst() { if (this.results.length) location.href = this.results[0].href; },
     replayTour() {
       this.menu = false;
       SetloTour.start({ replay: true });

@@ -188,7 +188,7 @@
   .auth-hero::after  { @apply -bottom-[150px] -left-[110px] h-[300px] w-[300px]; }
   .auth-hero > *, .app-hero > * { @apply relative z-[1]; }
   /* While a pop-up (.hero-pop) is open, lift its row above the cards that overlap the header */
-  .app-hero > *:has(.hero-pop) { z-index: 30; }
+  .app-hero > *:has(.hero-pop) { z-index: 50; } /* above the dashboard search (z-40) */
   .auth-sheet { @apply relative z-[1] -mt-8 rounded-t-[32px] bg-surface; }
 
   .brand-mark { @apply inline-flex h-[34px] w-[34px] items-center justify-center rounded-[10px] border border-white/35 bg-white/[.22] text-base font-extrabold text-white; }
@@ -291,7 +291,7 @@
   .qa-icon { @apply flex h-[52px] w-[52px] items-center justify-center rounded-2xl; }
 
   /* ---------- Bottom nav ---------- */
-  .nav2 { @apply sticky bottom-0 z-20 grid grid-cols-5 border-t border-[color:var(--line)] bg-surface pb-3 pt-2.5; }
+  .nav2 { @apply sticky bottom-0 z-20 grid grid-cols-4 border-t border-[color:var(--line)] bg-surface pb-3 pt-2.5; }
   .nav2 a, .nav2 button { @apply flex flex-col items-center gap-1 text-[11px] font-semibold text-[#8391a2]; }
   .nav2 a.active { @apply font-bold text-brand-600; }
   @media (min-width: 1024px) {
@@ -334,13 +334,58 @@
   .nav-burger { @apply flex items-center justify-center rounded-xl text-slate-500 hover:bg-[color:var(--field)] hover:text-ink; }
   .nav2 > button { @apply cursor-pointer; }
 
+  /* ---------- Collapsible nav groups (Group / Personal / Account) ---------- */
+  .nav-group-head { @apply flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[15px] font-bold; }
+  .nav-group-group .nav-group-head { color: theme('colors.brand.700'); }
+  .nav-group-personal .nav-group-head { color: #A99AFB; }
+  .nav-group-account .nav-group-head { @apply text-slate-500; }
+  .nav-group-head:hover { background: var(--field); }
+  .nav-group-head .nav-label { @apply flex-1; }
+  .nav-chev { transition: transform .18s ease; }
+  .nav-group.open .nav-chev { transform: rotate(180deg); }
+  .nav-group-body { display: none; padding-left: .75rem; }
+  .nav-group.open .nav-group-body { display: block; }
+  .nav-rule { margin: .6rem .5rem; border: 0; border-top: 1px solid var(--line); }
+  .nav-drawer .nav-group-body a { font-size: 14px; }
+  /* Phones' bottom bar: groups dissolve so Bills / Settle stay as tabs; headings hidden */
+  .nav2 .nav-group, .nav2 .nav-group-body, .nav2 .nav-group.open .nav-group-body { display: contents; }
+  .nav2 .nav-group-head, .nav2 .nav-rule { display: none; }
+  @media (min-width: 1024px) {
+    .nav2 .nav-group { display: block; }
+    .nav2 .nav-group-body { display: none; padding-left: .5rem; }
+    .nav2 .nav-group.open .nav-group-body { display: block; }
+    .nav2 .nav-group-head { display: flex; font-size: .875rem; padding: .55rem .9rem; }
+    .nav2 .nav-rule { display: block; }
+    .nav2 .nav-group-body a { margin-top: .125rem; }
+    html.sb-collapsed .nav2 .nav-group-body { display: block; padding-left: 0; }
+    html.sb-collapsed .nav2 .nav-group-head .nav-chev { display: none; }
+    html.sb-collapsed .nav2 .nav-group-head { justify-content: center; padding-left: 0; padding-right: 0; }
+  }
+
+  /* ---------- Accordion tiles (profile, payment methods, account settings): closed until opened, then grow downward ---------- */
+  .acc { padding: 0; }
+  .acc > summary { display: flex; cursor: pointer; list-style: none; align-items: center; justify-content: space-between; gap: .75rem; padding: 1rem; }
+  .acc > summary::-webkit-details-marker { display: none; }
+  .acc-title { display: block; font-size: 15px; font-weight: 800; color: rgb(var(--ink)); }
+  .acc-sub { display: block; margin-top: 1px; font-size: 12px; color: rgb(148 163 184); }
+  .acc-chev { width: 1.1rem; height: 1.1rem; flex-shrink: 0; color: rgb(148 163 184); transition: transform .2s ease; }
+  .acc[open] .acc-chev { transform: rotate(180deg); }
+  .acc[open] > summary { padding-bottom: .5rem; }
+  .acc-body { padding: 0 1rem 1rem; }
+  .acc[open] .acc-body { animation: acc-down .22s ease both; }
+  @keyframes acc-down { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .acc[open] .acc-body { animation: none; } }
+
+  /* Sign out stays pinned at the bottom of the sidebar / menu, even when the links above need scrolling */
+  .nav-signout { position: sticky; bottom: -1rem; z-index: 2; flex-shrink: 0; background: rgb(var(--surface)); padding-bottom: .75rem; }
+
   /* ---------- Phones: slide-in menu (burger / "Menu" tab) ---------- */
   .nav-backdrop { @apply pointer-events-none fixed inset-0 z-[60] bg-night/40 opacity-0; }
   .nav-drawer {
     @apply invisible fixed inset-y-0 left-0 z-[61] flex w-72 max-w-[85vw] -translate-x-full flex-col gap-1 overflow-y-auto bg-surface p-4 shadow-2xl;
   }
-  .nav-drawer > a, .nav-drawer-out { @apply flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[15px] font-semibold text-slate-600 hover:bg-[color:var(--field)]; }
-  .nav-drawer > a.active { @apply bg-[color:var(--tint)] text-brand-700; }
+  .nav-drawer a, .nav-drawer-out { @apply flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[15px] font-semibold text-slate-600 hover:bg-[color:var(--field)]; }
+  .nav-drawer a.active { @apply bg-[color:var(--tint)] text-brand-700; }
   .nav-drawer-out { @apply text-rose-600 hover:bg-rose-50; }
   .nav-drawer-section { @apply px-3 pb-1 pt-4 text-[11px] font-extrabold uppercase tracking-[.08em] text-slate-400; }
   .nav-drawer .nav-burger { @apply h-9 w-9; }
@@ -384,6 +429,11 @@
   .dock-btn { @apply h-11 rounded-2xl bg-brand-500 px-5 text-sm font-bold text-white transition hover:bg-brand-400 disabled:opacity-50; }
 
   /* ---------- Receipt scanner ---------- */
+  /* Big drag-and-drop card on Scan Receipt (pages/scan-receipt.php) */
+  .dropzone { @apply flex min-h-[340px] shrink-0 cursor-pointer flex-col items-center justify-center rounded-[26px] border-2 border-dashed border-brand-300 px-6 py-10 text-center transition; background: color-mix(in srgb, rgb(var(--brand-500)) 6%, rgb(var(--surface))); }
+  .dropzone:hover, .dropzone:focus-visible { @apply border-brand-500 outline-none; background: color-mix(in srgb, rgb(var(--brand-500)) 11%, rgb(var(--surface))); }
+  .dropzone.over { @apply scale-[1.01] border-brand-600; background: color-mix(in srgb, rgb(var(--brand-500)) 18%, rgb(var(--surface))); }
+  .dropzone-icon { @apply flex h-20 w-20 items-center justify-center rounded-full bg-brand-100 text-brand-700; }
   .viewfinder { @apply relative overflow-hidden rounded-[26px]; background: radial-gradient(120% 90% at 50% 30%, rgb(var(--brand-800)) 0%, color-mix(in srgb, rgb(var(--brand-900)) 80%, black) 55%, color-mix(in srgb, rgb(var(--brand-900)) 45%, black) 100%); }
   .vf-corner { @apply absolute h-[34px] w-[34px] border-0 border-solid border-brand-400; }
   .vf-corner.tl { @apply left-[26px] top-[26px] rounded-tl-xl border-l-[3px] border-t-[3px]; }
@@ -580,6 +630,7 @@
   .switch > span { @apply absolute left-1 h-5 w-5 rounded-full bg-white shadow transition-transform; }
   .switch[aria-checked="true"] { @apply bg-fuchsia-500; }
   .switch[aria-checked="true"] > span { transform: translateX(20px); }
+  .switch.switch-brand[aria-checked="true"] { background-color: rgb(var(--brand-600)); }
 
   /* Game picker carousel: swipe between slides; the centred one is picked */
   .game-carousel { @apply relative flex snap-x snap-mandatory gap-3 overflow-x-auto py-2; scrollbar-width: none; }
@@ -677,6 +728,9 @@
 .pp-opt.active { background: rgb(var(--slate-100)); }
 .pp-opt.on { background: rgb(var(--brand-50)); }
 .pp-opt.on.active { background: var(--tint); }
+html.dark .pp-opt.on { background: var(--tint); }
+html.dark .pp-opt.on.active { background: color-mix(in srgb, rgb(var(--brand-500)) 22%, rgb(var(--surface))); }
+html.dark .pp-opt.active:not(.on) { background: color-mix(in srgb, rgb(var(--brand-500)) 8%, rgb(var(--surface))); }
 .pp-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .875rem; font-weight: 600; color: rgb(var(--ink)); }
 .pp-tag { border-radius: 999px; background: var(--tint); padding: .1rem .5rem; color: rgb(var(--brand-700)); font-size: .65rem; font-weight: 800; }
 .pp-box { position: relative; display: inline-block; width: 1.15rem; height: 1.15rem; flex-shrink: 0; border: 1.5px solid rgb(var(--slate-300)); border-radius: .35rem; background: rgb(var(--surface)); transition: all .15s; }
@@ -755,6 +809,9 @@ html.dark .rp-chip.share, html.dark .rp-token.dashed { color: rgb(var(--brand-20
 html.dark .bg-white, html.dark .hover\:bg-white:hover { background-color: rgb(var(--surface)); }
 html.dark .keep-white { background-color: #fff; }
 html.dark .bg-white\/80, html.dark .bg-white\/90, html.dark .bg-white\/95 { background-color: rgb(var(--surface) / .85); }
+html.dark [class~="bg-white/70"], html.dark [class~="bg-white/60"], html.dark [class~="bg-white/50"] { background-color: rgb(var(--surface) / .7); }
+html.dark [class~="text-amber-800/70"], html.dark [class~="text-amber-800/80"] { color: rgb(var(--tx-amber) / .85); }
+html.dark [class~="divide-amber-200/60"] > :not([hidden]) ~ :not([hidden]) { border-color: rgb(245 158 11 / .25); }
 html.dark .border-white { border-color: rgb(var(--surface)); }
 html.dark .ring-white { --tw-ring-color: rgb(var(--surface)); }
 html.dark .initials-muted { background: var(--field); }
@@ -877,7 +934,7 @@ html.dark .paper, html.dark .switch > span, html.dark .phone-mock-screen, html.d
 /* Accent-colored text sits on dark surfaces: the dark shades (700/600) would vanish, so use a light shade. */
 html.dark .text-brand-700, html.dark .text-brand-600, html.dark .initials, html.dark .chip, html.dark .pill-active,
 html.dark .mchip.on, html.dark .btn-outline, html.dark .btn-pill-outline, html.dark .tab-btn.active, html.dark .nav2 a.active,
-html.dark .nav-drawer > a.active, html.dark .field-ok, html.dark .pp-count, html.dark .pp-tag, html.dark .pp-tools button { color: rgb(var(--brand-300)); }
+html.dark .nav-drawer a.active, html.dark .field-ok, html.dark .pp-count, html.dark .pp-tag, html.dark .pp-tools button { color: rgb(var(--brand-300)); }
 html.dark .btn-outline:hover, html.dark .btn-pill-outline:hover { background-color: var(--tint); }
 
 /* Pale accent fills and borders (brand-50…300): a dark tint instead of near-white, which would hide the light text. */

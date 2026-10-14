@@ -21,12 +21,14 @@ require __DIR__ . '/../partials/head.php';
 
   <spinner v-if="loading"></spinner>
   <div v-else class="flex-1 space-y-3 px-5 pb-6 pt-4">
+<?php $searchHint = 'Search groups or members'; require __DIR__ . '/../partials/list-search.php'; ?>
     <div v-if="!groups.length" class="tile p-6 text-center">
       <p class="text-sm font-bold text-ink">No groups yet</p>
       <p class="mt-1 text-[12px] text-slate-400">Save your barkada, dorm or team once — then start a bill with everyone in one tap, and see all your group's payments and receipts in one place.</p>
       <button @click="openNew" class="btn btn-primary btn-sm mt-3">+ New group</button>
     </div>
-    <a v-for="g in groups" :key="g.id" :href="'group?id=' + g.id" class="tile flex items-center gap-3.5 p-4">
+    <div v-if="groups.length && !filteredGroups.length" class="tile p-6 text-center text-[13px] text-slate-400">No groups match “{{ q.trim() }}”.</div>
+    <a v-for="g in filteredGroups" :key="g.id" :href="'group?id=' + g.id" class="tile flex items-center gap-3.5 p-4">
       <div class="flex -space-x-2">
         <avatar v-for="m in g.members.slice(0, 4)" :key="m.id" :user="m" :size="30" ring></avatar>
       </div>
@@ -48,7 +50,7 @@ require __DIR__ . '/../partials/head.php';
       <input id="group-name" data-field="name" v-model="f.name" @input="touch('name')" :class="{ 'is-invalid': err('name') }" class="input-soft" maxlength="60" placeholder="e.g. Barkada, Dorm 3B, Office lunch" />
       <p v-if="err('name')" class="field-error">{{ err('name') }}</p>
       <p class="field-label mt-4">People</p>
-      <input data-field="members" v-model="search" @input="lookup" class="input-soft" :class="{ 'is-invalid': err('members') }" placeholder="Search by name or email" aria-label="Add people" />
+      <input data-field="members" v-model="search" @input="lookup" class="input-soft" :class="{ 'is-invalid': err('members') }" placeholder="Search by name, username or email" aria-label="Add people" />
       <p v-if="err('members')" class="field-error">{{ err('members') }}</p>
       <div v-if="results.length" class="tile mt-2 divide-y divide-slate-100 overflow-hidden">
         <button v-for="u in results" :key="u.id" type="button" @click="add(u)" class="flex w-full items-center gap-3 px-3.5 py-2.5 text-left hover:bg-slate-50">
@@ -70,7 +72,15 @@ require __DIR__ . '/../partials/head.php';
 <script>
 Setlo.mount({
   mixins: [Setlo.validation],
-  data: () => ({ loading: true, busy: false, groups: [], drafting: false, search: '', results: [], timer: null, f: { name: '', members: [] } }),
+  data: () => ({ q: '', loading: true, busy: false, groups: [], drafting: false, search: '', results: [], timer: null, f: { name: '', members: [] } }),
+  computed: {
+    /** Groups whose name, or any member's name, contains the search words. */
+    filteredGroups() {
+      const q = this.q.trim().toLowerCase();
+      if (!q) return this.groups;
+      return this.groups.filter((g) => g.name.toLowerCase().includes(q) || g.members.some((m) => m.name.toLowerCase().includes(q)));
+    },
+  },
   async mounted() {
     await Setlo.load(this, 'groups.php', null, (r) => { this.groups = r.groups; });
     if (new URLSearchParams(location.search).has('new')) this.openNew();
@@ -94,7 +104,7 @@ Setlo.mount({
         } catch (e) { Setlo.toast(e.message); }
       }, 250);
     },
-    add(u) { this.f.members.push(u); this.results = []; this.search = ''; this.touch('members'); },
+    add(u) { this.f.members.push(u); this.results = this.results.filter((r) => r.id !== u.id); this.touch('members'); },
     validators() {
       const name = this.f.name.trim();
       return {

@@ -39,7 +39,7 @@ $mascot = fn (string $pose) => h(url('assets/mascot/' . $pose . '.png'));
         <input class="t-in" v-model="newPerson" maxlength="30" placeholder="Add a friend’s name" />
         <button class="t-add-btn" :disabled="!newPerson.trim() || s.people.length >= 12">Add</button>
       </form>
-      <label class="t-field"><span>Who paid the restaurant?</span>
+      <label class="t-field"><span>Who paid the bill?</span>
         <select class="t-in" v-model.number="s.payer"><option v-for="p in s.people" :key="p.id" :value="p.id">{{ p.name || 'Person ' + p.id }}</option></select>
       </label>
     </section>
@@ -66,8 +66,9 @@ $mascot = fn (string $pose) => h(url('assets/mascot/' . $pose . '.png'));
         <p class="t-lineamt">{{ it.who.length ? 'Split ' + it.who.length + ' way' + (it.who.length > 1 ? 's' : '') : 'Nobody yet' }} · {{ money(lineCents(it)) }}</p>
       </div>
       <form class="t-add t-add-item" @submit.prevent="addItem">
+        <input class="t-in t-qty" type="number" min="1" max="99" step="1" inputmode="numeric" v-model.number="newItem.qty" placeholder="Qty" aria-label="New item quantity" />
         <input class="t-in" v-model="newItem.name" maxlength="60" placeholder="Dish or drink" aria-label="New item name" />
-        <input class="t-in t-price" type="number" min="0" step="0.01" inputmode="decimal" v-model.number="newItem.price" placeholder="₱ price" aria-label="New item price" />
+        <input class="t-in t-price" type="number" min="0" step="0.01" inputmode="decimal" v-model.number="newItem.price" placeholder="₱ each" aria-label="New item price each" />
         <button class="t-add-btn" :disabled="!newItem.name.trim() || !(newItem.price > 0)">Add</button>
       </form>
     </section>
@@ -117,7 +118,7 @@ $mascot = fn (string $pose) => h(url('assets/mascot/' . $pose . '.png'));
         <li v-for="(t, i) in transfers" :key="i"><b>{{ name(t.from) }}</b><span class="t-arrow">→</span><b>{{ name(t.to) }}</b><em>{{ money(t.amount) }}</em></li>
       </ul>
       <p v-else class="g-small g-muted" style="margin:0">{{ c.unassignedCount ? 'Assign every item first and the payments appear here.' : s.items.length ? 'Nobody owes anyone anything.' : 'Add some items to see the payments.' }}</p>
-      <p v-if="transfers.length" class="g-small g-muted" style="margin:10px 0 0">{{ name(s.payer) }} paid the restaurant, so everyone else pays them back, with as few transfers as possible.</p>
+      <p v-if="transfers.length" class="g-small g-muted" style="margin:10px 0 0">{{ name(s.payer) }} paid the bill, so everyone else pays them back, with as few transfers as possible.</p>
     </section>
 
   </div>
@@ -136,7 +137,7 @@ const SD = SplitDemo;
 const SHARE_DELAY = 9000;
 Setlo.mount({
   data: () => ({
-    s: SD.load() || SD.blank(), newPerson: '', newItem: { name: '', price: '' }, nudged: false,
+    s: SD.load() || SD.blank(), newPerson: '', newItem: { name: '', qty: 1, price: '' }, nudged: false,
     locks: [
       { i: 'save', t: 'Save this bill', ask: 'save this bill' }, { i: 'scan', t: 'Scan a receipt', ask: 'scan a receipt' }, { i: 'users', t: 'Invite friends', ask: 'invite your friends' },
       { i: 'phone', t: 'Pay with GCash or Maya', ask: 'pay with GCash or Maya' }, { i: 'clock', t: 'See your history', ask: 'see your bill history' }, { i: 'trophy', t: 'Earn badges, play games', ask: 'earn badges and play Fun Mode' },
@@ -173,8 +174,9 @@ Setlo.mount({
     },
     addItem() {
       if (!this.newItem.name.trim() || !(this.newItem.price > 0)) return;
-      this.s.items.push({ name: this.newItem.name.trim(), qty: 1, price: this.newItem.price, who: [] });
-      this.newItem = { name: '', price: '' };
+      const qty = Math.min(99, Math.max(1, Math.trunc(Number(this.newItem.qty) || 1))); // blank or bad quantity counts as 1
+      this.s.items.push({ name: this.newItem.name.trim(), qty, price: this.newItem.price, who: [] });
+      this.newItem = { name: '', qty: 1, price: '' };
     },
     removeItem(i) { this.s.items.splice(i, 1); },
     toggle(it, id) { it.who = it.who.includes(id) ? it.who.filter((x) => x !== id) : [...it.who, id]; },

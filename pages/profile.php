@@ -1,9 +1,10 @@
 <?php
 require __DIR__ . '/../includes/bootstrap.php';
 $user = require_login();
-$title = 'Profile';
+$title = 'My Profile';
 $nav = 'profile';
 $back = 'dashboard.php';
+$page = 'profile';
 require __DIR__ . '/../partials/head.php';
 ?>
 <div id="app" class="device" v-cloak>
@@ -11,7 +12,7 @@ require __DIR__ . '/../partials/head.php';
   <div class="app-hero px-5 pb-5 pt-8">
     <div class="flex items-center gap-3">
       <?php require __DIR__ . '/../partials/back.php'; ?>
-      <h1 class="flex-1 text-[21px] font-extrabold tracking-tight">Profile</h1>
+      <h1 class="flex-1 text-[21px] font-extrabold tracking-tight">My Profile</h1>
     </div>
     <div v-if="p" class="mt-5 flex items-center gap-3.5">
       <button @click="picking = true" class="relative shrink-0 rounded-full" aria-label="Change profile picture">
@@ -29,11 +30,12 @@ require __DIR__ . '/../partials/head.php';
     </div>
   </div>
 
-  <spinner v-if="loading"></spinner>
-  <div v-else class="flex-1 space-y-5 px-5 pb-6 pt-4">
 
-    <!-- Money owed to me, and unfinished installments -->
-    <div v-if="money" class="tile p-4">
+  <spinner v-if="loading"></spinner>
+  <div v-else class="flex-1 space-y-3 px-5 pb-6 pt-4">
+
+    <!-- Balances: always visible, above the personal details -->
+    <div class="tile p-4" v-if="money">
       <div class="grid grid-cols-2 gap-3">
         <div class="rounded-2xl bg-emerald-50 px-3.5 py-3">
           <p class="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Owed to you</p>
@@ -63,10 +65,51 @@ require __DIR__ . '/../partials/head.php';
       </div>
     </div>
 
-    <!-- Achievements: unlocked badges, each shown or hidden, one featured as the title next to my name -->
-    <div v-if="ach" class="tile p-4">
+    <details class="tile acc">
+      <summary><span><span class="acc-title">Personal details</span><span class="acc-sub">Name and account information</span></span><svg class="acc-chev" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg></summary>
+      <div class="acc-body">
+    <form class="space-y-4" @submit.prevent="saveProfile(['full_name'])" novalidate>
+      <p class="text-[12px] text-slate-400">The name friends see on bills and settlements.</p>
+      <div>
+        <label class="field-label" for="name">Full Name</label>
+        <input id="name" data-field="full_name" v-model="f.full_name" @input="touch('full_name')" @blur="touch('full_name')"
+               class="input-soft" :class="{ 'is-invalid': err('full_name') }" maxlength="100" autocomplete="name" />
+        <p v-if="err('full_name')" class="field-error">{{ err('full_name') }}</p>
+      </div>
+      <button class="btn-pill btn-pill-primary" :disabled="busy">Save name</button>
+    </form>
+
+    <form class="mt-5 space-y-4 border-t border-slate-100 pt-4" @submit.prevent="saveUsername" novalidate>
+      <div>
+        <label class="field-label" for="username">Username</label>
+        <div class="relative">
+          <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">@</span>
+          <input id="username" data-field="username" v-model.trim="username" @input="touch('username'); usernameErr = ''" @blur="touch('username')"
+                 class="input-soft !pl-8" :class="{ 'is-invalid': err('username') || usernameErr }" maxlength="20" autocomplete="username" autocapitalize="none" spellcheck="false" />
+        </div>
+        <p v-if="err('username') || usernameErr" class="field-error">{{ err('username') || usernameErr }}</p>
+        <p v-else-if="usernameLockedText" class="mt-1.5 text-[12px] font-semibold text-amber-600">{{ usernameLockedText }}</p>
+        <p v-else class="mt-1.5 text-[12px] text-slate-400">3–20 letters, numbers or underscores. {{ p.username_changes_left }} of 5 changes left, then a 7-day wait.</p>
+        <div v-if="usernameSuggest.length" class="mt-2 flex flex-wrap gap-2">
+          <button v-for="u in usernameSuggest" :key="u" type="button" class="rounded-full bg-brand-50 px-3 py-1 text-[12px] font-bold text-brand-700" @click="username = u; usernameSuggest = []; usernameErr = ''">@{{ u }}</button>
+        </div>
+      </div>
+      <button class="btn-pill btn-pill-primary" :disabled="busy || !usernameChanged || !!usernameLockedText">Save username</button>
+    </form>
+
+    <div class="mt-5 border-t border-slate-100 pt-4">
+      <label class="field-label" for="email">Email</label>
+      <input id="email" class="input-soft" :value="p.email" readonly disabled />
+      <p class="mt-1.5 text-[12px] text-slate-400">Your email can’t be changed here.</p>
+    </div>
+      </div>
+    </details>
+
+    <details class="tile acc" v-if="ach">
+      <summary><span><span class="acc-title">Achievements</span><span class="acc-sub">Badges you have unlocked</span></span><svg class="acc-chev" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg></summary>
+      <div class="acc-body">
+        <div class="">
       <div class="flex items-baseline justify-between gap-2">
-        <p class="text-[15px] font-extrabold text-ink">Achievements</p>
         <p class="text-[12px] font-semibold text-slate-400">{{ ach.badges.length }} of {{ ach.total }} unlocked</p>
       </div>
       <p v-if="!ach.badges.length" class="mt-2 text-[12.5px] text-slate-400">Settle a bill to start earning badges.</p>
@@ -90,149 +133,13 @@ require __DIR__ . '/../partials/head.php';
         </div>
       </template>
     </div>
+      </div>
+    </details>
 
-    <!-- Appearance: saved in this browser only (assets/js/theme.js) -->
-    <div class="tile p-4">
-      <p class="text-[15px] font-extrabold text-ink">Appearance</p>
-      <p class="mt-0.5 text-[12px] text-slate-400">Pick a color and a light or dark look. Saved on this device.</p>
-      <p class="section-label mt-4">COLOR</p>
-      <div class="flex flex-wrap gap-3" role="radiogroup" aria-label="Color theme">
-        <button v-for="(a, key) in accents" :key="key" type="button" role="radio" :aria-checked="theme.accent === key" @click="setTheme({ accent: key })"
-                class="flex flex-col items-center gap-1.5 text-[11px] font-bold" :class="theme.accent === key ? 'text-ink' : 'text-slate-400'">
-          <span class="flex h-11 w-11 items-center justify-center rounded-full text-white transition" :style="{ background: a.color, boxShadow: theme.accent === key ? '0 0 0 3px rgb(var(--surface)), 0 0 0 5px ' + a.color : 'none' }">
-            <svg v-if="theme.accent === key" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-          </span>
-          {{ a.label }}
-        </button>
-        <button type="button" role="radio" :aria-checked="theme.accent === 'custom'" @click="setTheme({ accent: 'custom' })"
-                class="flex flex-col items-center gap-1.5 text-[11px] font-bold" :class="theme.accent === 'custom' ? 'text-ink' : 'text-slate-400'">
-          <span class="flex h-11 w-11 items-center justify-center rounded-full text-white transition"
-                :style="{ background: theme.accent === 'custom' ? theme.custom : 'conic-gradient(#ef4444, #f59e0b, #22c55e, #06b6d4, #6366f1, #d946ef, #ef4444)', boxShadow: theme.accent === 'custom' ? '0 0 0 3px rgb(var(--surface)), 0 0 0 5px ' + theme.custom : 'none' }">
-            <svg v-if="theme.accent === 'custom'" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-          </span>
-          Custom
-        </button>
-      </div>
-      <div v-if="theme.accent === 'custom'" class="mt-3 rounded-2xl bg-slate-50 p-3">
-        <div class="flex items-center gap-3">
-          <input type="color" :value="theme.custom" @input="setTheme({ custom: $event.target.value }); hexDraft = theme.custom" class="h-11 w-14 shrink-0 cursor-pointer rounded-xl border-0 bg-transparent p-0" aria-label="Pick a color" />
-          <input v-model="hexDraft" @input="onHex" maxlength="7" spellcheck="false" autocapitalize="off" class="row-in w-28 font-mono uppercase" :class="{ 'is-invalid': hexDraft && !hexOk }" aria-label="Color hex code" placeholder="#7C3AED" />
-          <button type="button" class="ml-auto text-[12px] font-bold text-slate-400 hover:text-ink" @click="setTheme({ accent: 'green' })">Reset to green</button>
-        </div>
-        <p v-if="customAdjusted" class="mt-2 text-[11.5px] text-slate-500">Made a little darker so buttons and text stay easy to read.</p>
-      </div>
-      <p class="section-label mt-5">MODE</p>
-      <div class="seg seg-light" role="radiogroup" aria-label="Light or dark mode">
-        <button v-for="m in modes" :key="m.key" type="button" role="radio" :aria-checked="theme.mode === m.key" :class="{ on: theme.mode === m.key }" @click="setTheme({ mode: m.key })"><svg class="seg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:inline-block;width:15px;height:15px;margin:-3px 6px 0 0;vertical-align:middle" v-html="icons[m.key]"></svg>{{ m.label }}</button>
-      </div>
-      <!-- Backdrop behind the pages: saved to the account (api/profile.php), applied live (assets/js/badge-field.js) -->
-      <p class="section-label mt-5">BACKGROUND</p>
-      <div class="seg seg-light" role="radiogroup" aria-label="Page background">
-        <button v-for="b in backgrounds" :key="b.key" type="button" role="radio" :aria-checked="bg.mode === b.key" :class="{ on: bg.mode === b.key }"
-                :disabled="!!busyBg" @click="setBackground(b.key)"><svg class="seg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:inline-block;width:15px;height:15px;margin:-3px 6px 0 0;vertical-align:middle" v-html="icons[b.key]"></svg>{{ b.label }}</button>
-      </div>
-      <p class="mt-2 text-[11.5px] text-slate-400">{{ bgHint }} Saved to your account.</p>
-      <div v-if="bg.mode === 'photo' && bg.image" class="mt-3 flex items-center gap-3.5 rounded-2xl border border-slate-200 bg-slate-50 p-2.5">
-        <img :src="bg.image" alt="Your background photo" class="aspect-video w-28 shrink-0 rounded-xl object-cover shadow-sm ring-1 ring-black/5" />
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-[13px] font-bold text-ink">{{ busyBg === 'upload' ? 'Uploading…' : 'Your photo' }}</p>
-          <p class="truncate text-[11.5px] text-slate-400">Shown softly behind your pages</p>
-          <div class="mt-2 flex flex-wrap gap-2">
-            <button type="button" class="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1.5 text-[12px] font-bold text-brand-700 transition hover:bg-brand-100 disabled:opacity-50"
-                    :disabled="!!busyBg" @click="pickBackgroundPhoto">
-              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.6-4.6a2 2 0 012.8 0L16 16m-2-2l1.6-1.6a2 2 0 012.8 0L20 14M14 8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-              Change
-            </button>
-            <button type="button" class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-bold text-slate-500 transition hover:bg-slate-100 hover:text-rose-600 disabled:opacity-50"
-                    :disabled="!!busyBg" @click="removeBackground">
-              <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M10 11v6m4-6v6M9 7l1-3h4l1 3m-9 0l1 13h10l1-13"/></svg>
-              Remove
-            </button>
-          </div>
-        </div>
-      </div>
-      <input ref="bgFile" type="file" accept="image/*" class="hidden" @change="uploadBackground" />
-    </div>
-
-    <!-- Home currency (saved on change): bills I pay settle in it; other currencies are estimated in it -->
-    <div class="tile p-4">
-      <p class="text-[15px] font-extrabold text-ink">Currency</p>
-      <p class="mt-0.5 text-[12px] text-slate-400">New bills you pay for settle in it unless the group agrees on another. Bills already started keep theirs.</p>
-      <div class="mt-3"><currency-select :model-value="p.currency" @update:model-value="setCurrency" :disabled="busy" label="Your currency"></currency-select></div>
-    </div>
-
-    <!-- Payment details -->
-    <form class="tile space-y-4 p-4" @submit.prevent="saveProfile" novalidate>
-      <div>
-        <p class="text-[15px] font-extrabold text-ink">How friends pay you</p>
-        <p class="mt-0.5 text-[12px] text-slate-400">Shown on your Pay-me page and on the “You owe” card of anyone who owes you.</p>
-      </div>
-      <div>
-        <label class="field-label" for="name">Full Name</label>
-        <input id="name" data-field="full_name" v-model="f.full_name" @input="touch('full_name')" @blur="touch('full_name')"
-               class="input-soft" :class="{ 'is-invalid': err('full_name') }" maxlength="100" autocomplete="name" />
-        <p v-if="err('full_name')" class="field-error">{{ err('full_name') }}</p>
-      </div>
-      <div>
-        <label class="field-label" for="method">Preferred Payment Method</label>
-        <select id="method" v-model="f.payment_method" class="input-soft cursor-pointer">
-          <option>GCash</option><option>Maya</option><option>Bank Transfer</option><option>Cash</option>
-        </select>
-      </div>
-      <div v-if="f.payment_method !== 'Cash'">
-        <label class="field-label" for="account">{{ accountLabel }}</label>
-        <input v-if="isGcash" id="account" data-field="payment_account" v-model="f.payment_account" @input="onGcashInput" @blur="touch('payment_account')"
-               class="input-soft" :class="{ 'is-invalid': err('payment_account') }" inputmode="numeric" autocomplete="tel-national" placeholder="e.g. 09171234567" />
-        <input v-else id="account" data-field="payment_account" v-model="f.payment_account" @input="touch('payment_account')" @blur="touch('payment_account')"
-               class="input-soft" :class="{ 'is-invalid': err('payment_account') }" maxlength="60" :placeholder="accountPlaceholder" />
-        <p v-if="err('payment_account')" class="field-error">{{ err('payment_account') }}</p>
-        <p v-else-if="!f.payment_account.trim()" class="mt-1.5 text-[12px] text-amber-600">Add your number so friends know where to send money.</p>
-      </div>
-      <button class="btn-pill btn-pill-primary" :disabled="busy">Save details</button>
-    </form>
-
-    <!-- Personal Pay-me QR (generated per account) -->
-    <div class="tile p-4">
-      <p class="text-[15px] font-extrabold text-ink">Your Pay-me QR</p>
-      <p class="mt-0.5 text-[12px] text-slate-400">Made for your account automatically. Friends scan it to open your pay page with your {{ p.payment_method }} details and what they owe you.</p>
-      <div class="mt-4 flex flex-col items-center gap-4 sm:flex-row">
-        <div class="h-40 w-40 shrink-0 rounded-2xl border border-slate-200 bg-white p-2 keep-white" v-html="qr" role="img" aria-label="Your Pay-me QR code"></div>
-        <div class="w-full flex-1 space-y-2">
-          <button @click="downloadQr" class="btn btn-primary w-full">Download QR</button>
-          <button @click="shareLink" class="btn btn-outline w-full">{{ canShare ? 'Share link' : 'Copy link' }}</button>
-          <a :href="payUrl" class="btn btn-ghost w-full">Preview my pay page</a>
-          <button @click="rotate" class="w-full text-center text-[12px] font-semibold text-slate-400 hover:text-rose-600" :disabled="busy">Get a new QR (old one stops working)</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Password -->
-    <form class="tile space-y-3 p-4" @submit.prevent="changePassword" novalidate>
-      <p class="text-[15px] font-extrabold text-ink">Change password</p>
-      <div>
-        <input data-field="pw_current" v-model="pw.current" @input="touch('pw_current')" type="password" autocomplete="current-password"
-               class="input-soft" :class="{ 'is-invalid': err('pw_current') }" placeholder="Current password" aria-label="Current password" />
-        <p v-if="err('pw_current')" class="field-error">{{ err('pw_current') }}</p>
-      </div>
-      <div>
-        <input data-field="pw_new" v-model="pw.new" @input="touch('pw_new')" type="password" autocomplete="new-password"
-               class="input-soft" :class="{ 'is-invalid': err('pw_new') }" placeholder="New password" aria-label="New password" />
-        <p v-if="err('pw_new')" class="field-error">{{ err('pw_new') }}</p>
-        <p v-else-if="pw.new" class="field-ok">✓ Strong enough</p>
-        <p v-else class="mt-1.5 text-[12px] text-slate-400">At least 8 characters, with a letter and a number.</p>
-      </div>
-      <div>
-        <input data-field="pw_confirm" v-model="pw.confirm" @input="touch('pw_confirm')" type="password" autocomplete="new-password"
-               class="input-soft" :class="{ 'is-invalid': err('pw_confirm') }" placeholder="Confirm new password" aria-label="Confirm new password" />
-        <p v-if="err('pw_confirm')" class="field-error">{{ err('pw_confirm') }}</p>
-      </div>
-      <button class="btn-pill btn-pill-soft" :disabled="busy">Update password</button>
-    </form>
 
   </div>
 
   <?php require __DIR__ . '/../partials/nav.php'; ?>
-
   <!-- Profile picture: a preset, a gallery photo, or initials (same picker as the first-run page) -->
   <div v-if="picking && p" class="sheet-backdrop" @click.self="picking = false">
     <div class="sheet" role="dialog" aria-labelledby="pic-title">
@@ -248,196 +155,5 @@ require __DIR__ . '/../partials/head.php';
   </div>
 </div>
 
-<script>
-Setlo.mount({
-  mixins: [Setlo.validation],
-  data: () => ({
-    loading: true, busy: false, busyAch: false, p: null, money: null, ach: null, canShare: !!navigator.share,
-    presets: [], picking: false,
-    theme: SetloTheme.get(), accents: SetloTheme.ACCENTS, hexDraft: SetloTheme.get().custom,
-    // Line icons for the Mode and Background buttons (24×24, stroke = the button's text colour)
-    icons: {
-      light: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
-      dark: '<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
-      system: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
-      badges: '<circle cx="12" cy="9" r="6"/><path d="M8.5 14.5L7 22l5-3 5 3-1.5-7.5"/>',
-      receipts: '<path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
-      plain: '<rect x="4" y="4" width="16" height="16" rx="3"/>',
-      photo: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/>',
-    },
-    modes: [{ key: 'light', label: 'Light' }, { key: 'dark', label: 'Dark' }, { key: 'system', label: 'System' }],
-    backgrounds: [{ key: 'badges', label: 'Badges' }, { key: 'receipts', label: 'Setlo' }, { key: 'plain', label: 'Plain' }, { key: 'photo', label: 'Photo' }],
-    busyBg: null,
-    f: { full_name: '', payment_method: 'GCash', payment_account: '' },
-    pw: { current: '', new: '', confirm: '' }, serverErrors: {},
-  }),
-  computed: {
-    hexOk() { return SetloTheme.isHex(this.hexDraft); },
-    customAdjusted() { return this.theme.accent === 'custom' && SetloTheme.scale(this.theme.custom).adjusted; },
-    isGcash() { return this.f.payment_method === 'GCash'; },
-    accountLabel() {
-      if (this.isGcash) return 'GCash number';
-      return this.f.payment_method === 'Bank Transfer' ? 'Bank & account number' : this.f.payment_method + ' number / name';
-    },
-    accountPlaceholder() { return this.f.payment_method === 'Bank Transfer' ? 'e.g. BPI 1234-5678-90 · Juan Dela Cruz' : 'e.g. 0917 123 4567 · Juan D.'; },
-    bg() { return this.p?.background || { mode: 'badges', image: null }; },
-    bgHint() {
-      return {
-        badges: 'Your shown badges float behind your pages; hidden ones stay out.',
-        receipts: 'The Setlo theme: a long receipt floats over little green chameleon sketches.',
-        plain: 'Just the soft colour wash, nothing moving.',
-        photo: 'Your photo, softened a little so your cards stay easy to read.',
-      }[this.bg.mode];
-    },
-    payUrl() { return this.p ? Setlo.payLink(this.p.pay_code) : ''; },
-    qr() { return this.p ? Setlo.qrSvg(this.payUrl) : ''; },
-    featuredBadge() {
-      if (!this.ach) return this.p?.badge || null;
-      const a = this.ach.badges.find((b) => b.code === this.ach.featured);
-      return a ? { emoji: a.emoji, title: a.title } : null;
-    },
-  },
-  async mounted() {
-    await Setlo.load(this, 'profile.php', null, (r) => { this.set(r.profile); this.money = r.money || null; this.presets = r.presets || []; });
-    Setlo.load(this, 'achievements.php', null, (r) => { this.ach = r; }, 'busyAch');
-  },
-  methods: {
-    openBadge(a) { Setlo.showAchievement(a); },
-    async toggleHidden(a) {
-      const r = await Setlo.run(this, () => api.post('achievements.php', { action: 'hide', code: a.code, hidden: !a.hidden }), 'busyAch');
-      if (r) { this.ach = r; window.SetloBackground?.refresh(r.badges); }
-    },
-    /** A new backdrop was saved: show it now and keep it in the profile. */
-    applyBackground(r) {
-      if (!r) return;
-      this.p = { ...this.p, background: r.profile.background };
-      window.SetloBackground?.set(r.profile.background);
-    },
-    async setBackground(mode) {
-      if (mode === this.bg.mode || this.busyBg) return;
-      if (mode === 'photo' && !this.bg.image) { this.pickBackgroundPhoto(); return; } // no photo yet: pick one first
-      this.applyBackground(await Setlo.run(this, () => api.post('profile.php', { action: 'set_background', mode }), 'busyBg'));
-    },
-    /** Ask first, then open the file picker / gallery for the background photo. */
-    async pickBackgroundPhoto() {
-      const ok = await Setlo.confirm({ title: 'Allow Setlo to open your photos?', text: 'Setlo needs your permission to open your gallery or files so you can pick a photo for your background. Only the photo you choose is used.', confirmText: 'Allow' });
-      if (ok) this.$refs.bgFile.click();
-    },
-    async uploadBackground(e) {
-      const file = e.target.files[0];
-      e.target.value = '';
-      if (!file) return;
-      if (!file.type.startsWith('image/')) { Setlo.toast('Choose a photo.'); return; }
-      this.busyBg = 'crop';
-      try {
-        const photo = await Setlo.cropPhoto(file, { shape: 'rect', aspect: 16 / 9, width: 1600, title: 'Crop your background' });
-        if (!photo) return;
-        this.busyBg = 'upload';
-        const fd = new FormData();
-        fd.append('action', 'upload_background');
-        fd.append('photo', photo, 'background.jpg');
-        this.applyBackground(await api.post('profile.php', fd));
-        Setlo.toast('Background updated', 'ok');
-      } catch (err) { Setlo.toast(err.message); }
-      finally { this.busyBg = null; }
-    },
-    async removeBackground() {
-      const ok = await Setlo.confirm({ title: 'Remove your photo?', text: 'Your background goes back to the floating badges.', confirmText: 'Remove' });
-      if (ok) this.applyBackground(await Setlo.run(this, () => api.post('profile.php', { action: 'remove_background' }), 'busyBg'));
-    },
-    async feature(a) {
-      const r = await Setlo.run(this, () => api.post('achievements.php', { action: 'feature', code: a.code === this.ach.featured ? '' : a.code }), 'busyAch');
-      if (r) { this.ach = r; Setlo.toast(r.featured ? 'Title set' : 'Title removed', 'ok'); }
-    },
-    showPerson(id) { Setlo.showPerson(id); },
-    async setCurrency(code) {
-      const r = await Setlo.run(this, () => api.post('profile.php', { action: 'set_currency', currency: code }));
-      if (!r) return;
-      this.p = r.profile;
-      Setlo.toast('Currency set to ' + code, 'ok');
-      // Totals owed are shown in it: fetch them again
-      try { this.money = (await api.get('profile.php')).money || null; } catch (e) { /* the old totals stay until the next visit */ }
-    },
-    setTheme(patch) { this.theme = SetloTheme.set(patch); },
-    /** Typing a hex code: applies once it is a full #rrggbb (the "#" is added if left out). */
-    onHex() {
-      let v = this.hexDraft.trim();
-      if (v && v[0] !== '#') v = '#' + v;
-      this.hexDraft = v;
-      if (SetloTheme.isHex(v)) this.setTheme({ custom: v });
-    },
-    /** A new picture was saved: show it, but keep any unsaved edits in the details form. */
-    onPicture(profile) {
-      this.p = profile;
-      Setlo.toast('Picture updated', 'ok');
-    },
-    validators() {
-      return {
-        full_name: V.name(this.f.full_name, 'Full name'),
-        payment_account: this.f.payment_method === 'Cash' ? '' : (this.isGcash ? V.gcash(this.f.payment_account) : V.account(this.f.payment_account)),
-        pw_current: this.serverErrors.current || V.required(this.pw.current, 'Current password'),
-        pw_new: this.serverErrors.new || V.password(this.pw.new) || (this.pw.new && this.pw.new === this.pw.current ? 'Choose a password different from your current one.' : ''),
-        pw_confirm: V.match(this.pw.confirm, this.pw.new),
-      };
-    },
-    set(p) {
-      this.p = p;
-      this.f = { full_name: p.name, payment_method: p.payment_method, payment_account: p.payment_account || '' };
-    },
-    // Digits only, so "0917 123 4567" or a pasted "0917-123-4567" becomes 09171234567.
-    onGcashInput() {
-      this.f.payment_account = this.f.payment_account.replace(/\D/g, '').slice(0, 11);
-      this.touch('payment_account');
-    },
-    async saveProfile() {
-      if (!this.validateAll(['full_name', 'payment_account'])) return;
-      const r = await Setlo.run(this, () => api.post('profile.php', { action: 'update', ...this.f, full_name: this.f.full_name.trim() }));
-      if (r) { this.set(r.profile); Setlo.toast('Details saved', 'ok'); }
-    },
-    downloadQr() {
-      const a = document.createElement('a');
-      a.href = Setlo.qrPng(this.payUrl, 'Pay ' + this.p.first + ' on Setlo');
-      a.download = 'setlo-pay-' + this.p.first.toLowerCase() + '.png';
-      a.click();
-    },
-    async shareLink() {
-      if (navigator.share) {
-        navigator.share({ title: 'Pay ' + this.p.name + ' on Setlo', url: this.payUrl }).catch(() => {});
-        return;
-      }
-      try { await navigator.clipboard.writeText(this.payUrl); Setlo.toast('Link copied', 'ok'); }
-      catch (e) { Setlo.showCopy('Your pay link', this.payUrl); }
-    },
-    async rotate() {
-      const ok = await Setlo.confirm({
-        title: 'Get a new QR?', danger: true, confirmText: 'Yes, new QR',
-        text: 'Your current QR and pay link will stop working. Anyone who saved the old one will need the new one.',
-      });
-      if (!ok) return;
-      const r = await Setlo.run(this, () => api.post('profile.php', { action: 'rotate_pay_code' }));
-      if (r) { this.set(r.profile); Setlo.toast('New QR created', 'ok'); }
-    },
-    async changePassword() {
-      this.serverErrors = {};
-      if (!this.validateAll(['pw_current', 'pw_new', 'pw_confirm'])) return;
-      try {
-        this.busy = true;
-        await api.post('profile.php', { action: 'password', ...this.pw });
-        this.pw = { current: '', new: '', confirm: '' };
-        ['pw_current', 'pw_new', 'pw_confirm'].forEach((k) => { this.touched[k] = false; });
-        Setlo.alert('Password updated', 'Use your new password next time you sign in.', 'success');
-      } catch (e) {
-        this.serverErrors = e.data.fields || {};
-        Setlo.toast(e.message);
-      } finally {
-        this.busy = false;
-      }
-    },
-  },
-  watch: {
-    'pw.current'() { this.serverErrors.current = ''; },
-    'pw.new'() { this.serverErrors.new = ''; },
-  },
-});
-</script>
+<?php require __DIR__ . '/../partials/profile-script.php'; ?>
 <?php require __DIR__ . '/../partials/foot.php'; ?>

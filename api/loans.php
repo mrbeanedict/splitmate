@@ -54,15 +54,18 @@ function my_loan(array $me): array
 }
 
 if (method() === 'GET') {
+    // ?scope=personal: only loans recorded between two people (My Debts & Repayments), not kept-change credits
+    $personalOnly = ($_GET['scope'] ?? '') === 'personal' ? ' AND b.change_payment_id IS NULL' : '';
     $rows = q(
-        "SELECT b.* FROM bills b JOIN bill_members m ON m.bill_id = b.id WHERE m.user_id = ? AND b.kind = 'loan'
+        "SELECT b.* FROM bills b JOIN bill_members m ON m.bill_id = b.id WHERE m.user_id = ? AND b.kind = 'loan'$personalOnly
          ORDER BY FIELD(b.status, 'draft', 'settling', 'closed'), b.created_at DESC",
         [$me['id']]
     )->fetchAll();
     $loans = array_map(fn ($b) => loan_row($b, $me), $rows);
     // What's still out each way, in my currency (others at today's market rate: 'estimated')
     $home = user_currency($me['id']);
-    $totals = ['lent' => 0, 'borrowed' => 0];
+    // Kept-change credits are counted apart from personal loans, so one debt never lands in two totals
+    $totals = ['lent' => 0, 'borrowed' => 0, 'credit_in' => 0, 'credit_out' => 0];
     $estimated = false;
     foreach ($loans as $l) {
         if ($l['status'] !== 'settling' || !$l['settlement']) {
@@ -73,9 +76,10 @@ if (method() === 'GET') {
             $estimated = true;
             $c = fx_estimate($c, $l['currency'], $home)['cents'] ?? 0;
         }
-        $totals[$l['i_lent'] ? 'lent' : 'borrowed'] += $c;
+        $bucket = $l['from_change'] ? ($l['i_lent'] ? 'credit_in' : 'credit_out') : ($l['i_lent'] ? 'lent' : 'borrowed');
+        $totals[$bucket] += $c;
     }
-    json_ok(['loans' => $loans, 'totals' => ['lent' => pesos($totals['lent']), 'borrowed' => pesos($totals['borrowed']), 'currency' => $home, 'estimated' => $estimated]]);
+    json_ok(['loans' => $loans, 'totals' => ['lent' => pesos($totals['lent']), 'borrowed' => pesos($totals['borrowed']), 'credit_in' => pesos($totals['credit_in']), 'credit_out' => pesos($totals['credit_out']), 'currency' => $home, 'estimated' => $estimated]]);
 }
 
 if (method() !== 'POST') {

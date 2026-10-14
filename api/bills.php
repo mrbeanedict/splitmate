@@ -121,6 +121,14 @@ if (method() === 'GET') {
     }
     if (isset($_GET['id'])) {
         $bill = bill_for(int_param('id'), $me);
+        // A receipt in another currency with no rate saved yet (the fetch failed earlier): try again, at most once a minute.
+        if ($bill['receipt_currency'] && $bill['receipt_currency'] !== $bill['currency'] && $bill['fx_market_rate'] === null
+            && time() - (int) ($_SESSION['fx_try'][$bill['id']] ?? 0) > 60) {
+            $_SESSION['fx_try'][$bill['id']] = time();
+            if (fx_capture_market($bill['id'], $me['id'], 'Rate fetched automatically.')) {
+                $bill = bill_for((int) $bill['id'], $me);
+            }
+        }
         $members = bill_members($bill['id']);
         $items = bill_items($bill['id']);
         $calc = compute_shares($bill, $members, $items);
@@ -194,7 +202,7 @@ if (method() === 'GET') {
             'unassigned'  => pesos($calc['unassigned']),
             'unassigned_count' => $calc['unassigned_count'],
             'settlements' => bill_settlements($bill['id']),
-            // Who paid the restaurant and the proposed transfers (before settling starts).
+            // Who paid the bill and the proposed transfers (before settling starts).
             'payments'    => [
                 'multi'    => (bool) q('SELECT 1 FROM bill_payments WHERE bill_id = ? LIMIT 1', [$bill['id']])->fetchColumn(),
                 'payer_ids' => array_map('intval', q('SELECT user_id FROM bill_payments WHERE bill_id = ? ORDER BY amount DESC, user_id', [$bill['id']])->fetchAll(PDO::FETCH_COLUMN)) ?: [$bill['payer_id']],
@@ -202,6 +210,8 @@ if (method() === 'GET') {
                 'total'    => pesos($plan['paid_total']),
                 'mismatch' => pesos($plan['mismatch']),
                 'change'   => pesos($plan['change']),
+                'tendered' => $bill['amount_tendered'] !== null ? (float) $bill['amount_tendered'] : null, // one payer's entered amount
+
                 // Who physically got the change: named by the creator, or null until they are (a guess is not shown)
                 'change_holder' => $plan['holder_named'] ? $plan['holder'] : null,
                 // Per member: paid − share, the change due back to them (+) or what they still have to put in (−)
@@ -242,7 +252,7 @@ if ($action === 'create') {
     require_valid(valid_bill_name($name), 'name');
     $memberIds = array_unique(array_map('intval', (array) input('member_ids', [])));
     $memberIds = array_values(array_diff($memberIds, [$me['id']]));
-    // Who paid the restaurant: payer_ids (one or several); the older single payer_id still works.
+    // Who paid the bill: payer_ids (one or several); the older single payer_id still works.
     $payerIds = array_map('intval', (array) input('payer_ids', [input('payer_id', $me['id'])]));
 
     if ($memberIds) {
@@ -392,7 +402,7 @@ switch ($action) {
         $uid = int_param('user_id');
         if ($uid === $bill['creator_id'] || $uid === $bill['payer_id']
             || q('SELECT 1 FROM bill_payments WHERE bill_id = ? AND user_id = ?', [$bill['id'], $uid])->fetchColumn()) {
-            fail("The creator and anyone who paid the restaurant can't be removed.", 422);
+            fail("The creator and anyone who paid the bill can't be removed.", 422);
         }
         q('DELETE a FROM item_assignments a JOIN receipt_items i ON i.id = a.item_id WHERE i.bill_id = ? AND a.user_id = ?', [$bill['id'], $uid]);
         q('DELETE FROM bill_members WHERE bill_id = ? AND user_id = ?', [$bill['id'], $uid]);
@@ -496,54 +506,6 @@ switch ($action) {
         $pdo->beginTransaction();
         set_bill_currency($bill, currency_param(), $me, 'agreed by the group');
         $pdo->commit();
-        json_ok();
-
-    case 'set_fx':
-        // How the receipt's currency becomes the settlement currency: market rate (estimate), the actual amount
-        // charged, or a typed rate; plus fees recorded separately and the rounding policy. Receipts stay untouched.
-        require_creator($bill, $me);
-        require_editable($bill);
-        $mode = input('mode', 'market');
-        if (!in_array($mode, ['market', 'actual', 'manual'], true)) {
-            fail('Unknown rate type.', 422);
-        }
-        $num = function (string $k, float $max) {
-            $v = input($k);
-            return $v === null || $v === '' ? null : (is_numeric($v) && (float) $v >= 0 && (float) $v <= $max ? (float) $v : fail('Check the ' . str_replace('_', ' ', $k) . '.', 422, ['fields' => [$k => 'Enter a valid amount.']]));
-        };
-        $actual = $num('actual_total', 99999999);
-        $manual = $num('manual_rate', 1000000);
-        $fees = $num('fees', 9999999) ?? 0.0;
-        $rounding = input('rounding', 'exact');
-        if (!isset(FX_ROUNDING[$rounding])) {
-            fail('Unknown rounding.', 422);
-        }
-        if ($mode === 'actual' && !$actual) {
-            fail('Enter the amount that was actually charged.', 422, ['fields' => ['actual_total' => 'Enter the amount charged.']]);
-        }
-        if ($mode === 'manual' && !$manual) {
-            fail('Enter the exchange rate.', 422, ['fields' => ['manual_rate' => 'Enter a rate above 0.']]);
-        }
-        $feesNote = trim(preg_replace('/\s+/', ' ', str_input('fees_note', 80, false)));
-        if (preg_match('/[<>]/', $feesNote)) {
-            fail('The fee note can’t contain < or >.', 422);
-        }
-        $pdo = db();
-        $pdo->beginTransaction();
-        q('UPDATE bills SET fx_mode = ?, fx_actual_total = ?, fx_manual_rate = ?, fx_fees = ?, fx_fees_note = ?, fx_rounding = ?, fx_set_at = NOW() WHERE id = ?',
-            [$mode, $actual === null ? null : round($actual, 2), $manual === null ? null : round($manual, 10), round($fees, 2), $feesNote ?: null, $rounding, $bill['id']]);
-        $words = ['market' => 'the market rate', 'actual' => 'the actual amount charged', 'manual' => 'a rate entered by hand'][$mode];
-        fx_log($bill['id'], $me['id'], first_name($me['full_name']) . " set the settlement rate to $words.");
-        $pdo->commit();
-        json_ok();
-
-    case 'refresh_rate':
-        require_creator($bill, $me);
-        require_editable($bill);
-        $ok = fx_capture_market($bill['id'], $me['id'], first_name($me['full_name']) . ' refreshed the market rate.');
-        if (!$ok) {
-            fail('Couldn’t get a market rate right now. Enter what was actually charged, or a rate, instead.', 502);
-        }
         json_ok();
 
     case 'update_details':

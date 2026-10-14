@@ -399,7 +399,7 @@ require __DIR__ . '/../partials/head.php';
           <span class="flex-1 text-[13px] font-semibold">{{ who(m) }}</span>
           <span class="text-[13.5px] font-extrabold tabular-nums" :class="shares[m.id] < 0 ? 'text-emerald-600' : shares[m.id] === 0 ? 'text-slate-400' : 'text-ink'">{{ shares[m.id] < 0 ? '+' + peso(-shares[m.id], bill.currency) : peso(shares[m.id] || 0, bill.currency) }}</span>
         </div>
-        <p v-if="result && game.game === 'roulette' && payers.length === 1 && payers[0] === bill.payer_id" class="mt-2 rounded-xl bg-emerald-50 p-2.5 text-[12px] font-semibold text-emerald-700">{{ nameOf(bill.payer_id) }} already paid the restaurant, so nobody owes anything!</p>
+        <p v-if="result && game.game === 'roulette' && payers.length === 1 && payers[0] === bill.payer_id" class="mt-2 rounded-xl bg-emerald-50 p-2.5 text-[12px] font-semibold text-emerald-700">{{ nameOf(bill.payer_id) }} already paid the bill, so nobody owes anything!</p>
       </div>
       <!-- roulette: nothing to continue to until the wheel has picked everyone -->
       <button v-if="game.game === 'roulette' && !landed" class="btn-pill btn-fun" disabled>The wheel is spinning…</button>

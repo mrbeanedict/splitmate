@@ -95,7 +95,7 @@ require __DIR__ . '/../partials/head.php';
         <p v-if="guestName && err('guest')" class="field-error !mt-1">{{ err('guest') }}</p>
         <div class="tile p-4">
           <div class="flex items-center justify-between gap-3">
-            <p class="text-[14px] font-extrabold text-ink">Who paid the restaurant?</p>
+            <p class="text-[14px] font-extrabold text-ink">Who paid the bill?</p>
             <div class="seg seg-light w-44 !p-0.5">
               <button :class="{ on: !multiPay }" @click="useSinglePayer">One person</button>
               <button :class="{ on: multiPay }" @click="startMultiPay">Several</button>
@@ -221,49 +221,13 @@ require __DIR__ . '/../partials/head.php';
       <template v-if="fx.foreign">
         <div class="mt-3 space-y-1 rounded-xl bg-slate-50 p-3">
           <div class="flex justify-between"><span class="text-slate-500">Receipt</span><b>{{ peso(fx.native_total, rcur) }}</b></div>
-          <div class="flex justify-between"><span class="text-slate-500">Estimated</span><b>{{ fx.estimated === null ? '—' : peso(fx.estimated) }}</b></div>
-          <p v-if="fx.market" class="text-[11px] text-slate-400">{{ fmtRate(fx.market.rate, rcur, bill.currency) }} · {{ fx.market.source }} · as of {{ fmtDateTime(fx.market.at) }}</p>
-          <p v-else class="text-[11px] font-semibold text-rose-500">No market rate could be fetched yet.</p>
-          <div v-if="fx.mode !== 'market'" class="flex justify-between"><span class="text-slate-500">{{ fx.mode === 'actual' ? 'Actually charged' : 'At the entered rate' }}</span><b>{{ peso(fx.converted) }}</b></div>
-          <div v-if="fx.fees > 0" class="flex justify-between"><span class="text-slate-500">Fees{{ fx.fees_note ? ' (' + fx.fees_note + ')' : '' }}</span><b>+{{ peso(fx.fees) }}</b></div>
+          <p v-if="fx.missing" class="text-[11px] font-semibold text-rose-500">No exchange rate yet — it is fetched automatically. Reload in a moment.</p>
           <div class="flex justify-between border-t border-slate-200 pt-1 font-extrabold text-ink"><span>Settles as</span><span>{{ fx.missing ? '—' : peso(d.total) }}</span></div>
-          <p v-if="!fx.missing" class="text-[11px] leading-snug text-slate-400">Rate used: {{ fmtRate(fx.rate, rcur, bill.currency) }} · {{ fx.source }}{{ fx.at ? ' · ' + fmtDateTime(fx.at) : '' }} · {{ fx.rounding_options[fx.rounding] }}</p>
+          <p v-if="!fx.missing" class="text-[11px] leading-snug text-slate-400">Rate used: {{ fmtRate(fx.rate, rcur, bill.currency) }} · {{ fx.source }}{{ fx.at ? ' · ' + fmtDateTime(fx.at) : '' }}</p>
         </div>
 
-        <form v-if="canEdit" @submit.prevent="saveFx" class="mt-3 space-y-2" novalidate>
-          <p class="text-[12px] font-bold text-slate-500">Settlement rate</p>
-          <label class="flex items-center gap-2"><input type="radio" value="market" v-model="fxDraft.mode" class="accent-brand-600" /> <span class="flex-1">Market estimate</span>
-            <button type="button" @click="refreshRate" class="text-[12px] font-bold text-brand-700" :disabled="busy">Refresh rate</button></label>
-          <label class="flex items-center gap-2"><input type="radio" value="actual" v-model="fxDraft.mode" class="accent-brand-600" /> Actual amount charged</label>
-          <div v-if="fxDraft.mode === 'actual'" class="flex items-center gap-2 pl-6">
-            <span class="text-slate-400">{{ currencySymbol(bill.currency) }}</span>
-            <input v-model="fxDraft.actual_total" @input="fxDraft.actual_total = filterMoney(fxDraft.actual_total)" inputmode="decimal" :placeholder="fx.estimated !== null ? fx.estimated.toFixed(2) : '0.00'" class="row-in !h-9 flex-1 text-right" aria-label="Amount actually charged" />
-          </div>
-          <label class="flex items-center gap-2"><input type="radio" value="manual" v-model="fxDraft.mode" class="accent-brand-600" /> Enter a rate</label>
-          <div v-if="fxDraft.mode === 'manual'" class="flex items-center gap-2 pl-6 text-[12px] text-slate-500">
-            1 {{ rcur }} = <input v-model="fxDraft.manual_rate" inputmode="decimal" :placeholder="fx.market ? String(+fx.market.rate.toFixed(6)) : '0.00'" class="row-in !h-9 w-28 text-right" aria-label="Exchange rate" /> {{ bill.currency }}
-          </div>
-          <p class="pt-1 text-[12px] font-bold text-slate-500">Fees charged separately <span class="font-medium text-slate-400">(shared equally)</span></p>
-          <div class="flex gap-2">
-            <input v-model="fxDraft.fees" @input="fxDraft.fees = filterMoney(fxDraft.fees)" inputmode="decimal" placeholder="0.00" class="row-in !h-9 w-24 text-right" aria-label="Fees" />
-            <input v-model="fxDraft.fees_note" maxlength="80" placeholder="e.g. card foreign-transaction fee" class="row-in !h-9 min-w-0 flex-1" aria-label="What the fee was" />
-          </div>
-          <p class="pt-1 text-[12px] font-bold text-slate-500">Rounding</p>
-          <select v-model="fxDraft.rounding" class="input-soft cursor-pointer" aria-label="Rounding">
-            <option v-for="(label, key) in fx.rounding_options" :key="key" :value="key">{{ label }}</option>
-          </select>
-          <p class="text-[11px] text-slate-400">Whatever rounding adds or takes off stays with the payer. The receipt itself is never changed.</p>
-          <button class="btn btn-primary btn-sm w-full" :disabled="busy">Save rate</button>
-        </form>
       </template>
 
-      <details v-if="d.fx_log && d.fx_log.length" class="mt-3">
-        <summary class="cursor-pointer text-[12px] font-bold text-slate-500">Rate history ({{ d.fx_log.length }})</summary>
-        <div v-for="(l, i) in d.fx_log" :key="i" class="mt-2 border-l-2 border-slate-200 pl-2.5 text-[11.5px] leading-snug text-slate-500">
-          <b class="text-slate-700">{{ fmtDateTime(l.at) }}</b>{{ l.by ? ' · ' + l.by : '' }}<br />{{ l.note }}
-          <span class="block text-slate-400">{{ logLine(l) }}</span>
-        </div>
-      </details>
     </div>
 
     <div class="tile space-y-1 bg-slate-50 p-3.5 text-sm">
@@ -317,7 +281,6 @@ Setlo.mount({
     loading: true, busy: false, bill: null, d: { me: {}, members: [], items: [], settlements: [], shares: {}, balances: {}, plan: [], payments: { paid: {}, multi: false } },
     tab: 'members', tabs: [{ key: 'members', label: 'Members' }, { key: 'plan', label: 'Settlement' }, { key: 'items', label: 'Items' }],
     search: '', results: [], timer: null, guestName: '', multiPay: false, payDraft: {}, holderDraft: null, copied: false, canShare: !!navigator.share,
-    fxDraft: { mode: 'market', actual_total: '', manual_rate: '', fees: '', fees_note: '', rounding: 'exact' },
   }),
   computed: {
     /** How the receipt's currency becomes the settlement currency (bills.php bill.fx); rcur: the receipt's currency. */
@@ -350,6 +313,11 @@ Setlo.mount({
     payDraftAmounts() { return Object.fromEntries(Object.entries(this.payDraft).map(([k, v]) => [k, parseFloat(v) || 0])); },
     /** What was really charged (before any "round to whole pesos"): what the payments have to cover. */
     exactTotal() { return this.bill ? this.bill.exact_total ?? this.d.total : 0; },
+    /** What was paid at the cashier (amount tendered): the payers divide this, not just the bill total. Never less than the total. */
+    paidBase() {
+      const t = this.d.payments.tendered != null ? this.d.payments.tendered : (this.d.payments.multi ? this.d.payments.total : 0);
+      return Math.max(this.exactTotal, t || 0);
+    },
     /** The amounts are the cash handed to the cashier (amount tendered): they only have to cover the total. */
     payDraftOk() { return this.payDraftTotal >= this.exactTotal - 0.005; },
     draftChange() { return this.payDraftOk ? Math.round((this.payDraftTotal - this.exactTotal) * 100) / 100 : 0; },
@@ -377,47 +345,15 @@ Setlo.mount({
       this.d = r;
       this.bill = r.bill;
       this.multiPay = r.payments.multi;
-      const fx = r.bill.fx;
-      if (fx) {
-        this.fxDraft = {
-          mode: fx.mode, rounding: fx.rounding, fees_note: fx.fees_note || '',
-          actual_total: fx.actual_total === null ? '' : fx.actual_total.toFixed(2),
-          manual_rate: fx.manual_rate === null ? '' : String(fx.manual_rate),
-          fees: fx.fees ? fx.fees.toFixed(2) : '',
-        };
-      }
     },
     async setCurrency(code) {
       if (code === this.bill.currency) return;
       const ok = await Setlo.confirm({
         title: 'Settle in ' + code + '?', confirmText: 'Use ' + code,
-        text: 'Everyone will pay their share in ' + code + '. An amount charged, rate, fees or several payers’ amounts typed in ' + this.bill.currency + ' are cleared.',
+        text: 'Everyone will pay their share in ' + code + '. Several payers’ amounts typed in ' + this.bill.currency + ' are cleared.',
       });
       if (!ok) return;
       await Setlo.run(this, async () => { await api.post('bills.php', { action: 'set_currency', bill_id: this.billId, currency: code }); await this.load(); Setlo.toast('Settles in ' + code, 'ok'); });
-    },
-    async refreshRate() {
-      await Setlo.run(this, async () => { await api.post('bills.php', { action: 'refresh_rate', bill_id: this.billId }); await this.load(); Setlo.toast('Rate refreshed', 'ok'); });
-    },
-    async saveFx() {
-      const f = this.fxDraft;
-      if (f.mode === 'actual' && !(parseFloat(f.actual_total) > 0)) { Setlo.toast('Enter the amount actually charged.', 'warn'); return; }
-      if (f.mode === 'manual' && !(parseFloat(f.manual_rate) > 0)) { Setlo.toast('Enter the exchange rate.', 'warn'); return; }
-      await Setlo.run(this, async () => {
-        await api.post('bills.php', { action: 'set_fx', bill_id: this.billId, ...f, actual_total: f.mode === 'actual' ? f.actual_total : '', manual_rate: f.mode === 'manual' ? f.manual_rate : '' });
-        await this.load();
-        Setlo.toast('Rate saved', 'ok');
-      });
-    },
-    /** One rate-history entry's settings, e.g. "JPY→PHP · actual ₱2,460.00 · market 0.4 (open.er-api.com)". */
-    logLine(l) {
-      const bits = [l.receipt_currency + '→' + l.currency];
-      if (l.mode === 'actual' && l.actual_total !== null) bits.push('actual ' + this.peso(l.actual_total, l.currency));
-      if (l.mode === 'manual' && l.manual_rate !== null) bits.push('rate ' + l.manual_rate);
-      if (l.market_rate !== null) bits.push('market ' + (+l.market_rate.toFixed(6)) + (l.market_source ? ' (' + l.market_source + (l.market_at ? ', ' + this.fmtDateTime(l.market_at) : '') + ')' : ''));
-      if (l.fees > 0) bits.push('fees ' + this.peso(l.fees, l.currency));
-      bits.push(l.rounding);
-      return bits.join(' · ');
     },
     showPerson(id) { Setlo.showPerson(id); },
     async invite(mode) {
@@ -458,11 +394,13 @@ Setlo.mount({
       this.multiPay = true;
       this.payDraft = Object.fromEntries(this.realMembers.map((m) => [m.id, this.d.payments.multi && this.d.payments.paid[m.id] ? this.d.payments.paid[m.id].toFixed(2) : '']));
       this.holderDraft = this.d.payments.change_holder ?? null;
+      // Nothing entered yet and an amount tendered is known (scanned or typed on Review): the payers divide that amount
+      if (this.d.payments.tendered != null && !Object.values(this.payDraft).some((v) => parseFloat(v) > 0)) this.splitEvenly();
     },
-    /** Fill the amounts with an equal split of the total (any odd centavos go to the first people). */
+    /** Fill the amounts with an equal split of the amount tendered (any odd centavos go to the first people). */
     splitEvenly() {
       const ids = this.evenIds;
-      const cents = Math.round(this.exactTotal * 100);
+      const cents = Math.round(this.paidBase * 100);
       const base = Math.floor(cents / ids.length);
       const extra = cents - base * ids.length;
       this.payDraft = Object.fromEntries(this.realMembers.map((m) => [m.id, ids.includes(m.id) ? ((base + (ids.indexOf(m.id) < extra ? 1 : 0)) / 100).toFixed(2) : '']));
@@ -508,7 +446,7 @@ Setlo.mount({
       await Setlo.run(this, async () => { await api.post('bills.php', { action: 'add_guest', bill_id: this.billId, name }); await this.load(); });
     },
     async addMember(u) {
-      this.search = ''; this.results = [];
+      this.results = this.results.filter((r) => r.id !== u.id);
       await Setlo.run(this, async () => { await api.post('bills.php', { action: 'add_member', bill_id: this.billId, user_id: u.id }); await this.load(); });
     },
     async removeMember(m) {

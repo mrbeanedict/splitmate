@@ -22,14 +22,15 @@ require __DIR__ . '/../partials/head.php';
   <div class="flex-1 px-5 pb-6 pt-4">
     <spinner v-if="loading"></spinner>
     <template v-else>
+<?php $searchHint = 'Search bills by name'; require __DIR__ . '/../partials/list-search.php'; ?>
       <div class="mb-3 flex items-baseline justify-between gap-2">
         <p class="text-[12px] font-medium text-slate-500"><b v-if="archivedView" class="text-ink">Archived · </b>{{ shown.length }} {{ shown.length === 1 ? 'bill' : 'bills' }} · {{ shownTotal }} total</p>
         <button v-if="archivedView" @click="archivedView = false" class="text-[12px] font-bold text-brand-700">← Back to bills</button>
         <button v-else-if="archivedCount" @click="openArchived" class="text-[12px] font-bold text-slate-500 hover:text-brand-700">Archived · {{ archivedCount }}</button>
       </div>
       <div v-if="!shown.length" class="tile p-6 text-center">
-        <p class="text-sm font-bold text-ink">No bills here yet</p>
-        <p class="mt-1 text-[12px] text-slate-400">Tap + to create a bill and scan the receipt.</p>
+        <p class="text-sm font-bold text-ink">{{ q.trim() ? 'No bills match “' + q.trim() + '”' : 'No bills here yet' }}</p>
+        <p class="mt-1 text-[12px] text-slate-400">{{ q.trim() ? 'Try another name, or clear the search.' : 'Tap + to create a bill and scan the receipt.' }}</p>
       </div>
       <div class="space-y-3 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
         <a v-for="b in shown" :key="b.id" :href="b.link" class="tile flex items-center gap-3.5 p-4" :class="{ 'tile-muted': b.status === 'closed' }">
@@ -86,7 +87,7 @@ require __DIR__ . '/../partials/head.php';
           <label class="field-label" for="member-search">Add Members</label>
           <div class="input-wrap">
             <svg class="input-lead h-[18px] w-[18px] text-slate-400" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="M20 20l-3.5-3.5"/></svg>
-            <input id="member-search" v-model="search" @input="lookup" class="input-soft has-lead" placeholder="Search by name or email" autocomplete="off" />
+            <input id="member-search" v-model="search" @input="lookup" class="input-soft has-lead" placeholder="Search by name, username or email" autocomplete="off" />
           </div>
           <div v-if="results.length" class="mt-2 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
             <button v-for="u in results" :key="u.id" type="button" @click="addMember(u)" class="flex w-full items-center gap-3 px-3.5 py-2.5 text-left hover:bg-slate-50">
@@ -109,7 +110,7 @@ require __DIR__ . '/../partials/head.php';
           <p v-if="form.guests.length" class="mt-1.5 text-[11.5px] text-slate-400">You'll mark guests' payments for them.</p>
         </div>
         <div>
-          <label class="field-label">Who paid the restaurant?</label>
+          <label class="field-label">Who paid the bill?</label>
           <payer-picker v-model="form.payer_ids" :people="payerOptions" :me="me"></payer-picker>
           <p class="mt-1.5 text-[12px] text-slate-400">{{ form.payer_ids.length < 2 ? 'Everyone else settles with this person. The amount comes from the scanned receipt.' : 'You can enter how much each one put in on the Review step, once the receipt total is known.' }}</p>
           <p v-if="form.guests.length" class="mt-1 text-[11.5px] text-slate-400">Guests can’t be payers — they have no account to confirm payments.</p>
@@ -125,7 +126,7 @@ Setlo.mount({
   mixins: [Setlo.validation],
   data: () => ({
     me: <?= (int) $user['id'] ?>,
-    loading: true, busy: false, bills: [], archived: [], archivedCount: 0, archivedView: false,
+    q: '', loading: true, busy: false, bills: [], archived: [], archivedCount: 0, archivedView: false,
     filters: ['all', 'active', 'settling', 'closed'], filter: 'all',
     // ?new=1 opens the Create Bill sheet in the very first paint (no pop-in on refresh); ?edit=ID opens it filled in
     // with that bill's details (step 0, from Scan / Review / Assign)
@@ -138,10 +139,13 @@ Setlo.mount({
   }),
   computed: {
     shown() {
-      if (this.archivedView) return this.archived;
-      if (this.filter === 'all') return this.bills;
-      if (this.filter === 'active') return this.bills.filter((b) => b.status === 'active' || b.status === 'draft');
-      return this.bills.filter((b) => b.status === this.filter);
+      const q = this.q.trim().toLowerCase();
+      const match = (b) => !q || b.name.toLowerCase().includes(q) || String(b.status).includes(q);
+      if (this.archivedView) return this.archived.filter(match);
+      let rows = this.bills;
+      if (this.filter === 'active') rows = this.bills.filter((b) => b.status === 'active' || b.status === 'draft');
+      else if (this.filter !== 'all') rows = this.bills.filter((b) => b.status === this.filter);
+      return rows.filter(match);
     },
     /** Everyone who can have paid: you first, then the members added so far (guests can't confirm payments). */
     payerOptions() { return [this.meUser, ...this.form.members]; },
@@ -228,8 +232,7 @@ Setlo.mount({
     },
     addMember(u) {
       this.form.members.push(u);
-      this.search = '';
-      this.results = [];
+      this.results = this.results.filter((r) => r.id !== u.id);
     },
     validators() {
       return {

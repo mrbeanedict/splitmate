@@ -23,11 +23,13 @@ require __DIR__ . '/../partials/head.php';
   <!-- The grids sit inside this flex-1 block (not on it), so desktop rows never stretch to fill the page height. -->
   <div class="flex-1 space-y-5 px-5 pb-6 pt-4">
     <spinner v-if="loading"></spinner>
-    <div v-else-if="!list.length && !(tab === 'owe' && cover.length)" class="tile p-6 text-center">
+    <div v-else-if="!list.length && !q.trim() && !(tab === 'owe' && cover.length)" class="tile p-6 text-center">
       <p class="text-sm font-bold text-ink">{{ tab === 'owe' ? "You don't owe anyone" : 'Nobody owes you' }}</p>
       <p class="mt-1 text-[12px] text-slate-400">Settlements appear once a bill's split is confirmed.</p>
     </div>
 
+<?php $searchHint = 'Search by person or bill'; require __DIR__ . '/../partials/list-search.php'; ?>
+    <p v-if="q.trim() && !loading && !sections.length" class="tile p-5 text-center text-[13px] text-slate-400">Nothing matches “{{ q.trim() }}”.</p>
     <section v-for="sec in sections" :key="sec.key">
       <div v-if="sec.title" class="mb-2 flex items-baseline justify-between gap-2 px-1">
         <p class="text-[13px] font-extrabold text-ink">{{ sec.title }} <span class="font-semibold text-slate-400">· {{ sec.items.length }}</span></p>
@@ -83,7 +85,7 @@ require __DIR__ . '/../partials/head.php';
       <div v-if="s.payments.length && s.status !== 'settled'" class="mt-2.5 space-y-1.5">
         <div v-for="p in s.payments" :key="p.id" class="rounded-lg px-3 py-2 text-xs" :class="partStyle[p.status]">
           <div class="flex items-center justify-between gap-2">
-            <span class="min-w-0"><b>{{ peso(p.amount, s.currency) }}</b> · {{ methodWithVia(p, methodName) }}<span v-if="p.paid_by.id !== s.from.id"> · paid by {{ p.paid_by.id === me ? 'you' : p.paid_by.first }}</span></span>
+            <span class="min-w-0"><b>{{ peso(p.amount, s.currency) }}</b> · {{ methodWithVia(p, methodName) }}<span v-if="p.paid_by.id !== s.from.id || p.method === 'cash'"> · paid by {{ p.paid_by.id === me ? 'you' : p.paid_by.first }}</span></span>
             <span class="flex shrink-0 items-center gap-2 font-semibold">{{ partLabel(s, p) }}
               <button v-if="p.status === 'confirmed'" @click="showReceipt(p.id)" class="font-bold underline">Receipt</button>
             </span>
@@ -254,8 +256,20 @@ require __DIR__ . '/../partials/head.php';
   <div v-if="cashing" class="sheet-backdrop" @click.self="cashing = null">
     <form class="sheet" @submit.prevent="submitCash">
       <div class="sheet-grip"></div>
-      <h2 class="text-[17px] font-extrabold text-ink">Cash from {{ cashing.from.first }}</h2>
+      <h2 class="text-[17px] font-extrabold text-ink">Cash from {{ cashPayer ? cashPayerName : cashing.from.first }}</h2>
       <p class="mt-0.5 text-[12px] text-slate-500">{{ peso(cashing.open) }} still to pay. Only confirm cash that's in your hands.</p>
+      <template v-if="cashMembers.length">
+        <label class="field-label mt-4" for="cash-payer">Paid by</label>
+        <select id="cash-payer" v-model="cashPayer" class="input-soft cursor-pointer">
+          <option value="">{{ cashing.from.first }} (the one who owes)</option>
+          <option v-for="m in cashMembers" :key="m.id" :value="m.id">{{ m.first }} (paying for {{ cashing.from.first }})</option>
+        </select>
+        <label v-if="cashPayer" class="mt-2.5 flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-[12.5px]">
+          <input type="checkbox" v-model="cashPayBack" class="mt-0.5 h-4 w-4 accent-brand-600" />
+          <span><b class="text-ink">{{ cashing.from.first }} will pay {{ cashPayerName }} back</b><br />
+            <span class="text-slate-500">{{ cashPayBack ? 'Recorded in Utang' + (cashing.from.is_guest ? '' : ' for both of you') + ' automatically.' : 'Treated as a treat — nothing to pay back.' }}</span></span>
+        </label>
+      </template>
       <label class="field-label mt-4" for="cash">Cash handed over</label>
       <div class="flex items-center gap-2">
         <span class="text-slate-400">{{ currencySymbol() }}</span>
@@ -276,7 +290,7 @@ require __DIR__ . '/../partials/head.php';
             <input type="radio" value="change" v-model="extraMode" class="mt-0.5 accent-brand-600" />
             <span><b class="text-ink">I gave {{ peso(cashExtra) }} change back</b><br /><span class="text-slate-500">Shown on the receipt.</span></span>
           </label>
-          <label v-if="!cashing.from.is_guest" class="flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 text-[12.5px]" :class="extraMode === 'keep' ? 'border-brand-400 bg-brand-50' : 'border-slate-200 bg-white'">
+          <label v-if="!cashing.from.is_guest && !cashPayer" class="flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 text-[12.5px]" :class="extraMode === 'keep' ? 'border-brand-400 bg-brand-50' : 'border-slate-200 bg-white'">
             <input type="radio" value="keep" v-model="extraMode" class="mt-0.5 accent-brand-600" />
             <span><b class="text-ink">Keep {{ peso(cashExtra) }} — no change on hand / for next time</b><br />
               <span class="text-slate-500">
@@ -316,8 +330,8 @@ Setlo.mount({
   mixins: [Setlo.validation],
   data: () => ({
     me: <?= (int) $user['id'] ?>, loading: true, busy: false, tab: new URLSearchParams(location.search).get('tab') === 'owed' ? 'owed' : 'owe',
-    owe: [], owed: [], cover: [], rejecting: null, reason: '',
-    paying: null, covering: false, payBack: true, payAmount: '', cashing: null, extraMode: 'change',
+    q: '', owe: [], owed: [], cover: [], rejecting: null, reason: '',
+    paying: null, covering: false, payBack: true, payAmount: '', cashing: null, extraMode: 'change', cashMembers: [], cashPayer: '', cashPayBack: true,
     payRef: '', proofs: [], maxProofs: 5, viewer: null,
     online: { enabled: <?= paymongo_available() ? 'true' : 'false' ?>, test: <?= paymongo_test_mode() ? 'true' : 'false' ?>, min: <?= PAYMONGO_MIN_CENTS ?> },
     methodLabel: { online: 'Paid online · verified by PayMongo', transfer: 'Paid by transfer · confirmed by receiver', cash: 'Paid in cash · settled by receiver', credit: 'Paid from kept change (extra cash)', mixed: 'Paid in parts, several ways' },
@@ -325,7 +339,12 @@ Setlo.mount({
     partStyle: { awaiting: 'bg-blue-50 text-blue-800', confirmed: 'bg-emerald-50 text-emerald-800', rejected: 'bg-red-50 text-red-700' },
   }),
   computed: {
-    list() { return this[this.tab]; },
+    list() {
+      const q = this.q.trim().toLowerCase();
+      const rows = this[this.tab];
+      if (!q) return rows;
+      return rows.filter((s) => [this.other(s).name, s.from.name, s.to.name, s.bill_name].some((v) => v && String(v).toLowerCase().includes(q)));
+    },
     // Open ones first; settled ones below under their own heading, so old records don't mix in.
     sections() {
       const open = this.list.filter((s) => s.status !== 'settled');
@@ -365,6 +384,7 @@ Setlo.mount({
       return { uses: uses / 100, stays: (extra - uses) / 100 };
     },
     /** Cash handed over beyond what's open (Cash sheet only). */
+    cashPayerName() { const m = this.cashMembers.find((x) => x.id === this.cashPayer); return m ? m.first : ''; },
     cashExtra() { return this.cashing ? Math.max(0, Math.round((money(this.payAmount) - this.cashing.open) * 100) / 100) : 0; },
     leftAfter() { return this.current ? Math.round((this.current.open - money(this.payAmount)) * 100) / 100 : 0; },
     /** PayMongo only takes pesos: other currencies are sent another way. */
@@ -470,6 +490,11 @@ Setlo.mount({
       Setlo.useCurrency(s.currency);
       this.cashing = s;
       this.extraMode = 'change';
+      this.cashMembers = [];
+      this.cashPayer = '';
+      this.cashPayBack = true;
+      // Others on the bill, in case one of them handed over the cash for the debtor
+      api.get('settlements.php', { id: s.id }).then((r) => { if (this.cashing && this.cashing.id === s.id) this.cashMembers = r.members || []; }).catch(() => {});
       this.payAmount = s.open.toFixed(2);
       this.touched.amount = false;
     },
@@ -533,10 +558,10 @@ Setlo.mount({
       if (!this.validateAll(['amount'])) return;
       const s = this.cashing;
       const extra = this.cashExtra;
-      const r = await Setlo.run(this, () => api.post('settlements.php', { action: 'settle_cash', id: s.id, amount: money(this.payAmount), extra: this.extraMode }));
+      const r = await Setlo.run(this, () => api.post('settlements.php', { action: 'settle_cash', id: s.id, amount: money(this.payAmount), extra: this.cashPayer ? 'change' : this.extraMode, ...(this.cashPayer ? { paid_by: this.cashPayer, pay_back: this.cashPayBack ? 1 : 0 } : {}) }));
       if (r) this.cashing = null;
       const msg = !r ? '' : extra > 0
-        ? 'Cash received · ' + this.peso(extra) + (this.extraMode === 'keep' ? ' kept — saved in Utang' : ' change given')
+        ? 'Cash received · ' + this.peso(extra) + (this.extraMode === 'keep' && !this.cashPayer ? ' kept — saved in Utang' : ' change given')
         : r.settlement.status === 'settled' ? 'Cash received · settled ✓' : 'Cash received · ' + this.peso(r.settlement.remaining) + ' left';
       await this.after(r, msg);
     },

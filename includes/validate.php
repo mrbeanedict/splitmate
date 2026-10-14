@@ -16,6 +16,24 @@ function valid_name(string $v, string $label = 'Name'): string
     return preg_match("/^\\p{L}[\\p{L} .'\\-]*$/u", $t) ? '' : "$label can only have letters, spaces, periods, apostrophes and hyphens.";
 }
 
+/** Usernames: 3–20 characters, lowercase letters, numbers and underscores. Uniqueness is checked separately (username_taken). */
+const RESERVED_USERNAMES = ['admin', 'administrator', 'setlo', 'support', 'help', 'root', 'system', 'moderator', 'staff', 'null', 'guest'];
+
+function valid_username(string $v): string
+{
+    $t = strtolower(trim($v));
+    if ($t === '') {
+        return 'Username is required.';
+    }
+    if (strlen($t) < 3 || strlen($t) > 20) {
+        return 'Username must be 3–20 characters.';
+    }
+    if (!preg_match('/^[a-z0-9_]+$/', $t)) {
+        return 'Use letters, numbers and underscores only.';
+    }
+    return in_array($t, RESERVED_USERNAMES, true) ? 'That username is reserved.' : '';
+}
+
 function valid_bill_name(string $v): string
 {
     $t = trim($v);
