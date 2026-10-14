@@ -56,6 +56,13 @@
       location.href = meta('login-page') || 'login';
       throw new ApiError(json.error, 401, json);
     }
+    if (json.code === 'violation' && global.Setlo) {
+      // An offensive post/comment was refused and the author got a strike (includes/community_moderation.php).
+      // Strikes 1-2 are warnings (they stay signed in); 3-5 restrict or disable the account, which signs them out.
+      await global.Setlo.alert(json.permanent ? 'Account disabled' : json.signed_out ? 'Account restricted' : 'Warning', json.error, 'warning');
+      if (json.signed_out) location.href = meta('login-page') || 'login';
+      throw new ApiError(json.error, res.status, json);
+    }
     if (!res.ok || !json.ok) {
       throw new ApiError(json.error || 'Request failed.', res.status, json);
     }

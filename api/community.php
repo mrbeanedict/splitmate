@@ -4,6 +4,7 @@
 require __DIR__ . '/../includes/api.php';
 require __DIR__ . '/../includes/uploads.php';
 require_once __DIR__ . '/../includes/gemini.php';
+require_once __DIR__ . '/../includes/community_moderation.php';
 
 const COMMUNITY_REACTIONS = ['like' => '👍', 'love' => '❤️', 'haha' => '😆', 'wow' => '😮', 'sad' => '😢', 'angry' => '😡'];
 const COMMUNITY_MAX_PHOTOS_PER_POST = 100;  // a safety ceiling, not a product limit
@@ -323,6 +324,7 @@ switch (input('action', '')) {
         $audience = input('audience') === 'only_me' ? 'only_me' : 'public';
         $body = clean_text('body', COMMUNITY_BODY_MAX);
         $location = clean_location();
+        community_check($me, 'post', $body, (string) $location); // offensive text: refused before anything is saved, and the author gets a strike
         [$lat, $lng] = clean_coords($location);
         $price = clean_price();
         $shareOf = (int) input('share_of', 0);
@@ -417,6 +419,7 @@ switch (input('action', '')) {
             fail('A post can’t be empty. Delete it instead.', 422);
         }
         $location = $post['is_share'] ? null : clean_location();
+        community_check($me, 'edit', $body, (string) $location);
         [$lat, $lng] = clean_coords($location);
         $price = $post['is_share'] ? null : clean_price();
         q('UPDATE community_posts SET body = ?, location = ?, lat = ?, lng = ?, price = ?, edited_at = NOW() WHERE id = ?', [$body === '' ? null : $body, $location, $lat, $lng, $price, $post['id']]);
@@ -466,6 +469,7 @@ switch (input('action', '')) {
         if ($body === '') {
             fail('Write a comment first.', 422);
         }
+        community_check($me, 'comment', $body);
         // A reply goes under a comment of this post; replying to a reply attaches to the same top-level comment
         $parent = null;
         $replied = null;
@@ -506,6 +510,7 @@ switch (input('action', '')) {
         if ($body === '') {
             fail('A comment can’t be empty.', 422);
         }
+        community_check($me, 'edit', $body);
         q('UPDATE community_comments SET body = ?, edited_at = NOW() WHERE id = ?', [$body, $c['id']]);
         q('DELETE FROM community_translations WHERE comment_id = ?', [$c['id']]); // the old words' translations no longer apply
         $row = q(COMMENT_SELECT . ' WHERE c.id = ?', [$c['id']])->fetch();

@@ -5,7 +5,7 @@ CREATE DATABASE IF NOT EXISTS setlo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicod
 USE setlo;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS qr_payments, assistant_messages, purchase_events, purchases, community_translations, community_saves, community_comments, community_reactions, community_photos, community_posts, feedback, settlement_payment_proofs, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
+DROP TABLE IF EXISTS qr_payments, community_violations, assistant_messages, purchase_events, purchases, community_translations, community_saves, community_comments, community_reactions, community_photos, community_posts, feedback, settlement_payment_proofs, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
 SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE users (
@@ -30,6 +30,8 @@ CREATE TABLE users (
   onboarded_at    DATETIME NULL,                  -- finished or skipped the first-visit dashboard tour; NULL = show it
   role            ENUM('user','admin','guest') NOT NULL DEFAULT 'user',  -- guest: name-only bill member, cannot sign in
   status          ENUM('active','suspended') NOT NULL DEFAULT 'active',
+  violation_count TINYINT UNSIGNED NOT NULL DEFAULT 0,  -- community strikes for offensive posts/comments (1-2 warnings, 3 = 1 day, 4 = 5 days, 5 = disabled)
+  restricted_until DATETIME NULL,                 -- strike 3 / 4: cannot sign in until then
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -596,5 +598,18 @@ CREATE TABLE assistant_messages (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX (user_id, id),
+  INDEX (user_id, created_at)
+) ENGINE=InnoDB;
+
+-- Community strikes (includes/community_moderation.php): one row per offensive post/comment/edit. The text itself is never kept.
+CREATE TABLE community_violations (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id     INT UNSIGNED NOT NULL,
+  kind        ENUM('post','comment','edit') NOT NULL,
+  category    ENUM('profanity','hate','violence') NOT NULL,
+  strike      TINYINT UNSIGNED NOT NULL,          -- 1..5 (1-2 warnings only)
+  restricted_until DATETIME NULL,                 -- NULL for warnings and on the 5th strike (account disabled for good)
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX (user_id, created_at)
 ) ENGINE=InnoDB;

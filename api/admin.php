@@ -27,7 +27,8 @@ if (method() === 'GET') {
             $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term) . '%';
             $order = ($_GET['sort'] ?? '') === 'active' ? 'last_active IS NULL, last_active DESC, u.created_at DESC' : 'u.created_at DESC';
             $rows = q(
-                "SELECT u.id, u.full_name, u.email, u.avatar_color, u.status, u.created_at,
+                "SELECT u.id, u.full_name, u.email, u.avatar_color, u.status, u.created_at, u.violation_count, u.restricted_until,
+                   (u.restricted_until IS NOT NULL AND u.restricted_until > NOW()) AS restricted,
                    (SELECT COUNT(*) FROM bill_members m WHERE m.user_id = u.id) AS bills,
                    (SELECT COUNT(*) FROM settlements s WHERE s.status = 'disputed' AND (s.from_user_id = u.id OR s.to_user_id = u.id)) AS disputes,
                    (SELECT MAX(a.last_at) FROM user_activity a WHERE a.user_id = u.id) AS last_active,
@@ -39,6 +40,9 @@ if (method() === 'GET') {
             json_ok(['users' => array_map(fn ($u) => public_user($u) + [
                 'email'       => $u['email'],
                 'status'      => $u['status'],
+                'strikes'     => (int) $u['violation_count'],   // community strikes (3 = account disabled)
+                'restricted'  => (bool) $u['restricted'],
+                'restricted_until' => $u['restricted'] ? $u['restricted_until'] : null,
                 'created_at'  => $u['created_at'],
                 'bills'       => (int) $u['bills'],
                 'disputes'    => (int) $u['disputes'],
@@ -186,7 +190,8 @@ switch (input('action', '')) {
     case 'set_user_status':
         $uid = int_param('user_id');
         $status = input('status') === 'suspended' ? 'suspended' : 'active';
-        $n = q("UPDATE users SET status = ? WHERE id = ? AND role = 'user'", [$status, $uid])->rowCount();
+        // Reactivating also lifts a community restriction and gives a clean slate (strikes back to 0)
+        $n = q("UPDATE users SET status = ?, restricted_until = IF(? = 'active', NULL, restricted_until), violation_count = IF(? = 'active', 0, violation_count) WHERE id = ? AND role = 'user'", [$status, $status, $status, $uid])->rowCount();
         json_ok(['changed' => $n > 0]);
 
     case 'reset_password':

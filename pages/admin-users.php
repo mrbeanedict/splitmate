@@ -79,9 +79,12 @@ require __DIR__ . '/../partials/admin-top.php';
           <td class="td text-slate-500"><b class="text-ink">{{ u.days_30 }}</b> / 30</td>
           <td class="td text-slate-500">{{ fmtDate(u.created_at, true) }}</td>
           <td class="td">
-            <status-pill v-if="u.status === 'suspended'" status="suspended"></status-pill>
+            <status-pill v-if="u.status === 'suspended' && u.strikes >= 5" status="suspended" label="Disabled · 5 strikes"></status-pill>
+            <status-pill v-else-if="u.status === 'suspended'" status="suspended"></status-pill>
+            <status-pill v-else-if="u.restricted" status="suspended" :label="'Restricted until ' + fmtDate(u.restricted_until)"></status-pill>
             <status-pill v-else-if="u.disputes" status="disputed" :label="u.disputes + ' Open Dispute' + (u.disputes > 1 ? 's' : '')"></status-pill>
             <status-pill v-else status="active"></status-pill>
+            <div v-if="u.strikes && !(u.status === 'suspended' && u.strikes >= 5)" class="mt-1 text-[11px] font-semibold text-amber-600">{{ u.strikes }} of 5 community strikes{{ u.strikes <= 2 ? ' (warning)' : '' }}</div>
           </td>
           <td class="td text-right">
             <button type="button" class="um-dots" :aria-expanded="menu && menu.id === u.id ? 'true' : 'false'" aria-haspopup="menu" :aria-label="'Actions for ' + u.name" @click.stop="openMenu(u, $event)">⋯</button>
@@ -98,7 +101,7 @@ require __DIR__ . '/../partials/admin-top.php';
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a4 4 0 11-6.9 2.7L3 14.8V18h3.2v-2h2v-2h2l1.2-1.2A4 4 0 0015 7z"/></svg>Reset password
       </button>
       <hr class="um-sep" />
-      <button v-if="menu.user.status === 'active'" type="button" role="menuitem" class="um-item danger" :disabled="busy" @click="pick((u) => setStatus(u, 'suspended'))">
+      <button v-if="menu.user.status === 'active' && !menu.user.restricted" type="button" role="menuitem" class="um-item danger" :disabled="busy" @click="pick((u) => setStatus(u, 'suspended'))">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M5.6 5.6l12.8 12.8"/></svg>Suspend account
       </button>
       <button v-else type="button" role="menuitem" class="um-item ok" :disabled="busy" @click="pick((u) => setStatus(u, 'active'))">
@@ -256,7 +259,11 @@ Setlo.mount({
     async setStatus(u, status) {
       if (status === 'suspended' && !(await Setlo.confirm({ title: 'Suspend ' + u.name + '?', text: 'They will be signed out and unable to log in until reactivated.', confirmText: 'Suspend', danger: true }))) return;
       const r = await Setlo.run(this, () => api.post('admin.php', { action: 'set_user_status', user_id: u.id, status }));
-      if (r) { u.status = status; Setlo.toast(status === 'active' ? 'Account reactivated' : 'Account suspended', 'ok'); }
+      if (r) {
+        u.status = status;
+        if (status === 'active') { u.restricted = false; u.restricted_until = null; u.strikes = 0; } // lifts a community restriction too
+        Setlo.toast(status === 'active' ? 'Account reactivated' : 'Account suspended', 'ok');
+      }
     },
   },
 });

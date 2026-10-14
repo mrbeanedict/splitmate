@@ -432,6 +432,15 @@ $steps = [
      ) ENGINE=InnoDB',
     // Moderation: 0 normal, 1 a hidden (abusive) message whose text was never saved, 2 Setlo Buddy's calm notice for it
     'ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS flag TINYINT NOT NULL DEFAULT 0 AFTER content',
+    // Community strikes for offensive posts and comments (includes/community_moderation.php)
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS violation_count TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER status',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS restricted_until DATETIME NULL AFTER violation_count',
+    'CREATE TABLE IF NOT EXISTS community_violations (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT UNSIGNED NOT NULL,
+       kind ENUM(\'post\',\'comment\',\'edit\') NOT NULL, category ENUM(\'profanity\',\'hate\',\'violence\') NOT NULL,
+       strike TINYINT UNSIGNED NOT NULL, restricted_until DATETIME NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, INDEX (user_id, created_at)
+     ) ENGINE=InnoDB',
 ];
 $hadTour = (bool) db()->query("SHOW COLUMNS FROM users LIKE 'onboarded_at'")->fetch();
 foreach ($steps as $sql) {

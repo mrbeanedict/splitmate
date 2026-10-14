@@ -128,10 +128,11 @@ function current_user(): ?array
     if ($user === false) {
         $user = null;
         if (!empty($_SESSION['user_id'])) {
-            $row = q('SELECT id, full_name, email, payment_method, currency, avatar_color, avatar, bg_mode, bg_image, role, status FROM users WHERE id = ?', [$_SESSION['user_id']])->fetch();
+            $row = q('SELECT id, full_name, email, payment_method, currency, avatar_color, avatar, bg_mode, bg_image, role, status, (restricted_until IS NOT NULL AND restricted_until > NOW()) AS restricted FROM users WHERE id = ?', [$_SESSION['user_id']])->fetch();
             // An admin account is only ever signed in under the admin cookie. Under the user cookie it can only be a
             // stale session (e.g. the database was reset and its id now belongs to the admin), so treat it as signed out.
-            if ($row && $row['status'] === 'active' && !($row['role'] === 'admin' && session_area() === 'user')) {
+            // A community restriction (strike 1 or 2) signs the account out until it ends: includes/community_moderation.php
+            if ($row && $row['status'] === 'active' && !$row['restricted'] && !($row['role'] === 'admin' && session_area() === 'user')) {
                 $row['id'] = (int) $row['id'];
                 $user = $row;
                 if ($row['role'] === 'user') {
