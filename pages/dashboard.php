@@ -102,7 +102,7 @@ foreach ($acctRows as [$href, $color, $paths, $title, $desc]):
     </div>
 
     <!-- Quick actions -->
-    <div class="grid grid-cols-4 gap-2">
+    <div class="grid grid-cols-5 gap-1.5">
       <a href="my-bills?new=1" class="flex flex-col items-center gap-1.5" data-tour="new-bill">
         <div class="qa-icon bg-brand-100/70 text-brand-600">
           <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V6a2 2 0 012-2h2M16 4h2a2 2 0 012 2v2M20 16v2a2 2 0 01-2 2h-2M8 20H6a2 2 0 01-2-2v-2M8 12h8"/></svg>
@@ -120,6 +120,12 @@ foreach ($acctRows as [$href, $color, $paths, $title, $desc]):
           <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M14.5 9.5c-.4-.9-1.4-1.5-2.5-1.5-1.4 0-2.5.8-2.5 2s1.1 1.7 2.5 2 2.5.8 2.5 2-1.1 2-2.5 2c-1.1 0-2.1-.6-2.5-1.5M12 6.5V8m0 8v1.5"/></svg>
         </div>
         <span class="text-[12px] font-semibold text-slate-600">Settle Up</span>
+      </a>
+      <a href="scan-pay" class="flex flex-col items-center gap-1.5">
+        <div class="qa-icon bg-fuchsia-100 text-fuchsia-600">
+          <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path stroke-linecap="round" d="M14 14h3v3h-3zM20 14v.01M14 20h3M20 17v4"/></svg>
+        </div>
+        <span class="text-[12px] font-semibold text-slate-600">Scan &amp; Pay</span>
       </a>
       <a href="stats?tab=history" class="flex flex-col items-center gap-1.5">
         <div class="qa-icon bg-slate-200/80 text-slate-600">
@@ -216,6 +222,7 @@ const SHOW_TOUR = <?= $showTour ? 'true' : 'false' ?>;
 // Where each page lives and the words people use for it; the dashboard search matches against these
 const SEARCH_INDEX = [
   { title: 'Dashboard', href: 'dashboard', hint: 'Your balance and active bills', kw: 'home overview balance summary' },
+  { title: 'Scan to pay', href: 'scan-pay', hint: 'Scan a friend’s Pay-me QR and pay them', kw: 'qr code camera scan pay friend send money gcash' },
   { title: 'Scan a receipt', href: 'scan-receipt', hint: 'Photograph a receipt to start a bill', kw: 'ocr camera photo upload new bill split' },
   { title: 'New bill', href: 'my-bills?new=1', hint: 'Start splitting a bill', kw: 'create split add expense dinner' },
   { title: 'My bills', href: 'my-bills', hint: 'Open and past bills', kw: 'bills active history receipts split' },

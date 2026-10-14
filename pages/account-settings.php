@@ -49,6 +49,19 @@ require __DIR__ . '/../partials/head.php';
     </details>
 
     <details class="tile acc">
+      <summary><span><span class="acc-title">Reminders</span><span class="acc-sub">Payment reminder emails</span></span><svg class="acc-chev" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg></summary>
+      <div class="acc-body">
+        <div class="flex items-center gap-3">
+          <div class="min-w-0 flex-1">
+            <p class="text-[14px] font-bold text-ink">Email me payment reminders</p>
+            <p class="mt-0.5 text-[12px] text-slate-400">When someone you owe sends a reminder or a due date comes close. The reminders inside Setlo always arrive.</p>
+          </div>
+          <button type="button" role="switch" :aria-checked="p && p.email_reminders ? 'true' : 'false'" aria-label="Email me payment reminders" class="switch switch-brand" :disabled="busy || !p" @click="setEmailReminders(!p.email_reminders)"><span></span></button>
+        </div>
+      </div>
+    </details>
+
+    <details class="tile acc">
       <summary><span><span class="acc-title">Appearance</span><span class="acc-sub">Color, light or dark, and background</span></span><svg class="acc-chev" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg></summary>
       <div class="acc-body">
         <div id="account" class="">

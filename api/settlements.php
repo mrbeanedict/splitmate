@@ -6,8 +6,9 @@
 // Any member of the bill may also pay a part of someone else's debt, optionally to be paid back (a new debt to them).
 require __DIR__ . '/../includes/api.php';
 require __DIR__ . '/../includes/uploads.php';
-require __DIR__ . '/../includes/paymongo.php';
+require_once __DIR__ . '/../includes/paymongo.php';
 require_once __DIR__ . '/../includes/payments.php';
+require_once __DIR__ . '/../includes/reminders.php';
 
 const NUDGE_COOLDOWN_HOURS = 12;
 
@@ -133,18 +134,6 @@ $receiverName = first_name($s['to_name']);
 // Paying for someone else: any member of the bill who is neither side of this debt.
 $covering = !$isSender && !$isReceiver && in_array(input('for_other'), ['1', 1, true], true) && is_member((int) $s['bill_id'], $me['id']);
 
-/** An amount of this settlement, in its currency: "₱500.00", "¥2,000". */
-function s_money(array $s, int $cents): string
-{
-    return money_str($cents, $s['currency'] ?? 'PHP');
-}
-
-/** Absolute URL of an app page, for PayMongo to send the payer back to. */
-function absolute_url(string $path): string
-{
-    return (is_https() ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . url($path);
-}
-
 /** The amount for this part, in cents: what was sent, or everything still open; between ₱1 (or $min) and what's open. */
 function part_cents(array $s, int $min = 100): int
 {
@@ -161,13 +150,6 @@ function part_cents(array $s, int $min = 100): int
         fail('Pay at least ' . s_money($s, min($min, $open)) . '.', 422, ['fields' => ['amount' => 'At least ' . s_money($s, min($min, $open)) . '.']]);
     }
     return $cents;
-}
-
-/** "₱500 (part, ₱700 left)" style wording for event notes and notifications. */
-function part_words(int $cents, array $s): string
-{
-    $left = cents($s['amount']) - cents($s['paid_amount']) - $cents;
-    return s_money($s, $cents) . ($left > 0 ? ' (part — ' . s_money($s, $left) . ' left after it)' : '');
 }
 
 $pdo = db();
@@ -366,7 +348,8 @@ switch (input('action', '')) {
             if ($paidOld) {
                 fail('An earlier online payment for this went through — tap “Check payment status” to count it first.', 409);
             }
-            q("DELETE FROM settlement_payments WHERE id = ? AND status = 'started'", [$old['id']]);
+            // The whole checkout goes, also the other debts it covered (a combined one from the Pay page)
+            q("DELETE FROM settlement_payments WHERE status = 'started' AND (id = ? OR (paymongo_session IS NOT NULL AND paymongo_session = ?))", [$old['id'], $old['paymongo_session']]);
         }
         $cents = part_cents($locked, PAYMONGO_MIN_CENTS);
         if ($cents < PAYMONGO_MIN_CENTS) {
@@ -409,21 +392,14 @@ switch (input('action', '')) {
             if (!$paid) {
                 continue;
             }
-            if ($paid['amount'] !== cents($p['amount'])) {
-                error_log("[setlo] PayMongo amount mismatch on settlement payment {$p['id']}: paid {$paid['amount']}, expected " . cents($p['amount']));
+            // One checkout can cover several debts (the Pay page): PayMongo reports the total, so compare with all of them
+            if ($paid['amount'] !== online_session_cents($p['paymongo_session'])) {
+                error_log("[setlo] PayMongo amount mismatch on settlement payment {$p['id']}: paid {$paid['amount']}, expected " . online_session_cents($p['paymongo_session']));
                 fail('The amount paid online doesn’t match this payment. Contact the app manager.', 409);
             }
-            $pdo->beginTransaction();
-            $locked = lock_settlement($id);
-            q('UPDATE settlement_payments SET payment_ref = ?, online_via = ?, online_detail = ? WHERE id = ?', [$paid['id'], $paid['via'], $paid['detail'], $p['id']]);
-            $payer = first_names([(int) $p['paid_by']])[(int) $p['paid_by']];
-            $via = online_via_name($paid['via'], $paid['detail']);
-            log_event($id, (int) $p['paid_by'], 'marked_paid', "$payer paid " . part_words($paid['amount'], $locked) . " online via PayMongo ($via, ref {$paid['id']})" . ((int) $p['paid_by'] !== (int) $s['from_user_id'] ? " for $debtorName" : '') . '.');
-            confirm_payment($locked, $p, null);
-            log_event($id, null, 'confirmed', 'PayMongo confirmed the payment.' . (settlement_payload($id, $me)['remaining'] > 0 ? '' : ' Settlement closed.'));
-            notify((int) $s['to_user_id'], 'confirmed', "$payer paid you " . s_money($s, $paid['amount']) . " online ($via) for {$s['bill_name']}. Counted automatically.", 'settlement-audit?id=' . $id);
-            $pdo->commit();
-            $counted++;
+            if (count_online_payment($p, $paid)) {
+                $counted++;
+            }
         }
         if (!$counted) {
             fail('PayMongo hasn’t received this payment yet. If you just paid, wait a moment and check again.', 409);
@@ -435,13 +411,10 @@ switch (input('action', '')) {
         if ($fromGuest) {
             fail('Guests don’t have an account, so they can’t get reminders.', 409);
         }
-        $left = s_money($s, cents($s['amount']) - cents($s['paid_amount']));
         if ($isReceiver && $s['status'] === 'pending') {
-            [$target, $msg] = [(int) $s['from_user_id'], "$myName sent a reminder: you owe $left for {$s['bill_name']}."];
-            $link = 'my-settlements';
+            $kind = 'manual';
         } elseif ($isSender && $s['status'] === 'awaiting') {
-            [$target, $msg] = [(int) $s['to_user_id'], "$myName is waiting for you to confirm their payment for {$s['bill_name']}."];
-            $link = 'my-settlements?tab=owed';
+            $kind = 'confirm';
         } else {
             fail('Nothing to remind about right now.', 409);
         }
@@ -453,11 +426,40 @@ switch (input('action', '')) {
             fail('You already sent a reminder recently. Try again later.', 429);
         }
         log_event($id, $me['id'], 'nudged', "$myName sent a reminder.");
-        notify($target, 'nudge', $msg, $link);
+        // In-app and, when SMTP is set up and they haven't opted out, an email (includes/reminders.php)
+        $sent = send_settlement_reminder($id, $kind, $myName);
+        $extra = ['emailed' => $sent['emailed']];
+        break;
+
+    case 'set_due':
+        // The person owed sets (or clears) when it should be paid by. Reminders follow it (tools/send-reminders.php).
+        if (!$isReceiver || !in_array($s['status'], ['pending', 'awaiting'], true)) {
+            fail('Only the person owed can set a due date, while it is still open.', 403);
+        }
+        $due = trim((string) input('due_on', ''));
+        if ($due !== '') {
+            $t = strtotime($due);
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $due) || !$t || date('Y-m-d', $t) !== $due) {
+                fail('Pick a valid date.', 422);
+            }
+            if ($due < date('Y-m-d')) {
+                fail('The due date can’t be in the past.', 422);
+            }
+            if ($t > strtotime('+2 years')) {
+                fail('Pick a date within the next 2 years.', 422);
+            }
+        }
+        q('UPDATE settlements SET due_on = ?, auto_reminded_at = NULL WHERE id = ?', [$due === '' ? null : $due, $id]);
+        log_event($id, $me['id'], 'due_set', $due === '' ? "$myName cleared the due date." : "$myName set the due date to " . date('M j, Y', strtotime($due)) . '.');
+        $emailed = false;
+        if ($due !== '' && !$fromGuest) {
+            $emailed = send_settlement_reminder($id, 'due_set', $myName)['emailed'];
+        }
+        $extra = ['emailed' => $emailed];
         break;
 
     default:
         fail('Unknown action.', 404);
 }
 
-json_ok(['settlement' => settlement_payload($id, $me)]);
+json_ok(['settlement' => settlement_payload($id, $me)] + ($extra ?? []));

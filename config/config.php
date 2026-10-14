@@ -31,6 +31,10 @@ return [
     // Detected automatically; set APP_BASE_URL on a server to override.
     'base_url' => $env('APP_BASE_URL', $detectBase()),
 
+    // Public address of the site, for links inside emails (payment reminders), e.g. https://setlo.example.com/setlo-splitmate.
+    // Empty: the address of the page that sent it, or http://localhost/<folder> for the scheduled job.
+    'app_url' => $env('APP_URL', ''),
+
     'uploads' => [
         'dir'          => __DIR__ . '/../uploads',   // receipts/, qr/ and proofs/ are created inside
         'max_bytes'    => 8 * 1024 * 1024,
@@ -69,6 +73,7 @@ return [
     'paymongo' => [
         'secret_key' => $env('PAYMONGO_SECRET_KEY', ''),
         'methods'    => ['gcash', 'paymaya', 'card'],
+        'base_url'   => $env('PAYMONGO_BASE_URL', ''),   // only for tests (a fake PayMongo); empty = PayMongo's own address
     ],
 
     // Outgoing email (the "Forgot password?" code) over SMTP. Gmail: smtp.gmail.com, port 587, "tls", and an App Password

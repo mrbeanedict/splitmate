@@ -13,6 +13,7 @@ $sections = [
     'Group Finance' => [
         'bills'  => ['my-bills', 'My bills', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M6 3h12v18l-3-2-3 2-3-2-3 2V3zM9 8h6M9 12h6"/>'],
         'groups' => ['groups', 'Groups', null, '<circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path stroke-linecap="round" d="M3 19c.8-3 3.2-4.6 6-4.6s5.2 1.6 6 4.6M15.5 14.6c2.6-.3 4.6 1.2 5.5 4.4"/>'],
+        'scanpay' => ['scan-pay', 'Scan to pay', null, '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path stroke-linecap="round" d="M14 14h3v3h-3zM20 14v.01M14 20h3M20 17v4"/>'],
         'settle' => ['my-settlements', 'Settle up', 'Settle', '<rect x="3" y="6" width="18" height="14" rx="2.5"/><path stroke-linecap="round" stroke-linejoin="round" d="M16 13h2M3 10h14a2 2 0 012 2"/>'],
     ],
     'Personal Finance' => [

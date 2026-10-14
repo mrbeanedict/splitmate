@@ -455,6 +455,9 @@ function settlement_row(array $s): array
         'remaining'      => pesos(max(0, $amount - $paid)),
         'interest_rate'  => $s['interest_rate'] === null ? null : (float) $s['interest_rate'],
         'interest_added' => pesos(max(0, $amount - $principal)),
+        // When the person owed wants it paid by; days_to_due is negative once it is overdue (null without a due date)
+        'due_on'         => $s['due_on'] ?? null,
+        'days_to_due'    => ($s['due_on'] ?? null) ? (int) round((strtotime($s['due_on']) - strtotime(date('Y-m-d'))) / 86400) : null,
         'bill_id'        => (int) $s['bill_id'],
         'bill_name'      => $s['bill_name'] ?? null,
         'bill_kind'      => $s['bill_kind'] ?? 'bill',

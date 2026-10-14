@@ -193,8 +193,62 @@
   }
 
   // ---------- Personal "Pay me" QR ----------
-  /** Absolute link a Pay-me QR points to (works from any page in /pages/). */
-  const payLink = (code) => new URL('pay.php?u=' + encodeURIComponent(code), location.href).href;
+  /**
+   * Absolute link a Pay-me QR points to. With APP_URL set (config/local.php, <meta name="app-url">) it uses that public or
+   * Wi-Fi address, so a friend's phone can open it; otherwise the address this page was opened on (works from any page in /pages/).
+   */
+  const payLink = (code) => {
+    const meta = document.querySelector('meta[name="app-url"]');
+    const base = meta && meta.content ? meta.content.replace(/\/+$/, '') : '';
+    const path = 'pay.php?u=' + encodeURIComponent(code);
+    return base ? base + '/pages/' + path : new URL(path, location.href).href;
+  };
+
+  /** True when a link can only be opened on this computer (localhost / 127.x / ::1), so a friend's phone can't use it. */
+  function isLocalLink(href) {
+    try {
+      const h = new URL(href).hostname.replace(/^\[|\]$/g, '');
+      return h === 'localhost' || h === '::1' || /^127\./.test(h);
+    } catch (e) { return false; }
+  }
+
+  /**
+   * The Pay-me code inside a scanned QR's text, or null if it isn't a Setlo pay link. Only the 12-character code is
+   * used (the page then opens this app's own pay page), so a link to any other address is never followed.
+   */
+  function parsePayQr(text) {
+    const s = String(text || '');
+    const m = /[?&]u=([A-Za-z0-9]{12})(?![A-Za-z0-9])/.exec(s);
+    return m && /\/pay(?:\.php)?\?/.test(s) ? m[1] : null;
+  }
+
+  let qrDetector;
+  /**
+   * Read a QR from a <video>, <img> or <canvas>: the browser's BarcodeDetector when it has one, else the bundled jsQR
+   * (assets/js/vendor/jsqr.js). Returns the text, or null when there is no QR in view.
+   */
+  async function decodeQr(el, { tryInverted = false } = {}) {
+    if (qrDetector === undefined) {
+      try { qrDetector = global.BarcodeDetector ? new global.BarcodeDetector({ formats: ['qr_code'] }) : null; } catch (e) { qrDetector = null; }
+    }
+    if (qrDetector) {
+      try {
+        const found = await qrDetector.detect(el);
+        if (found.length) return found[0].rawValue;
+      } catch (e) { /* fall back to jsQR below */ }
+    }
+    if (!global.jsQR) return null;
+    const sw = el.videoWidth || el.naturalWidth || el.width, sh = el.videoHeight || el.naturalHeight || el.height;
+    if (!sw || !sh) return null;
+    const k = Math.min(1, 900 / Math.max(sw, sh));
+    const c = document.createElement('canvas');
+    c.width = Math.round(sw * k);
+    c.height = Math.round(sh * k);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(el, 0, 0, c.width, c.height);
+    const r = global.jsQR(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height, { inversionAttempts: tryInverted ? 'attemptBoth' : 'dontInvert' });
+    return r ? r.data : null;
+  }
 
   /** SVG markup of a QR code for `text` (needs qrcode-generator, loaded in partials/head.php). */
   function qrSvg(text) {
@@ -227,6 +281,122 @@
       ctx.fillText(caption, size / 2, size + 34);
     }
     return c.toDataURL('image/png');
+  }
+
+  /** Draw a QR for `text` into a square of `size` px at (x, y) on a canvas context (dark modules on the existing background). */
+  function drawQr(ctx, text, x, y, size) {
+    const q = global.qrcode(0, 'M');
+    q.addData(text);
+    q.make();
+    const n = q.getModuleCount(), cell = size / n;
+    ctx.fillStyle = '#0f172a';
+    for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (q.isDark(r, col)) ctx.fillRect(Math.floor(x + col * cell), Math.floor(y + r * cell), Math.ceil(cell), Math.ceil(cell));
+  }
+
+  /**
+   * A shareable "Pay me" card as a PNG: header, avatar, name, a big QR and (only if asked) the payment number.
+   * o: { name, initials, color, photo, link, method, account, showAccount }. Returns Promise<{ blob, dataUrl }>.
+   */
+  async function qrCard(o) {
+    const font = '"Plus Jakarta Sans", system-ui, sans-serif';
+    const W = 1080, H = o.showAccount && o.account ? 1620 : 1500;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx = c.getContext('2d');
+    const brand = (n, fb) => (global.SetloTheme ? global.SetloTheme.color(n) : fb);
+    const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); };
+
+    ctx.fillStyle = '#eef3f3';
+    ctx.fillRect(0, 0, W, H);
+    // header band
+    const g = ctx.createLinearGradient(0, 0, W, 360);
+    g.addColorStop(0, brand(500, '#14b8a6'));
+    g.addColorStop(1, brand(700, '#0f766e'));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, 360);
+    ctx.fillStyle = '#fff';
+    ctx.font = `800 64px ${font}`;
+    ctx.textAlign = 'left';
+    ctx.fillText('setlo', 64, 112);
+    ctx.font = `600 30px ${font}`;
+    ctx.globalAlpha = 0.9;
+    ctx.fillText('Split bills. Pay friends.', 64, 160);
+    ctx.globalAlpha = 1;
+    // white card
+    ctx.save();
+    ctx.shadowColor = 'rgba(15,23,42,.18)';
+    ctx.shadowBlur = 40;
+    ctx.shadowOffsetY = 16;
+    ctx.fillStyle = '#fff';
+    rr(64, 250, W - 128, H - 330, 48);
+    ctx.fill();
+    ctx.restore();
+    // avatar
+    const ax = W / 2, ay = 250, ar = 96;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(ax, ay, ar + 12, 0, Math.PI * 2);
+    ctx.fill();
+    let drawn = false;
+    if (o.photo) {
+      try {
+        const img = await new Promise((res, rej) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => res(i); i.onerror = rej; i.src = o.photo; });
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(ax, ay, ar, 0, Math.PI * 2);
+        ctx.clip();
+        const s = Math.max((ar * 2) / img.width, (ar * 2) / img.height);
+        ctx.drawImage(img, ax - (img.width * s) / 2, ay - (img.height * s) / 2, img.width * s, img.height * s);
+        ctx.restore();
+        drawn = true;
+      } catch (e) { /* no photo: initials below */ }
+    }
+    if (!drawn) {
+      ctx.fillStyle = o.color || brand(600, '#0d9488');
+      ctx.beginPath();
+      ctx.arc(ax, ay, ar, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = `800 72px ${font}`;
+      ctx.textAlign = 'center';
+      ctx.fillText(o.initials || '', ax, ay + 26);
+    }
+    // name + title
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#0f172a';
+    let size = 64;
+    ctx.font = `800 ${size}px ${font}`;
+    while (ctx.measureText(o.name).width > W - 240 && size > 34) { size -= 4; ctx.font = `800 ${size}px ${font}`; }
+    ctx.fillText(o.name, W / 2, 440);
+    ctx.fillStyle = brand(700, '#0f766e');
+    ctx.font = `700 38px ${font}`;
+    ctx.fillText('Scan to pay me', W / 2, 500);
+    // QR
+    // a QR needs a quiet zone of about 4 modules around it to scan reliably, hence the wide white frame
+    const qs = 600, pad = 84, qx = (W - qs) / 2, qy = 614;
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#dfe7e7';
+    ctx.lineWidth = 4;
+    rr(qx - pad, qy - pad, qs + pad * 2, qs + pad * 2, 36);
+    ctx.fill();
+    ctx.stroke();
+    drawQr(ctx, o.link, qx, qy, qs);
+    let y = qy + qs + pad + 84;
+    if (o.showAccount && o.account) {
+      ctx.fillStyle = '#64748b';
+      ctx.font = `600 30px ${font}`;
+      ctx.fillText(o.method, W / 2, y);
+      ctx.fillStyle = '#0f172a';
+      ctx.font = `800 48px ${font}`;
+      ctx.fillText(o.account, W / 2, y + 62);
+      y += 130;
+    }
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `600 28px ${font}`;
+    ctx.fillText('Open Setlo → Scan to pay, or use your phone camera', W / 2, H - 120);
+    const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
+    return { blob, dataUrl: c.toDataURL('image/png') };
   }
 
   /** Swal showing someone's Pay-me QR plus their payment details. person: { name, payment_method, payment_account, pay_code } */
@@ -1444,5 +1614,5 @@
     }
   });
 
-  global.Setlo = { mount, run, load, useCurrency, allocate, roundShares, convertShares, currencies: CURRENCIES, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', confirm: confirmDialog, alert: alertDialog, promptText, showCopy, escapeHtml, payLink, qrSvg, qrPng, showPayQr, groupByReceipt, toggleArchive, afterSignUp, cropPhoto, captureCamera, compressImage, photoViewer, confetti, showAchievements, showAchievement: (a) => achievementModal(a, { reopened: true }), ...helpers };
+  global.Setlo = { mount, run, load, useCurrency, allocate, roundShares, convertShares, currencies: CURRENCIES, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', confirm: confirmDialog, alert: alertDialog, promptText, showCopy, escapeHtml, payLink, isLocalLink, parsePayQr, decodeQr, qrCard, qrSvg, qrPng, showPayQr, groupByReceipt, toggleArchive, afterSignUp, cropPhoto, captureCamera, compressImage, photoViewer, confetti, showAchievements, showAchievement: (a) => achievementModal(a, { reopened: true }), ...helpers };
 })(window);

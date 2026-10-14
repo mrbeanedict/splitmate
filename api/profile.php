@@ -11,7 +11,7 @@ const PAYMENT_METHODS = ['GCash', 'Maya', 'Bank Transfer', 'Cash'];
 
 function profile_of(int $userId): array
 {
-    $u = q('SELECT id, full_name, email, username, username_changes, username_locked_until, payment_method, payment_account, currency, pay_code, avatar_color, avatar, featured_achievement, bg_mode, bg_style, bg_image, google_sub FROM users WHERE id = ?', [$userId])->fetch();
+    $u = q('SELECT id, full_name, email, email_reminders, username, username_changes, username_locked_until, payment_method, payment_account, currency, pay_code, avatar_color, avatar, featured_achievement, bg_mode, bg_style, bg_image, google_sub FROM users WHERE id = ?', [$userId])->fetch();
     if ($u['pay_code'] === null) {
         // Safety net: every account has its own Pay-me code.
         $u['pay_code'] = new_pay_code();
@@ -27,6 +27,7 @@ function profile_of(int $userId): array
         'payment_account' => $u['payment_account'],
         'currency'        => $u['currency'],
         'pay_code'        => $u['pay_code'],
+        'email_reminders' => (bool) $u['email_reminders'],
         'google_linked'   => $u['google_sub'] !== null,
         'avatar'          => $u['avatar'], // 'pfp/<file>', 'up/<file>' or null: which picker choice is selected
         'background'      => user_background($u),
@@ -172,6 +173,11 @@ switch (input('action', '')) {
         }
         $changes++;
         q('UPDATE users SET username = ?, username_changes = ?, username_locked_until = ' . ($changes >= USERNAME_CHANGES ? 'NOW() + INTERVAL ' . USERNAME_WAIT_DAYS . ' DAY' : 'NULL') . ' WHERE id = ?', [$username, $changes, $me['id']]);
+        json_ok(['profile' => profile_of($me['id'])]);
+
+    case 'email_reminders':
+        // Payment reminder emails on or off (the in-app reminders always arrive)
+        q('UPDATE users SET email_reminders = ? WHERE id = ?', [input('on') ? 1 : 0, $me['id']]);
         json_ok(['profile' => profile_of($me['id'])]);
 
     case 'set_currency':

@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/../includes/bootstrap.php';
-require __DIR__ . '/../includes/paymongo.php';
+require_once __DIR__ . '/../includes/paymongo.php';
 $user = require_login();
 $title = 'My Settlements';
 $nav = 'settle';
@@ -23,12 +23,11 @@ require __DIR__ . '/../partials/head.php';
   <!-- The grids sit inside this flex-1 block (not on it), so desktop rows never stretch to fill the page height. -->
   <div class="flex-1 space-y-5 px-5 pb-6 pt-4">
     <spinner v-if="loading"></spinner>
-    <div v-else-if="!list.length && !q.trim() && !(tab === 'owe' && cover.length)" class="tile p-6 text-center">
+<?php $searchHint = 'Search by person or bill'; require __DIR__ . '/../partials/list-search.php'; ?>
+    <div v-if="!loading && !list.length && !q.trim() && !(tab === 'owe' && cover.length)" class="tile p-6 text-center">
       <p class="text-sm font-bold text-ink">{{ tab === 'owe' ? "You don't owe anyone" : 'Nobody owes you' }}</p>
       <p class="mt-1 text-[12px] text-slate-400">Settlements appear once a bill's split is confirmed.</p>
     </div>
-
-<?php $searchHint = 'Search by person or bill'; require __DIR__ . '/../partials/list-search.php'; ?>
     <p v-if="q.trim() && !loading && !sections.length" class="tile p-5 text-center text-[13px] text-slate-400">Nothing matches “{{ q.trim() }}”.</p>
     <section v-for="sec in sections" :key="sec.key">
       <div v-if="sec.title" class="mb-2 flex items-baseline justify-between gap-2 px-1">
@@ -108,6 +107,12 @@ require __DIR__ . '/../partials/head.php';
         </span>
       </p>
 
+      <!-- Due date: the person owed sets it; reminders follow it (tools/send-reminders.php) -->
+      <div v-if="s.status !== 'settled' && (s.due_on || (tab === 'owed' && ['pending', 'awaiting'].includes(s.status)))" class="mt-2.5 flex flex-wrap items-center gap-2 text-[12px]">
+        <span v-if="s.due_on" class="inline-flex items-center rounded-full px-2.5 py-1 font-bold" :class="dueClass(s)">{{ dueLabel(s) }}</span>
+        <button v-if="tab === 'owed' && ['pending', 'awaiting'].includes(s.status)" @click="openDue(s)" class="font-bold text-brand-700" :disabled="busy">{{ s.due_on ? 'Change due date' : 'Set due date' }}</button>
+      </div>
+
       <div class="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
         <status-pill :status="s.status" :label="tab === 'owed' && s.status === 'awaiting' ? 'Awaiting Your Confirmation' : null"></status-pill>
 
@@ -117,7 +122,7 @@ require __DIR__ . '/../partials/head.php';
           <div v-else-if="s.status !== 'settled'" class="ml-auto flex flex-wrap items-center justify-end gap-2">
             <template v-if="s.status === 'awaiting'">
               <button v-if="canNudge(s)" @click="nudge(s)" class="btn btn-ghost btn-sm !px-2.5 !text-brand-700" :disabled="busy">Remind to confirm</button>
-              <span v-else-if="s.my_last_nudge" class="text-[11px] font-semibold text-slate-400">Reminded {{ timeAgo(s.my_last_nudge) }}</span>
+              <span v-else-if="s.my_last_nudge" class="text-[11px] font-semibold text-slate-400" :title="'Reminded ' + timeAgo(s.my_last_nudge)">Remind again in {{ cooldownLeft(s) }}</span>
             </template>
             <button v-if="s.open > 0" @click="openPay(s, false)" class="btn btn-primary btn-sm" :disabled="busy">{{ s.paid_amount > 0 || s.status === 'awaiting' ? 'Pay more' : 'Pay' }}</button>
           </div>
@@ -132,7 +137,7 @@ require __DIR__ . '/../partials/head.php';
           <div v-if="s.status !== 'settled'" class="ml-auto flex flex-wrap items-center justify-end gap-2">
             <template v-if="s.status === 'pending'">
               <button v-if="canNudge(s)" @click="nudge(s)" class="btn btn-ghost btn-sm !px-2.5 !text-brand-700" :disabled="busy">Remind</button>
-              <span v-else-if="s.my_last_nudge" class="text-[11px] font-semibold text-slate-400">Reminded {{ timeAgo(s.my_last_nudge) }}</span>
+              <span v-else-if="s.my_last_nudge" class="text-[11px] font-semibold text-slate-400" :title="'Reminded ' + timeAgo(s.my_last_nudge)">Remind again in {{ cooldownLeft(s) }}</span>
             </template>
             <button v-if="s.open > 0" @click="openCash(s)" class="btn btn-accent btn-sm" :disabled="busy">Cash Received</button>
           </div>
@@ -471,8 +476,37 @@ Setlo.mount({
         const now = new Date();
         const pad = (n) => String(n).padStart(2, '0');
         s.my_last_nudge = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-        Setlo.toast('Reminder sent to ' + (this.tab === 'owe' ? s.to.first : s.from.first), 'ok');
+        const who = this.tab === 'owe' ? s.to.first : s.from.first;
+        Setlo.toast('Reminder sent to ' + who + (r.emailed ? ' (app + email)' : ' (in the app)'), 'ok');
       }
+    },
+    /** Time left before Remind can be pressed again (the server enforces 12 hours): "5h 20m" or "40m". */
+    cooldownLeft(s) {
+      const ms = new Date(s.my_last_nudge.replace(' ', 'T')).getTime() + 12 * 3600 * 1000 - Date.now();
+      const mins = Math.max(1, Math.ceil(ms / 60000));
+      return mins >= 60 ? Math.floor(mins / 60) + 'h' + (mins % 60 ? ' ' + (mins % 60) + 'm' : '') : mins + 'm';
+    },
+    dueDate(s) { return new Date(s.due_on + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }); },
+    dueLabel(s) {
+      const d = s.days_to_due, n = Math.abs(d) + (Math.abs(d) === 1 ? ' day' : ' days');
+      if (d < 0) return 'Overdue ' + n + ' · was due ' + this.dueDate(s);
+      return d === 0 ? 'Due today' : 'Due ' + this.dueDate(s) + ' · in ' + n;
+    },
+    dueClass(s) { return s.days_to_due < 0 ? 'bg-rose-50 text-rose-600' : s.days_to_due <= 3 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'; },
+    /** The person owed picks (or clears) the date this debt should be paid by. */
+    async openDue(s) {
+      const t = new Date(), pad = (n) => String(n).padStart(2, '0');
+      const today = t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate());
+      const res = await Swal.fire({
+        title: 'Due date', text: 'When should ' + s.from.first + ' pay ' + this.peso(s.remaining, s.currency) + '? They get reminders before it, on it, and while it is overdue.',
+        input: 'date', inputValue: s.due_on || '', inputAttributes: { min: today }, inputValidator: (v) => (v ? null : 'Pick a date.'),
+        showCancelButton: true, confirmButtonText: 'Save', showDenyButton: !!s.due_on, denyButtonText: 'Clear',
+        confirmButtonColor: window.SetloTheme ? SetloTheme.color(600) : '#0d9488', reverseButtons: true, customClass: { popup: 'setlo-swal' },
+      });
+      if (res.isDismissed) return;
+      const due = res.isDenied ? '' : res.value;
+      const r = await Setlo.run(this, () => api.post('settlements.php', { action: 'set_due', id: s.id, due_on: due }));
+      if (r) await this.after(r, due ? 'Due date saved' + (r.emailed ? ' · ' + s.from.first + ' was emailed' : '') : 'Due date cleared', 'ok');
     },
     showQr(person) { Setlo.showPayQr(person); },
     setAmount(v) { this.payAmount = v.toFixed(2); this.touch('amount'); },

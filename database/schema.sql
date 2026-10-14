@@ -5,13 +5,14 @@ CREATE DATABASE IF NOT EXISTS setlo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicod
 USE setlo;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS assistant_messages, purchase_events, purchases, community_translations, community_saves, community_comments, community_reactions, community_photos, community_posts, feedback, settlement_payment_proofs, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
+DROP TABLE IF EXISTS qr_payments, assistant_messages, purchase_events, purchases, community_translations, community_saves, community_comments, community_reactions, community_photos, community_posts, feedback, settlement_payment_proofs, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
 SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE users (
   id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   full_name       VARCHAR(100) NOT NULL,
   email           VARCHAR(190) NULL UNIQUE,       -- NULL for guests
+  email_reminders TINYINT(1) NOT NULL DEFAULT 1,  -- 0 = no payment reminder emails (the in-app ones still arrive)
   username        VARCHAR(20) NULL UNIQUE,        -- unique lowercase handle (a-z 0-9 _); signs in like the email does; NULL for guests
   password_hash   VARCHAR(255) NOT NULL,
   google_sub      VARCHAR(64) NULL UNIQUE,        -- Google account id when linked via "Continue with Google"
@@ -196,6 +197,8 @@ CREATE TABLE settlements (
   local_rate_source VARCHAR(60) NULL,
   local_rate_at     DATETIME NULL,
   interest_rate   DECIMAL(5,2) NULL,              -- % of what's left, added after each partial payment
+  due_on          DATE NULL,                      -- when the person owed wants it paid by (reminders follow it)
+  auto_reminded_at DATETIME NULL,                 -- last automatic reminder (tools/send-reminders.php)
   status          ENUM('pending','awaiting','settled','disputed') NOT NULL DEFAULT 'pending',
   settle_method   ENUM('online','transfer','cash','credit','mixed') NULL, -- how it was paid: online = PayMongo, transfer = ref/screenshot, cash = receiver settled in person
   paid_at         DATETIME NULL,
@@ -217,7 +220,7 @@ CREATE TABLE settlement_events (
   id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   settlement_id  INT UNSIGNED NOT NULL,
   actor_id       INT UNSIGNED NULL,
-  event          ENUM('created','marked_paid','confirmed','disputed','resent','nudged','interest','covered') NOT NULL,
+  event          ENUM('created','marked_paid','confirmed','disputed','resent','nudged','interest','covered','due_set') NOT NULL,
   note           VARCHAR(500) NULL,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (settlement_id) REFERENCES settlements(id) ON DELETE CASCADE,
@@ -248,6 +251,27 @@ CREATE TABLE settlement_payments (
   FOREIGN KEY (settlement_id) REFERENCES settlements(id) ON DELETE CASCADE,
   FOREIGN KEY (paid_by)       REFERENCES users(id),
   INDEX (status)
+) ENGINE=InnoDB;
+
+-- Money sent to someone through their Pay-me QR with no debt behind it (pages/pay.php "Send money"). Paid online (PayMongo).
+CREATE TABLE qr_payments (
+  id               INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  from_user_id     INT UNSIGNED NOT NULL,
+  to_user_id       INT UNSIGNED NOT NULL,
+  amount           DECIMAL(10,2) NOT NULL,
+  currency         CHAR(3) NOT NULL DEFAULT 'PHP',
+  note             VARCHAR(100) NULL,
+  status           ENUM('started','paid','cancelled') NOT NULL DEFAULT 'started', -- started: checkout opened; paid: PayMongo confirmed it; cancelled: replaced by a newer one (kept, so the hourly limit counts it)
+  paymongo_session VARCHAR(80) NULL,
+  payment_ref      VARCHAR(60) NULL,
+  online_via       VARCHAR(20) NULL,
+  online_detail    VARCHAR(40) NULL,
+  created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  paid_at          DATETIME NULL,
+  FOREIGN KEY (from_user_id) REFERENCES users(id),
+  FOREIGN KEY (to_user_id)   REFERENCES users(id),
+  INDEX (to_user_id, status),
+  INDEX (from_user_id, status)
 ) ENGINE=InnoDB;
 
 -- Legacy: extra cash kept by the receiver, before it became a change utang (bills.change_payment_id).
@@ -569,6 +593,7 @@ CREATE TABLE assistant_messages (
   user_id    INT UNSIGNED NOT NULL,
   role       ENUM('user','model') NOT NULL,
   content    TEXT NOT NULL,
+  flag       TINYINT NOT NULL DEFAULT 0,          -- 0 normal, 1 hidden abusive message (text never saved), 2 Setlo Buddy's calm notice for it
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX (user_id, id),

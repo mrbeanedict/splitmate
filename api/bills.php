@@ -176,9 +176,9 @@ if (method() === 'GET') {
                 // Offer to save these people as a group (with Fun Mode) — Review asks once after a scan
                 'group_suggest'  => group_suggestion($bill, $me),
                 'game_pending'   => game_pending($bill),
-                'game'           => ($g = current_game($bill['id'])) && $g['status'] === 'done' && $g['game'] !== 'skip'
+                'game'           => ($g = current_game($bill['id'])) && isset(GAMES[$g['game']]) && $g['status'] === 'done' && $g['game'] !== 'skip'
                     ? ['game' => $g['game'], 'title' => GAMES[$g['game']]['emoji'] . ' ' . GAMES[$g['game']]['title'], 'result' => $g['state']['result'] ?? null]
-                    : ($g && $g['status'] !== 'done' ? ['game' => $g['game'], 'live' => true] : null),
+                    : ($g && isset(GAMES[$g['game']]) && $g['status'] !== 'done' ? ['game' => $g['game'], 'live' => true] : null),
             ],
             'me'          => ['id' => $me['id'], 'is_creator' => $creator, 'is_payer' => $bill['payer_id'] === $me['id'], 'currency' => user_currency($me['id'])],
             'members'     => $members,
