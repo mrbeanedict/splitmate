@@ -47,6 +47,16 @@ return [
         'timeout' => 40,   // seconds per attempt; a busy model can otherwise hang for over a minute. Scans with plain names + meal sets take longer to answer
     ],
 
+    // Setlo Buddy (the chat assistant) runs on Groq, not Gemini, so chatting never uses up receipt-scan limits.
+    // Free key at https://console.groq.com/keys . Empty = the chat button is hidden.
+    'groq' => [
+        'api_key'         => $env('GROQ_API_KEY', ''),
+        'model'           => $env('GROQ_MODEL', 'openai/gpt-oss-120b'),
+        'fallback_models' => ['openai/gpt-oss-20b', 'qwen/qwen3.8-27b'],   // tried when the main model is busy, rate-limited or gone
+        'timeout'         => 30,                          // seconds per attempt
+        'base_url'        => $env('GROQ_BASE_URL', ''),  // only for tests; empty = Groq's own address
+    ],
+
     // "Continue with Google": an OAuth 2.0 Web client ID from https://console.cloud.google.com/apis/credentials
     // (add http://localhost and your site's address under "Authorized JavaScript origins"). Empty = button explains it's not set up.
     'google' => [
