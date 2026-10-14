@@ -182,10 +182,18 @@ require __DIR__ . '/../partials/head.php';
   </div>
 
   <!-- Add / edit -->
+  <transition name="pc-modal">
   <div v-if="form" class="sheet-backdrop" @click.self="form = null">
-    <form class="sheet" @submit.prevent="save" novalidate>
+    <form class="sheet pc-sheet" @submit.prevent="save" novalidate>
       <div class="sheet-grip"></div>
-      <h2 class="text-[17px] font-extrabold text-ink">{{ form.id ? 'Edit purchase' : form.receipt_image ? 'Check your receipt' : 'Add a purchase' }}</h2>
+      <div class="pc-head">
+        <span class="pc-head-ico" aria-hidden="true">{{ form.id ? '✏️' : form.receipt_image ? '🧾' : '🛍️' }}</span>
+        <div class="pc-head-txt">
+          <h2 class="text-[18px] font-extrabold leading-tight text-ink">{{ form.id ? 'Edit purchase' : form.receipt_image ? 'Check your receipt' : 'Add a purchase' }}</h2>
+          <p class="text-[12px] text-slate-400">{{ form.id ? 'Update the details below' : 'Track what you spend, just for you' }}</p>
+        </div>
+        <button type="button" class="pc-x" @click="closeForm" aria-label="Close">✕</button>
+      </div>
       <p v-if="form.scanned" class="mt-1 text-[12px] text-slate-500">Read from your receipt{{ form.items ? ' (' + form.items + ' item' + (form.items === 1 ? '' : 's') + ')' : '' }} — fix anything that looks off.</p>
       <p v-if="form.other_currency" class="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-800">The receipt looks like {{ form.other_currency }}. Enter the amount in {{ d.currency }}.</p>
 
@@ -200,7 +208,7 @@ require __DIR__ . '/../partials/head.php';
       <div class="pc-grid2 mt-4">
         <div>
           <label class="field-label" for="pc-amount">Amount ({{ d.currency }})</label>
-          <input id="pc-amount" data-field="amount" v-model="form.amount" @input="touch('amount')" :class="{ 'is-invalid': err('amount') }" class="input-soft" inputmode="decimal" placeholder="0.00" />
+          <input id="pc-amount" data-field="amount" v-model="form.amount" @input="touch('amount')" :class="{ 'is-invalid': err('amount') }" class="input-soft pc-amount" inputmode="decimal" placeholder="0.00" />
           <p v-if="err('amount')" class="field-error">{{ err('amount') }}</p>
         </div>
         <div>
@@ -210,11 +218,10 @@ require __DIR__ . '/../partials/head.php';
         </div>
       </div>
 
-      <label class="field-label mt-4" for="pc-cat">Category</label>
-      <select id="pc-cat" data-field="category" v-model="form.category" @change="touch('category')" :class="{ 'is-invalid': err('category') }" class="input-soft">
-        <option value="" disabled>Choose one</option>
-        <option v-for="c in d.categories" :key="c" :value="c">{{ c }}</option>
-      </select>
+      <p class="field-label mt-4" id="pc-cat-l">Category</p>
+      <div id="pc-cat" data-field="category" tabindex="-1" class="pc-pick" role="radiogroup" aria-labelledby="pc-cat-l" :class="{ 'is-invalid': err('category') }">
+        <button v-for="c in d.categories" :key="c" type="button" role="radio" :aria-checked="form.category === c" :class="{ on: form.category === c }" @click="form.category = c; touch('category')">{{ c }}</button>
+      </div>
       <p v-if="err('category')" class="field-error">{{ err('category') }}</p>
 
       <p class="field-label mt-4">Payment</p>
@@ -257,10 +264,12 @@ require __DIR__ . '/../partials/head.php';
       <button v-if="form.id" type="button" @click="remove" class="btn btn-ghost mt-1 w-full !text-rose-600" :disabled="busy">Delete purchase</button>
     </form>
   </div>
+  </transition>
 
   <!-- Settle a purchase that was still to pay -->
+  <transition name="pc-modal">
   <div v-if="settling" class="sheet-backdrop" @click.self="settling = null">
-    <form class="sheet" @submit.prevent="settle" novalidate>
+    <form class="sheet pc-sheet" @submit.prevent="settle" novalidate>
       <div class="sheet-grip"></div>
       <h2 class="text-[17px] font-extrabold text-ink">Mark as paid</h2>
       <p class="mt-1 text-[13px] text-slate-500">{{ settling.title }} · <b class="text-ink">{{ peso(settling.amount, d.currency) }}</b></p>
@@ -283,6 +292,7 @@ require __DIR__ . '/../partials/head.php';
       </div>
     </form>
   </div>
+  </transition>
 </div>
 
 <script>

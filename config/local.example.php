@@ -5,6 +5,7 @@
 
 return [
     'GEMINI_API_KEY'      => '',   // receipt scanning - free key at https://aistudio.google.com/apikey
+    'GROQ_API_KEY'        => '',   // Setlo Buddy chat - free key at https://console.groq.com/keys (separate from Gemini, so chatting never affects receipt scanning)
     'GOOGLE_CLIENT_ID'    => '',   // "Continue with Google"
     'PAYMONGO_SECRET_KEY' => '',   // "Pay online" - use a TEST key (sk_test_...)
 

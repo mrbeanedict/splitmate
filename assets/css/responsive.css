@@ -1,0 +1,63 @@
+/* Device-independent hardening, loaded on every page after app.css (plain CSS, no Tailwind rebuild).
+   Covers phones of any make (iPhone, Samsung, Xiaomi, Oppo, Vivo, Realme, Pixel...), tablets, laptops and big monitors. */
+
+/* --- Text and touch behaviour that differs between phone browsers --- */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; } /* landscape iPhones/Androids must not inflate text */
+a, button, summary, [role="button"], select, label, input[type="checkbox"], input[type="radio"] { touch-action: manipulation; } /* no 300ms tap delay, no double-tap zoom on controls */
+img, video, canvas, svg { max-width: 100%; }
+img, video { height: auto; }
+.keep-size img, .logo-img, svg[width], svg[height] { max-width: none; } /* icons keep their own size */
+body { overflow-wrap: anywhere; }                       /* a long word or URL can never push the page sideways */
+pre, code, table { overflow-wrap: normal; }
+
+/* --- Full-height screens: the URL bar on phones changes the viewport, so prefer dvh and respect notches --- */
+.min-h-screen, .landing, .landing-grid, .device { min-height: 100vh; min-height: 100dvh; }
+@supports (padding: max(0px)) {
+  .nav2 { padding-bottom: max(.75rem, env(safe-area-inset-bottom)); }          /* bottom bar above the iPhone home indicator */
+  .device, .landing, .lp { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); } /* landscape notch */
+  .app-hero { padding-top: max(2rem, calc(env(safe-area-inset-top) + 1rem)); }  /* status bar / camera cut-out */
+}
+
+/* --- Inputs: iOS Safari zooms the page when a field under 16px is focused, so keep fields at 16px on touch screens --- */
+@media (pointer: coarse), (max-width: 820px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea { font-size: max(16px, 1em); }
+}
+
+/* --- Bigger tap areas for small text buttons/links on touch screens, without changing the layout --- */
+@media (pointer: coarse) {
+  html :is(a, button):not([class*="btn"]):not([class*="pill"]):not([class*="nav"]):is([class*="text-xs"], [class*="text-["], [class*="font-bold"], [class*="font-semibold"]),
+  html :is(.sc-toggle, .cm-link, .lp-link, .rv-chip, .cm-chip, .um-dots), html .cm-cmeta :is(a, button) {
+    padding-block: 9px; margin-block: -9px;
+  }
+  .cm-icon-btn, .um-dots { min-width: 40px; min-height: 40px; }
+  .nav2 a, .nav2 button { min-height: 44px; justify-content: center; }
+}
+
+/* --- Very narrow phones (320-360px: iPhone SE, small Androids) --- */
+@media (max-width: 380px) {
+  /* Scan/Review/Assign progress: only the current step keeps its label, so all four fit on one row */
+  .steps { gap: .35rem; padding-left: .75rem; padding-right: .75rem; }
+  .step:not(.current) { font-size: 0; gap: 0; }
+  .step:not(.current) .dot { font-size: 11px; }
+  .step-line { min-width: .5rem; }
+  .app-hero { padding-left: 1rem; padding-right: 1rem; }
+}
+
+/* --- Phones held sideways: short screens shouldn't waste height on tall headers --- */
+@media (max-height: 480px) and (orientation: landscape) {
+  .app-hero { padding-top: .75rem; padding-bottom: .75rem; }
+  .landing-grid { padding-top: 4rem; }
+}
+
+/* --- Large monitors: keep content readable instead of stretching it --- */
+@media (min-width: 1700px) {
+  html { font-size: 17px; }
+}
+@media (min-width: 2300px) {
+  html { font-size: 19px; }
+}
+
+/* --- People who ask for less motion --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}

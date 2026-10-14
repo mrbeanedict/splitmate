@@ -392,6 +392,12 @@ $steps = [
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarded_at DATETIME NULL AFTER bg_image',
     // Guest access: a guest member's private link to see their share without an account (pages/guest.php)
     'ALTER TABLE bill_members ADD COLUMN IF NOT EXISTS view_token CHAR(24) NULL UNIQUE AFTER game_share',
+    // Setlo AI chat (api/assistant.php): each user's recent conversation
+    'CREATE TABLE IF NOT EXISTS assistant_messages (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT UNSIGNED NOT NULL, role ENUM(\'user\',\'model\') NOT NULL,
+       content TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, INDEX (user_id, id), INDEX (user_id, created_at)
+     ) ENGINE=InnoDB',
 ];
 $hadTour = (bool) db()->query("SHOW COLUMNS FROM users LIKE 'onboarded_at'")->fetch();
 foreach ($steps as $sql) {

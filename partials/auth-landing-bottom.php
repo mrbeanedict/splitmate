@@ -1,7 +1,5 @@
 <?php // Closes the landing shell opened by auth-landing-top.php and adds the phone mockup (xl screens). ?>
-      <p class="mt-6 text-center text-[12px] text-slate-400">
-        © 2026 Setlo
-      </p>
+      <p class="mt-6 text-center text-[12px] text-slate-400">© 2026 Setlo</p>
     </main>
 
     <!-- Right: callout + illustrative phone -->

@@ -35,6 +35,19 @@ require __DIR__ . '/../partials/admin-top.php';
   .ua-legend i.on { background: #14b8a6; }
   .ua-day { display: flex; justify-content: space-between; gap: .75rem; padding: .6rem 0; border-bottom: 1px solid #f1f5f9; font-size: .85rem; }
   .ua-dot { display: inline-block; width: 7px; height: 7px; border-radius: 999px; background: #10b981; margin-right: .35rem; vertical-align: 1px; }
+  /* Row actions: a single ⋯ button that opens a menu (fixed, so the table's scroll box can't clip it). */
+  .um-dots { width: 34px; height: 34px; border-radius: 50%; border: 0; background: none; color: #64748b; font-size: 20px; line-height: 1; cursor: pointer; }
+  .um-dots:hover, .um-dots[aria-expanded="true"] { background: #f1f5f5; color: #0f172a; }
+  .um-dots:focus-visible, .um-item:focus-visible { outline: 3px solid rgb(45 212 191 / .6); outline-offset: 1px; }
+  .um-menu { position: fixed; z-index: 60; min-width: 210px; padding: 6px; background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; box-shadow: 0 18px 40px -12px rgb(15 23 42 / .35); animation: um-pop .12s ease-out; }
+  .um-item { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; padding: 9px 10px; border-radius: 10px; font-size: 13.5px; font-weight: 600; color: #334155; text-align: left; cursor: pointer; }
+  .um-item:hover:not(:disabled), .um-item:focus-visible { background: #f1f5f5; }
+  .um-item:disabled { opacity: .5; cursor: not-allowed; }
+  .um-item svg { width: 17px; height: 17px; flex: none; }
+  .um-item.danger { color: #e11d48; } .um-item.ok { color: #059669; }
+  .um-sep { border: 0; border-top: 1px solid #e8eeee; margin: 4px 2px; }
+  @keyframes um-pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .um-menu { animation: none; } }
 </style>
 <div id="app" class="space-y-4 p-5 md:p-8" v-cloak>
   <div class="flex flex-wrap items-center justify-between gap-3">
@@ -71,15 +84,27 @@ require __DIR__ . '/../partials/admin-top.php';
             <status-pill v-else status="active"></status-pill>
           </td>
           <td class="td text-right">
-            <button v-if="u.status === 'active'" @click="setStatus(u, 'suspended')" class="text-xs font-semibold text-red-500" :disabled="busy">Suspend</button>
-            <button v-else @click="setStatus(u, 'active')" class="text-xs font-semibold text-emerald-600" :disabled="busy">Reactivate</button>
-            <button @click="openActivity(u)" class="ml-3 text-xs font-semibold text-slate-500 hover:text-brand-700">Activity</button>
-            <button @click="resetPassword(u)" class="ml-3 text-xs font-semibold text-slate-500 hover:text-brand-700" :disabled="busy">Reset password</button>
+            <button type="button" class="um-dots" :aria-expanded="menu && menu.id === u.id ? 'true' : 'false'" aria-haspopup="menu" :aria-label="'Actions for ' + u.name" @click.stop="openMenu(u, $event)">⋯</button>
           </td>
         </tr>
         <tr v-if="!users.length"><td colspan="8" class="td py-8 text-center text-slate-400">No users found.</td></tr>
       </tbody>
     </table>
+    <div v-if="menu" class="um-menu" role="menu" :style="{ top: menu.top + 'px', left: menu.left + 'px' }" @click.stop @keydown="menuKey">
+      <button type="button" role="menuitem" class="um-item" @click="pick((u) => openActivity(u))">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12h4l3-8 4 16 3-8h4"/></svg>View activity
+      </button>
+      <button type="button" role="menuitem" class="um-item" :disabled="busy" @click="pick((u) => resetPassword(u))">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a4 4 0 11-6.9 2.7L3 14.8V18h3.2v-2h2v-2h2l1.2-1.2A4 4 0 0015 7z"/></svg>Reset password
+      </button>
+      <hr class="um-sep" />
+      <button v-if="menu.user.status === 'active'" type="button" role="menuitem" class="um-item danger" :disabled="busy" @click="pick((u) => setStatus(u, 'suspended'))">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M5.6 5.6l12.8 12.8"/></svg>Suspend account
+      </button>
+      <button v-else type="button" role="menuitem" class="um-item ok" :disabled="busy" @click="pick((u) => setStatus(u, 'active'))">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 12.5l2.7 2.7L16 9.8"/></svg>Reactivate account
+      </button>
+    </div>
   </div>
 
   <!-- User activity drawer -->
@@ -129,13 +154,25 @@ require __DIR__ . '/../partials/admin-top.php';
 
 <script>
 Setlo.mount({
-  data: () => ({ loading: true, busy: false, users: [], q: '', sort: 'new', timer: null, cur: null, act: null }),
+  data: () => ({ loading: true, busy: false, users: [], q: '', sort: 'new', timer: null, cur: null, act: null, menu: null }),
   async mounted() {
     await Setlo.load(this, 'admin.php', { view: 'users', q: '' }, (r) => { this.users = r.users; });
-    this._key = (e) => { if (e.key === 'Escape' && this.cur) this.closeActivity(); };
+    this._key = (e) => {
+      if (e.key === 'Escape' && this.menu) this.closeMenu(true);
+      else if (e.key === 'Escape' && this.cur) this.closeActivity();
+    };
+    this._close = () => this.closeMenu();
     document.addEventListener('keydown', this._key);
+    document.addEventListener('click', this._close);
+    window.addEventListener('scroll', this._close, true);
+    window.addEventListener('resize', this._close);
   },
-  beforeUnmount() { document.removeEventListener('keydown', this._key); },
+  beforeUnmount() {
+    document.removeEventListener('keydown', this._key);
+    document.removeEventListener('click', this._close);
+    window.removeEventListener('scroll', this._close, true);
+    window.removeEventListener('resize', this._close);
+  },
   computed: {
     /** 13 weeks × 7 days, Sunday-first columns ending with this week; days after today are blank. */
     heat() {
@@ -184,6 +221,32 @@ Setlo.mount({
       }
     },
     closeActivity() { this.cur = null; this.act = null; },
+    /** The ⋯ menu: placed from the button's position, opening upward when there's no room below. */
+    openMenu(u, e) {
+      if (this.menu && this.menu.id === u.id) { this.closeMenu(); return; }
+      const btn = e.currentTarget;
+      const r = btn.getBoundingClientRect();
+      const width = 210, height = 150;
+      const left = Math.max(8, Math.min(window.innerWidth - width - 8, r.right - width));
+      const top = r.bottom + height + 12 > window.innerHeight ? Math.max(8, r.top - height - 6) : r.bottom + 6;
+      this.menu = { id: u.id, user: u, top, left, btn };
+      this.$nextTick(() => { const first = document.querySelector('.um-menu .um-item'); if (first) first.focus(); });
+    },
+    closeMenu(refocus) {
+      if (!this.menu) return;
+      const btn = this.menu.btn;
+      this.menu = null;
+      if (refocus && btn && btn.focus) btn.focus();
+    },
+    /** The user is taken before the menu closes (closing clears it), then handed to the action. */
+    pick(fn) { const u = this.menu && this.menu.user; this.closeMenu(); if (u) fn(u); },
+    menuKey(e) {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      const items = [...document.querySelectorAll('.um-menu .um-item:not(:disabled)')];
+      const i = items.indexOf(document.activeElement);
+      items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+    },
     queue() { clearTimeout(this.timer); this.timer = setTimeout(() => Setlo.run(this, this.load), 300); },
     async resetPassword(u) {
       if (!(await Setlo.confirm({ title: 'Reset ' + u.name + '’s password?', text: 'Their current password will stop working right away.', confirmText: 'Reset password', danger: true }))) return;

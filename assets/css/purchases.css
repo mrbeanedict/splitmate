@@ -66,3 +66,32 @@ html.dark .pc-scan-paper { background-color: rgb(var(--field)); }
   .pc-toolbar .pc-chips { flex-wrap: wrap; overflow: visible; padding-bottom: 0; }
 }
 html.dark .pc-cat { border-color: rgb(var(--slate-200)); }
+/* Add / edit / settle sheets: fade the backdrop, spring the card up, and the same in reverse on close. */
+.pc-modal-enter-active, .pc-modal-leave-active { transition: opacity .25s ease, backdrop-filter .25s ease; }
+.pc-modal-enter-from, .pc-modal-leave-to { opacity: 0; }
+.pc-modal-enter-active .pc-sheet { animation: pc-rise .38s cubic-bezier(.2, .9, .3, 1.15) both; }
+.pc-modal-leave-active .pc-sheet { transition: transform .25s ease, opacity .25s ease; transform: translateY(36px) scale(.97); opacity: 0; }
+.sheet-backdrop:has(.pc-sheet) { backdrop-filter: blur(3px); }
+.pc-sheet { box-shadow: 0 30px 70px -20px rgba(15, 23, 42, .45); scrollbar-width: thin; scrollbar-color: rgb(var(--brand-500) / .35) transparent; }
+.pc-sheet::-webkit-scrollbar { width: 6px; }
+.pc-sheet::-webkit-scrollbar-thumb { background: rgb(var(--brand-500) / .35); border-radius: 999px; }
+.pc-head { display: flex; align-items: center; gap: .75rem; margin-bottom: .5rem; }
+.pc-head-ico { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; flex-shrink: 0; border-radius: 1rem; font-size: 1.35rem;
+  background: linear-gradient(135deg, rgb(var(--brand-500) / .18), rgb(var(--brand-500) / .06)); box-shadow: inset 0 0 0 1px rgb(var(--brand-500) / .2); }
+.pc-head-txt { flex: 1; min-width: 0; }
+.pc-x { width: 2rem; height: 2rem; flex-shrink: 0; border-radius: 999px; font-size: 12px; font-weight: 700; color: #94a3b8; background: #f1f5f9; transition: background .2s, color .2s, transform .2s; }
+.pc-x:hover { background: #e2e8f0; color: #334155; transform: rotate(90deg); }
+html.dark .pc-x { background: rgb(var(--field)); }
+.pc-amount { font-size: 1.15rem; font-weight: 800; letter-spacing: -.01em; }
+.pc-pick { display: flex; flex-wrap: wrap; gap: .4rem; border-radius: 1rem; }
+.pc-pick.is-invalid { box-shadow: 0 0 0 2px rgb(244 63 94 / .45); padding: .25rem; }
+.pc-pick button { padding: .42rem .8rem; border-radius: 999px; font-size: 12.5px; font-weight: 700; color: #475569; background: #f1f5f9;
+  box-shadow: inset 0 0 0 1px transparent; transition: background .2s, color .2s, box-shadow .2s, transform .15s; }
+.pc-pick button:hover { background: #e2e8f0; }
+.pc-pick button:active { transform: scale(.95); }
+.pc-pick button.on { background: rgb(var(--brand-500) / .14); color: rgb(var(--brand-700)); box-shadow: inset 0 0 0 1.5px rgb(var(--brand-500)); }
+html.dark .pc-pick button { background: rgb(var(--field)); color: rgb(var(--ink)); }
+.pc-details { transition: background .2s; }
+.pc-details[open] { box-shadow: inset 0 0 0 1px rgb(var(--brand-500) / .2); }
+.input-soft { transition: box-shadow .2s, background-color .2s; }
+@media (prefers-reduced-motion: reduce) { .pc-modal-enter-active .pc-sheet { animation: none; } .pc-modal-leave-active .pc-sheet { transition: none; } }
