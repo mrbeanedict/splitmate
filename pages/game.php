@@ -41,7 +41,7 @@ require __DIR__ . '/../partials/head.php';
       <div class="game-car-wrap">
       <div ref="track" @scroll.passive="onTrackScroll" class="game-carousel -mx-5 px-5">
         <button v-for="(gm, key, i) in games" :key="key" :data-game="key" @click="selectGame(key)" class="game-slide" :class="{ on: pick.game === key }" :aria-pressed="pick.game === key">
-          <img :src="gameArt + key + '.svg?v=' + gameArtV" alt="" :loading="i ? 'lazy' : 'eager'" />
+          <img :src="gameArt + key + '.svg?v=' + gameArtV + (seen[key] ? '&r=1' : '')" alt="" :loading="i ? 'lazy' : 'eager'" />
           <span class="block p-4">
             <span class="block text-[16px] font-extrabold text-ink">{{ gm.emoji }} {{ gm.title }}</span>
             <span class="mt-1 block text-[12.5px] leading-snug text-slate-500">{{ gm.description }}</span>
@@ -419,7 +419,7 @@ Setlo.mount({
   data: () => ({
     billId: <?= $billId ?>, loading: true, busy: false,
     bill: null, me: { id: <?= (int) $user['id'] ?>, is_creator: false }, members: [], games: {}, cards: {}, game: null, shares: null,
-    pick: { game: 'roulette', mode: 'screen', payers: 1 }, gameArt: <?= json_encode(url('assets/games/')) ?>, gameArtV: <?= (int) max(array_map('filemtime', glob(__DIR__ . '/../assets/games/*.svg'))) ?>, scrollFrame: null,
+    pick: { game: 'roulette', mode: 'screen', payers: 1 }, gameArt: <?= json_encode(url('assets/games/')) ?>, seen: {}, gameArtV: <?= (int) max(array_map('filemtime', glob(__DIR__ . '/../assets/games/*.svg'))) ?>, scrollFrame: null,
     offset: 0, now: Date.now(), poller: null, ticker: null,
     angle: 0, spinning: false, landed: false, wheelRaf: null, wheelTimer: null, hits: [],
     answerInput: '', basket: {}, revealed: false, replaying: false, lastNudge: 0, reveal: null,
@@ -511,6 +511,8 @@ Setlo.mount({
     'actor.user.id'() { this.revealed = false; this.answerInput = ''; this.basket = {}; },
     // The carousel is (re)drawn: start it on the current pick, e.g. after "Play another game".
     wheelPhase(now, before) { this.syncWheel(before !== 'playing'); },
+    // Her green-to-purple fade plays once as each slide first comes to the middle (the pictures load lazily, off-screen).
+    'pick.game'(key) { if (key !== 'roulette' && !this.seen[key]) this.seen[key] = true; },
     view(v) { if (v === 'options') this.$nextTick(() => this.scrollToGame(this.pick.game, false)); },
   },
   async mounted() {

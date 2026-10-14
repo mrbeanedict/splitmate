@@ -176,6 +176,7 @@ function scene(string $defs, string $body, string $extra = ''): string
         . '.head{animation:tilt 3.2s ease-in-out infinite alternate}' . $around('tilt', -3, 3)
         . '.tail{animation:sway 2.4s ease-in-out infinite alternate}' . $around('sway', -6, 6)
         . '.lid{animation:blink 4.2s infinite}@keyframes blink{0%,92%,100%{transform:scaleY(0)}96%{transform:scaleY(1)}}'
+        . '.fun{animation:fun 1.4s ease-in-out .5s both}@keyframes fun{from{opacity:0}to{opacity:1}}'
         . '.pt.wave{animation:wave .9s ease-in-out infinite alternate}' . $around('wave', 0, -26)
         . '.pt.pump{animation:pump .45s ease-in-out infinite alternate}' . $around('pump', -14, 14)
         . '.pt.pump2{animation:pump2 .45s ease-in-out infinite alternate}' . $around('pump2', 14, -14)
@@ -183,10 +184,90 @@ function scene(string $defs, string $body, string $extra = ''): string
         . '<rect width="320" height="200" fill="url(#bg)"/>' . "\n" . $body . "\n</svg>\n";
 }
 
+/**
+ * A ready-made pose (assets/mascot/<name>.png): cropped to its artwork, embedded at ~2× and bobbing like the rig.
+ * $x is the left edge, centre or right edge ($anchor l|c|r), $y the top, $h the height in scene units.
+ */
+function pose(string $name, float $x, float $y, float $h, string $anchor = 'l'): string
+{
+    global $root;
+    $src = imagecreatefrompng("$root/assets/mascot/$name.png");
+    imagealphablending($src, false);
+    imagesavealpha($src, true);
+    [$w, $ht] = [imagesx($src), imagesy($src)];
+    $box = [$w, $ht, 0, 0];
+    for ($py = 0; $py < $ht; $py++) {
+        for ($px = 0; $px < $w; $px++) {
+            if (((imagecolorat($src, $px, $py) >> 24) & 127) < 100) {
+                $box = [min($box[0], $px), min($box[1], $py), max($box[2], $px), max($box[3], $py)];
+            }
+        }
+    }
+    [$bw, $bh] = [$box[2] - $box[0] + 1, $box[3] - $box[1] + 1];
+    $outH = 440;
+    $sm = imagecreatetruecolor((int) round($bw * $outH / $bh), $outH);
+    imagealphablending($sm, false);
+    imagesavealpha($sm, true);
+    imagefill($sm, 0, 0, imagecolorallocatealpha($sm, 0, 0, 0, 127));
+    imagecopyresampled($sm, $src, 0, 0, $box[0], $box[1], imagesx($sm), $outH, $bw, $bh);
+    $embed = function ($im): string {
+        ob_start();
+        imagepng($im, null, 9);
+        return 'data:image/png;base64,' . base64_encode((string) ob_get_clean());
+    };
+    $w2 = $h * $bw / $bh;
+    $x -= $anchor === 'c' ? $w2 / 2 : ($anchor === 'r' ? $w2 : 0);
+    $at = ' x="' . round($x, 1) . '" y="' . round($y, 1) . '" width="' . round($w2, 1) . '" height="' . round($h, 1) . '"';
+    // A Fun Mode copy, faded in over the green: the teal skin (and the sweat drops) become a head-to-toe gradient, orange
+    // -> pink -> purple, and the yellow tail stripes a lighter shade of it. Belly, outlines, tongue and eyes stay.
+    $stops = [[0, [242, 100, 31]], [.35, [232, 68, 122]], [.62, [204, 67, 196]], [1, [155, 77, 242]]];
+    $grad = function (float $t) use ($stops): array {
+        for ($i = 1; $i < count($stops); $i++) {
+            if ($t <= $stops[$i][0]) {
+                [$t0, $c0] = $stops[$i - 1];
+                [$t1, $c1] = $stops[$i];
+                $k = ($t - $t0) / ($t1 - $t0);
+                return [$c0[0] + ($c1[0] - $c0[0]) * $k, $c0[1] + ($c1[1] - $c0[1]) * $k, $c0[2] + ($c1[2] - $c0[2]) * $k];
+            }
+        }
+        return $stops[count($stops) - 1][1];
+    };
+    $fun = imagecreatetruecolor(imagesx($sm), imagesy($sm));
+    imagealphablending($fun, false);
+    imagesavealpha($fun, true);
+    $H = imagesy($sm);
+    for ($py = 0; $py < $H; $py++) {
+        $base = $grad($py / $H);
+        for ($px = 0; $px < imagesx($sm); $px++) {
+            $c = imagecolorat($sm, $px, $py);
+            [$r, $g, $b] = [($c >> 16) & 255, ($c >> 8) & 255, $c & 255];
+            $mx = max($r, $g, $b);
+            $d = $mx - min($r, $g, $b);
+            if ($d > 40) {
+                $hue = $mx === $r ? fmod(60 * (($g - $b) / $d) + 360, 360) : ($mx === $g ? 60 * (($b - $r) / $d + 2) : 60 * (($r - $g) / $d + 4));
+                $tint = null;
+                if ($hue >= 150 && $hue <= 235) {
+                    $shade = $mx / 167;                           // teal skin: keep its shading
+                    $tint = array_map(fn ($v) => $v * $shade, $base);
+                } elseif ($hue >= 30 && $hue <= 70) {
+                    $shade = $mx / 245;                           // yellow stripe: lighter, toward white
+                    $tint = array_map(fn ($v) => ($v * .55 + 255 * .45) * $shade, $base);
+                }
+                if ($tint) {
+                    [$r, $g, $b] = array_map(fn ($v) => (int) max(0, min(255, round($v))), $tint);
+                    $c = ($c & 0xFF000000) | ($r << 16) | ($g << 8) | $b;
+                }
+            }
+            imagesetpixel($fun, $px, $py, $c);
+        }
+    }
+    return '<g class="mascot"><image href="' . $embed($sm) . '"' . $at . '/><image class="fun" href="' . $embed($fun) . '"' . $at . '/></g>';
+}
+
 $files = [];
 
 // ---------- Roulette: beside the wheel, penny ready ----------
-[$m] = mascot(162, 10, 184, ['head' => -8, 'armL' => -12, 'armR' => -16, 'anim' => ['armR' => 'wave']]);
+$m = pose('lean', 312, 8, 186, 'r');
 $files['assets/games/roulette.svg'] = scene('', '
   <circle cx="30" cy="30" r="6" fill="#fde047"/><circle cx="304" cy="186" r="4" fill="#d946ef" opacity=".5"/><circle cx="40" cy="176" r="4" fill="#fff"/><circle cx="300" cy="22" r="4" fill="#fff" opacity=".8"/>
   <g fill="none" stroke="#c084fc" stroke-width="4" stroke-linecap="round" opacity=".7"><path d="M24 80a86 86 0 0 1 26-34"/><path d="M150 172a86 86 0 0 1-30 16"/></g>
@@ -207,8 +288,7 @@ $files['assets/games/roulette.svg'] = scene('', '
   @keyframes nudge{0%,100%{transform:rotate(0)}40%{transform:rotate(14deg)}55%{transform:rotate(9deg)}}');
 
 // ---------- Receipt Race: leaning into a sprint with the receipt ----------
-[$m, , $at] = mascot(70, 14, 178, ['head' => 8, 'armL' => 0, 'armR' => -6, 'tail' => 14, 'anim' => ['armL' => 'pump', 'armR' => 'pump2']], 'mascot run', 10);
-[$dx, $dy] = $at(HEAD_TOP);
+$m = pose('sprint', 135, 16, 170, 'c');
 $files['assets/games/race.svg'] = scene('<linearGradient id="watch" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d946ef"/><stop offset="1" stop-color="#f97316"/></linearGradient>', '
   <circle cx="40" cy="30" r="5" fill="#fff" opacity=".7"/><circle cx="300" cy="184" r="4" fill="#fde047"/><circle cx="190" cy="14" r="4" fill="#d946ef" opacity=".4"/>
   <g class="speed" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".85"><path d="M12 84h42"/><path d="M4 108h52"/><path d="M14 132h38"/><path d="M26 156h24"/></g>
@@ -223,52 +303,38 @@ $files['assets/games/race.svg'] = scene('<linearGradient id="watch" x1="0" y1="0
     <rect x="2" y="0" width="34" height="22" fill="#fff" stroke="#1e293b" stroke-width="1.5"/>
     <g fill="#1e293b"><rect x="2" y="0" width="8.5" height="7.3"/><rect x="19" y="0" width="8.5" height="7.3"/><rect x="10.5" y="7.3" width="8.5" height="7.3"/><rect x="27.5" y="7.3" width="8.5" height="7.3"/><rect x="2" y="14.6" width="8.5" height="7.3"/><rect x="19" y="14.6" width="8.5" height="7.3"/></g>
   </g>
-  ' . $m . '
-  <path d="M' . ($dx + 16) . ' ' . ($dy + 6) . 'c-4 6-6 10-6 13a6 6 0 0 0 12 0c0-3-2-7-6-13z" fill="#7dd3fc" stroke="#12303f" stroke-width="2"/>', '
+  ' . $m . '', '
   .run{animation-duration:.45s}
   .speed path{animation:dash .7s linear infinite}.speed path:nth-child(2){animation-delay:-.25s}.speed path:nth-child(3){animation-delay:-.45s}.speed path:nth-child(4){animation-delay:-.6s}
   @keyframes dash{0%{opacity:.2;transform:translateX(10px)}50%{opacity:1}100%{opacity:.2;transform:translateX(-10px)}}
   .tick{transform-box:view-box;transform-origin:0 0;animation:tick 2s steps(8) infinite}@keyframes tick{to{transform:rotate(360deg)}}');
 
 // ---------- Closest Without Going Over: tongue on the bullseye, basket at her feet ----------
-[$m, , $at] = mascot(176, 26, 170, ['head' => -10, 'armL' => -16, 'armR' => 22]);
-[$mx, $my] = $at(MOUTH);
-$tongue = 'M' . $mx . ' ' . $my . ' Q' . round(($mx + 80) / 2, 1) . ' ' . round(min($my, 124) - 34, 1) . ' 82 122';
+$m = '<g transform="translate(320 0) scale(-1 1)">' . pose('tongue', 8, 54, 140) . '</g>';   // mirrored: her tongue then points at the target
 $files['assets/games/closest.svg'] = scene('', '
   <circle cx="24" cy="176" r="5" fill="#fde047"/><circle cx="160" cy="20" r="3" fill="#d946ef" opacity=".5"/><circle cx="304" cy="186" r="3" fill="#fff"/>
   <path d="M14 34h292" stroke="#e11d48" stroke-width="3" stroke-dasharray="8 6"/>
   <rect x="14" y="21" width="76" height="22" rx="11" fill="#e11d48"/>
   <text x="52" y="36.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="800" fill="#fff">TARGET</text>
-  <g transform="translate(78 124)"><g class="board">
+  <g transform="translate(88 98)"><g class="board">
     <circle r="54" fill="#d946ef"/><circle r="43" fill="#fff"/><circle r="32" fill="#f97316"/><circle r="21" fill="#fff"/><circle r="10" fill="#a855f7"/>
   </g></g>
-  <g transform="translate(146 130) scale(.42)">
+  <g transform="translate(60 156) scale(.3)">
     <path d="M-70,40 C-60,-40 60,-40 70,40" fill="none" stroke="#a855f7" stroke-width="14" stroke-linecap="round"/>
     <circle cx="-34" cy="28" r="26" fill="#f97316"/><circle cx="16" cy="22" r="23" fill="#22c55e"/><rect x="36" y="-6" width="30" height="50" rx="8" fill="#facc15"/>
     <path d="M-96,40 H96 L72,160 H-72Z" fill="#d946ef"/>
     <g stroke="#f5d0fe" stroke-width="8"><path d="M-88,80 H88"/><path d="M-80,120 H80"/><path d="M-32,40 L-26,160"/><path d="M32,40 L26,160"/></g>
   </g>
-  ' . $m . '
-  <g class="tongue"><path d="' . $tongue . '" fill="none" stroke="#12303f" stroke-width="7" stroke-linecap="round"/><path d="' . $tongue . '" fill="none" stroke="#f472b6" stroke-width="4" stroke-linecap="round"/><circle cx="82" cy="122" r="6" fill="#f472b6" stroke="#12303f" stroke-width="2"/></g>', '
+  ' . $m . '', '
   .board{transform-box:fill-box;transform-origin:center;animation:hit 2.4s ease-out infinite}
   @keyframes hit{0%,70%,100%{transform:scale(1)}76%{transform:scale(1.06)}84%{transform:scale(.98)}}');
 
-// ---------- Mystery Card: peeks over the face-down fan, the YOU PAY card flipped beside her ----------
-[$m] = mascot(78, 8, 196, ['head' => 7, 'armL' => 8, 'armR' => -14, 'anim' => ['armR' => 'wave']]);
-$card = '<g transform="rotate(%d)"><rect x="-32" y="-150" width="64" height="92" rx="10" fill="url(#back)" stroke="#fff" stroke-width="4"/><rect x="-24" y="-142" width="48" height="76" rx="6" fill="url(#dots)"/></g>';
-$files['assets/games/cards.svg'] = scene('<linearGradient id="back" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d946ef"/><stop offset="1" stop-color="#fb923c"/></linearGradient><pattern id="dots" width="10" height="10" patternUnits="userSpaceOnUse"><circle cx="5" cy="5" r="1.6" fill="#fff" opacity=".45"/></pattern>', '
+// ---------- Mystery Card: the shocked pose, YOU PAY in hand ----------
+$m = pose('shock', 160, 6, 190, 'c');
+$files['assets/games/cards.svg'] = scene('', '
   <circle cx="30" cy="40" r="5" fill="#fde047"/><circle cx="296" cy="22" r="4" fill="#d946ef" opacity=".5"/><circle cx="26" cy="160" r="4" fill="#fff"/>
   ' . $m . '
-  <g transform="translate(150 266) scale(.8)">' . sprintf($card, -34) . sprintf($card, -17) . sprintf($card, 0) . sprintf($card, 17) . sprintf($card, 34) . '</g>
-  <g transform="translate(266 98) rotate(8)"><g class="flip">
-    <rect x="-34" y="-48" width="68" height="96" rx="10" fill="#fff" stroke="#f0abfc" stroke-width="4"/>
-    <text y="-10" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="900" fill="#d946ef">?!</text>
-    <text y="14" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="900" fill="#e11d48">YOU</text>
-    <text y="28" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="900" fill="#e11d48">PAY</text>
-  </g></g>
   <g fill="#facc15" class="twinkle"><path d="M232 30l4 10 10 4-10 4-4 10-4-10-10-4 10-4z"/><path d="M40 92l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/></g>', '
-  .flip{transform-box:fill-box;transform-origin:center;animation:wob 2.6s ease-in-out infinite}
-  @keyframes wob{0%,100%{transform:rotate(0)}50%{transform:rotate(-5deg)}}
   .twinkle path{transform-box:fill-box;transform-origin:center;animation:tw 1.8s ease-in-out infinite alternate}.twinkle path:nth-child(2){animation-delay:-.9s}
   @keyframes tw{from{transform:scale(.6);opacity:.6}to{transform:scale(1.1);opacity:1}}');
 
