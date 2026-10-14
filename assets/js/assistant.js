@@ -147,6 +147,7 @@
   function open() {
     root.classList.add('open');
     panel.hidden = false;
+    fitToKeyboard();
     fab.setAttribute('aria-expanded', 'true');
     if (!loaded) load();
     setTimeout(() => { box.focus(); scrollDown(); }, 60);
@@ -185,6 +186,27 @@
     box.style.height = Math.min(box.scrollHeight, 104) + 'px';
     send.disabled = busy || !box.value.trim();
   });
+  // Phones: when the on-screen keyboard opens, keep the sheet (and its input) above it instead of hidden behind it
+  function fitToKeyboard() {
+    const vv = window.visualViewport;
+    if (!vv || window.innerWidth >= 640) { panel.style.removeProperty('--sai-kb'); panel.style.removeProperty('--sai-vh'); return; }
+    const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    panel.style.setProperty('--sai-kb', kb + 'px');
+    panel.style.setProperty('--sai-vh', Math.round(vv.height) + 'px');
+    if (kb > 0) scrollDown();
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', fitToKeyboard);
+    window.visualViewport.addEventListener('scroll', fitToKeyboard);
+  }
+
+  // Phones: tuck the button into the edge while the page scrolls, bring it back when it stops
+  let scrollTimer = 0;
+  window.addEventListener('scroll', () => {
+    root.classList.add('scrolling');
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(() => root.classList.remove('scrolling'), 700);
+  }, { passive: true });
   window.addEventListener('resize', lift);
   window.addEventListener('load', lift);
   setTimeout(lift, 600);

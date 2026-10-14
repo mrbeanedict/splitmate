@@ -39,7 +39,7 @@
       el.innerHTML = '';
       global.google.accounts.id.renderButton(el, {
         type: 'standard', theme: 'outline', size: 'large', shape: 'pill', logo_alignment: 'center',
-        text: opts.text || 'continue_with', width: Math.min(400, Math.max(240, el.clientWidth)),
+        text: opts.text || 'continue_with', width: Math.min(400, Math.max(200, el.clientWidth)),
       });
     };
 
