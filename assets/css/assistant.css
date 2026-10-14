@@ -12,6 +12,12 @@
   transition: transform .18s ease, box-shadow .18s ease;
 }
 .sai-fab:hover { transform: translateY(-2px); }
+/* Phones: a smaller button that slides into the screen edge while scrolling, so it doesn't sit on top of prices and buttons */
+@media (max-width: 1023px) {
+  .sai-fab { right: 10px; height: 2.9rem; width: 2.9rem; padding: 0; justify-content: center; opacity: .95; }
+  .sai-fab img { width: 2.4rem; height: 2.4rem; }
+  .sai.scrolling .sai-fab { transform: translateX(72%); opacity: .55; }
+}
 .sai-fab:focus-visible { outline: 3px solid rgb(var(--brand-300)); outline-offset: 2px; }
 .sai-fab img { width: 2.8rem; height: 2.8rem; object-fit: contain; animation: sai-bob 3.2s ease-in-out infinite; }
 .sai-fab-tip { display: none; padding-right: .8rem; font-size: .8rem; font-weight: 800; }
@@ -31,6 +37,15 @@
   animation: sai-in .22s ease-out both;
 }
 .sai-panel[hidden] { display: none; }
+/* Very short screens (on-screen keyboard open): give the messages the room */
+@media (max-height: 420px) {
+  .sai-chips, .sai-note, .sai-head small { display: none; }
+}
+/* Phones: --sai-kb / --sai-vh come from assistant.js (visualViewport) so the sheet sits above the on-screen keyboard */
+@media (max-width: 639px) {
+  .sai-panel { bottom: var(--sai-kb, 0px); height: min(86dvh, 640px, calc(var(--sai-vh, 100dvh) - 8px)); max-height: calc(var(--sai-vh, 100dvh) - 8px); }
+  .sai-head small { font-size: .7rem; }
+}
 @media (min-width: 640px) {
   .sai-panel { left: auto; right: 24px; bottom: 24px; width: 25rem; height: min(40rem, calc(100dvh - 48px)); border-radius: 24px; }
 }

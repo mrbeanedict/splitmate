@@ -422,6 +422,21 @@
   .step-link { @apply rounded-full underline decoration-dotted underline-offset-4 hover:text-brand-700; }
   .step-line { @apply h-0.5 flex-1 rounded-sm bg-slate-200; }
   .step-line.done { @apply bg-brand-500; }
+  /* Narrow phones (320px): tighter gaps so all four steps fit without widening the page */
+  @media (max-width: 359px) {
+    .steps { gap: .375rem; padding-left: .75rem; padding-right: .75rem; }
+    .step { gap: .25rem; }
+    .step .dot { height: 20px; width: 20px; }
+  }
+  /* Extra-narrow phones (foldables, 280px): drop the step labels that are not current */
+  @media (max-width: 299px) {
+    .steps { gap: .25rem; padding-left: .5rem; padding-right: .5rem; }
+    .step { font-size: 11px; }
+    .step:not(.current) { font-size: 0; }
+    .step:not(.current) .dot { font-size: 11px; }
+  }
+  /* Fixed-width fields (e.g. admin search w-72) never exceed their container */
+  .input { max-width: 100%; }
 
   /* ---------- Dark bottom action dock ---------- */
   .dock { @apply sticky bottom-[65px] z-20 px-4 pb-3 lg:bottom-4 lg:px-0 lg:pb-0; }

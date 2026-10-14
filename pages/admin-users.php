@@ -52,7 +52,7 @@ require __DIR__ . '/../partials/admin-top.php';
 <div id="app" class="space-y-4 p-5 md:p-8" v-cloak>
   <div class="flex flex-wrap items-center justify-between gap-3">
     <p class="text-sm text-slate-500">{{ users.length }} {{ users.length === 1 ? 'user' : 'users' }}{{ q ? ' matching “' + q + '”' : '' }}</p>
-    <div class="flex flex-wrap items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2" style="max-width:100%">
       <div class="seg seg-light w-56 !p-0.5">
         <button :class="{ on: sort === 'new' }" @click="setSort('new')">Newest</button>
         <button :class="{ on: sort === 'active' }" @click="setSort('active')">Recently active</button>
