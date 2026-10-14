@@ -457,6 +457,10 @@ CREATE TABLE community_posts (
   id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   user_id        INT UNSIGNED NOT NULL,
   body           VARCHAR(2000) NULL,
+  location       VARCHAR(160) NULL,
+  lat            DECIMAL(9,6) NULL,               -- set when the location was picked from the place suggestions
+  lng            DECIMAL(9,6) NULL,
+  price          DECIMAL(10,2) NULL,
   audience       ENUM('public','only_me') NOT NULL DEFAULT 'public',
   shared_post_id INT UNSIGNED NULL,               -- a re-share points at the post it shares
   is_share       TINYINT(1) NOT NULL DEFAULT 0,   -- stays 1 if the original is later deleted

@@ -6,7 +6,9 @@ require __DIR__ . '/../includes/uploads.php';
 require_once __DIR__ . '/../includes/gemini.php';
 
 const COMMUNITY_REACTIONS = ['like' => '👍', 'love' => '❤️', 'haha' => '😆', 'wow' => '😮', 'sad' => '😢', 'angry' => '😡'];
-const COMMUNITY_MAX_PHOTOS = 4;
+const COMMUNITY_MAX_PHOTOS_PER_POST = 100;  // a safety ceiling, not a product limit
+const COMMUNITY_PHOTOS_PER_REQUEST = 10;    // the page sends bigger sets in several batches (PHP allows 20 files / 40 MB a request)
+const COMMUNITY_PHOTO_MAX_BYTES = 20 * 1024 * 1024;
 const COMMUNITY_TRANSLATE_LANGS = [
     'en' => 'English', 'tl' => 'Filipino (Tagalog)', 'ceb' => 'Cebuano', 'es' => 'Spanish', 'ja' => 'Japanese', 'ko' => 'Korean',
     'zh-CN' => 'Simplified Chinese', 'fr' => 'French', 'de' => 'German', 'id' => 'Indonesian', 'ar' => 'Arabic', 'hi' => 'Hindi',
@@ -50,6 +52,43 @@ function in_list(array $ids): string
 function photo_url(int $photoId): string
 {
     return url('api/community-photo.php') . '?id=' . $photoId;
+}
+
+/** Optional single-line location (null when empty). */
+function clean_location(): ?string
+{
+    $v = trim(preg_replace('/\s+/', ' ', (string) input('location', '')) ?? '');
+    if (mb_strlen($v) > 160) {
+        fail('That location is too long. Keep it to 160 characters or fewer.', 422);
+    }
+    return $v === '' ? null : $v;
+}
+
+/** [lat, lng] sent with a location picked from the place suggestions, or [null, null]. */
+function clean_coords(?string $location): array
+{
+    $lat = input('lat', '');
+    $lng = input('lng', '');
+    if ($location === null || !is_numeric($lat) || !is_numeric($lng)) {
+        return [null, null];
+    }
+    if ((float) $lat < -90 || (float) $lat > 90 || (float) $lng < -180 || (float) $lng > 180) {
+        return [null, null];
+    }
+    return [number_format((float) $lat, 6, '.', ''), number_format((float) $lng, 6, '.', '')];
+}
+
+/** Optional price (null when empty), 0 to 99,999,999.99. */
+function clean_price(): ?string
+{
+    $v = trim((string) input('price', ''));
+    if ($v === '') {
+        return null;
+    }
+    if (!is_numeric($v) || (float) $v < 0 || (float) $v > 99999999.99) {
+        fail('Enter a valid price.', 422);
+    }
+    return number_format((float) $v, 2, '.', '');
 }
 
 function clean_text(string $key, int $max): string
@@ -139,6 +178,10 @@ function hydrate_posts(array $ids, array $me): array
             'id'            => $id,
             'author'        => public_user($p),
             'body'          => (string) $p['body'],
+            'location'      => $p['location'],
+            'lat'           => $p['lat'] === null ? null : (float) $p['lat'],
+            'lng'           => $p['lng'] === null ? null : (float) $p['lng'],
+            'price'         => $p['price'] === null ? null : (float) $p['price'],
             'audience'      => $p['audience'],
             'created_at'    => $p['created_at'],
             'edited'        => $p['edited_at'] !== null,
@@ -279,6 +322,9 @@ switch (input('action', '')) {
         rate_limit('SELECT COUNT(*) FROM community_posts WHERE user_id = ? AND created_at > NOW() - INTERVAL 1 HOUR', [$me['id']], 10, 'posting');
         $audience = input('audience') === 'only_me' ? 'only_me' : 'public';
         $body = clean_text('body', COMMUNITY_BODY_MAX);
+        $location = clean_location();
+        [$lat, $lng] = clean_coords($location);
+        $price = clean_price();
         $shareOf = (int) input('share_of', 0);
         $origin = null;
         if ($shareOf) {
@@ -293,15 +339,15 @@ switch (input('action', '')) {
                 fail('Only public posts can be shared.', 403);
             }
         }
-        $files = $origin ? [] : save_uploaded_images('photos', 'community', 'post' . $me['id'], COMMUNITY_MAX_PHOTOS);
+        $files = $origin ? [] : save_uploaded_images('photos', 'community', 'post' . $me['id'], COMMUNITY_PHOTOS_PER_REQUEST, COMMUNITY_PHOTO_MAX_BYTES);
         if (!$origin && $body === '' && !$files) {
             fail('Write something or add a photo first.', 422);
         }
         $pdo = db();
         $pdo->beginTransaction();
         try {
-            q('INSERT INTO community_posts (user_id, body, audience, shared_post_id, is_share) VALUES (?, ?, ?, ?, ?)',
-                [$me['id'], $body === '' ? null : $body, $audience, $origin ? (int) $origin['id'] : null, $origin ? 1 : 0]);
+            q('INSERT INTO community_posts (user_id, body, location, lat, lng, price, audience, shared_post_id, is_share) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [$me['id'], $body === '' ? null : $body, $origin ? null : $location, $origin ? null : $lat, $origin ? null : $lng, $origin ? null : $price, $audience, $origin ? (int) $origin['id'] : null, $origin ? 1 : 0]);
             $postId = (int) $pdo->lastInsertId();
             foreach ($files as $i => $file) {
                 q('INSERT INTO community_photos (post_id, position, image) VALUES (?, ?, ?)', [$postId, $i, $file]);
@@ -319,6 +365,47 @@ switch (input('action', '')) {
         }
         json_ok(['post' => one_post($postId, $me)]);
 
+    case 'add_photos':
+        // The rest of a big photo set, sent in batches after the post exists
+        $batches = array_values(array_filter($_SESSION['photo_batches'] ?? [], fn ($t) => $t > time() - 3600));
+        if (count($batches) >= 200) {
+            fail('You’re uploading too fast. Please try again in a little while.', 429);
+        }
+        $_SESSION['photo_batches'] = [...$batches, time()];
+        $post = post_row(int_param('id'));
+        if ((int) $post['user_id'] !== $me['id']) {
+            fail('You can only add photos to your own posts.', 403);
+        }
+        if ($post['is_share']) {
+            fail('A shared post can’t have photos.', 422);
+        }
+        $files = save_uploaded_images('photos', 'community', 'post' . $me['id'], COMMUNITY_PHOTOS_PER_REQUEST, COMMUNITY_PHOTO_MAX_BYTES);
+        if (!$files) {
+            fail('Choose a photo to add.', 422);
+        }
+        $have = (int) q('SELECT COUNT(*) FROM community_photos WHERE post_id = ?', [$post['id']])->fetchColumn();
+        if ($have + count($files) > COMMUNITY_MAX_PHOTOS_PER_POST) {
+            foreach ($files as $file) {
+                delete_upload('community', $file);
+            }
+            fail('A post can have up to ' . COMMUNITY_MAX_PHOTOS_PER_POST . ' photos.', 422);
+        }
+        $pdo = db();
+        $pdo->beginTransaction();
+        try {
+            foreach ($files as $i => $file) {
+                q('INSERT INTO community_photos (post_id, position, image) VALUES (?, ?, ?)', [$post['id'], $have + $i, $file]);
+            }
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            foreach ($files as $file) {
+                delete_upload('community', $file);
+            }
+            throw $e;
+        }
+        json_ok(['post' => one_post((int) $post['id'], $me)]);
+
     case 'edit':
         $post = post_row(int_param('id'));
         if ((int) $post['user_id'] !== $me['id']) {
@@ -329,7 +416,10 @@ switch (input('action', '')) {
         if ($body === '' && !$hasPhotos && !$post['is_share']) {
             fail('A post can’t be empty. Delete it instead.', 422);
         }
-        q('UPDATE community_posts SET body = ?, edited_at = NOW() WHERE id = ?', [$body === '' ? null : $body, $post['id']]);
+        $location = $post['is_share'] ? null : clean_location();
+        [$lat, $lng] = clean_coords($location);
+        $price = $post['is_share'] ? null : clean_price();
+        q('UPDATE community_posts SET body = ?, location = ?, lat = ?, lng = ?, price = ?, edited_at = NOW() WHERE id = ?', [$body === '' ? null : $body, $location, $lat, $lng, $price, $post['id']]);
         json_ok(['post' => one_post((int) $post['id'], $me)]);
 
     case 'set_audience':

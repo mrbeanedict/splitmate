@@ -40,7 +40,7 @@ function save_uploaded_image(string $field, string $kind, string $prefix, bool $
  * Validate and store every image sent as $field[] (several files from one form field). Returns the stored
  * filenames in the order sent; fails (after removing any already stored) if one is not a valid image.
  */
-function save_uploaded_images(string $field, string $kind, string $prefix, int $max): array
+function save_uploaded_images(string $field, string $kind, string $prefix, int $max, ?int $maxBytes = null): array
 {
     $f = $_FILES[$field] ?? null;
     if (!$f || !is_array($f['name'])) {
@@ -58,7 +58,7 @@ function save_uploaded_images(string $field, string $kind, string $prefix, int $
     $saved = [];
     try {
         foreach ($files as $file) {
-            $saved[] = store_upload($file, $kind, $prefix);
+            $saved[] = store_upload($file, $kind, $prefix, $maxBytes);
         }
     } catch (Throwable $e) {
         foreach ($saved as $name) {
@@ -69,14 +69,15 @@ function save_uploaded_images(string $field, string $kind, string $prefix, int $
     return $saved;
 }
 
-/** Check one $_FILES entry and move it into uploads/<kind>/. Returns the stored filename. */
-function store_upload(array $f, string $kind, string $prefix): string
+/** Check one $_FILES entry and move it into uploads/<kind>/. Returns the stored filename. $maxBytes overrides the site-wide photo size limit. */
+function store_upload(array $f, string $kind, string $prefix, ?int $maxBytes = null): string
 {
     if ($f['error'] !== UPLOAD_ERR_OK) {
         fail('Upload failed. Try a smaller photo.', 422);
     }
-    if ($f['size'] > config('uploads.max_bytes')) {
-        fail('Photo is too large (max 8 MB).', 422);
+    $limit = $maxBytes ?? (int) config('uploads.max_bytes');
+    if ($f['size'] > $limit) {
+        fail('Photo is too large (max ' . (int) round($limit / 1048576) . ' MB).', 422);
     }
     $info = @getimagesize($f['tmp_name']);
     $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'][$info['mime'] ?? ''] ?? null;
