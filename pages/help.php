@@ -8,7 +8,7 @@ $email = config('SUPPORT_EMAIL');
 $faqs = [
     ['How do I split a bill?', 'Scan a receipt or start a bill from My bills, add who was there, assign the items, and Setlo works out what each person owes.'],
     ['How do I pay someone back?', 'Open Settle up, choose the person, and pay by their preferred method. They confirm it when the money arrives. Partial payments are fine.'],
-    ['What is the difference between My Debts & Repayments and Utang?', 'My Debts & Repayments is where you record and manage personal loans. Utang is the overview: those loans plus change credits from group payments, without counting anything twice.'],
+    ['How do I record money I lent or borrowed?', 'Open Utang and tap + Record. Pick who it was with and the amount. It counts once they confirm it, and they can pay it back in parts.'],
     ['Why is a record "awaiting confirmation"?', 'Records count once the other person confirms them. They can confirm it or say it isn’t right.'],
     ['A scanned receipt got something wrong.', 'Receipts are read automatically and can contain mistakes. Fix the items and amounts on the review screen before you continue.'],
     ['I forgot my password.', 'On the sign-in page choose “Forgot password?” and we’ll email you a 6-digit code. You can change it any time under Account Settings.'],

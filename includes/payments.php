@@ -83,7 +83,7 @@ function record_change_utang(int $ownerId, int $holderId, int $cents, int $payme
 
 /**
  * Someone paid part of $debtorId's debt, and $debtorId will pay them back: record it as an utang from the debtor to
- * the payer (a loan, so it shows in Utang and My Debts & Repayments, and is repaid like any settlement). Both people are
+ * the payer (a loan, so it shows in Utang, and is repaid like any settlement). Both people are
  * notified; a guest has no account, so only the user is. Returns the new settlement id. Call inside a transaction.
  */
 function record_paid_for_utang(int $payerId, int $debtorId, int $cents, array $s, ?int $actorId, string $currency = 'PHP'): int

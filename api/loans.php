@@ -54,10 +54,8 @@ function my_loan(array $me): array
 }
 
 if (method() === 'GET') {
-    // ?scope=personal: only loans recorded between two people (My Debts & Repayments), not kept-change credits
-    $personalOnly = ($_GET['scope'] ?? '') === 'personal' ? ' AND b.change_payment_id IS NULL' : '';
     $rows = q(
-        "SELECT b.* FROM bills b JOIN bill_members m ON m.bill_id = b.id WHERE m.user_id = ? AND b.kind = 'loan'$personalOnly
+        "SELECT b.* FROM bills b JOIN bill_members m ON m.bill_id = b.id WHERE m.user_id = ? AND b.kind = 'loan'
          ORDER BY FIELD(b.status, 'draft', 'settling', 'closed'), b.created_at DESC",
         [$me['id']]
     )->fetchAll();

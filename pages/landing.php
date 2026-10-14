@@ -88,10 +88,10 @@ $guides = [
 <?php if ($user): ?>
             <a class="lp-btn lp-btn-primary" href="<?= h(url($home)) ?>">Open Setlo</a>
 <?php else: ?>
-            <a class="lp-btn lp-btn-primary" href="<?= $registerHref ?>">Get started, it’s free <span v-html="icon('arrow', 18)"></span></a>
-            <a class="lp-btn lp-btn-ghost" href="<?= $guestHref ?>"><span v-html="icon('user', 18)"></span> Sign in as guest</a>
+            <a class="lp-btn lp-btn-primary" href="<?= $registerHref ?>">Create account <span v-html="icon('arrow', 18)"></span></a>
+            <a class="lp-btn lp-btn-ghost" href="<?= $guestHref ?>"><span v-html="icon('user', 18)"></span> Try as guest</a>
 <?php endif; ?>
-            <button class="lp-btn lp-btn-ghost" type="button" @click="tour('tour')"><span v-html="icon('play', 16)"></span> Take the 60-second tour</button>
+            <button class="lp-btn lp-btn-ghost" type="button" @click="tour('tour')"><span v-html="icon('play', 16)"></span> How it works</button>
           </div>
           <ul class="lp-ticks">
             <li><span v-html="icon('check', 15)"></span> Free to use</li>
@@ -421,7 +421,7 @@ $guides = [
             <a class="lp-btn lp-btn-primary" href="<?= h(url($home)) ?>">Open Setlo</a>
 <?php else: ?>
             <a class="lp-btn lp-btn-primary" href="<?= $registerHref ?>">Sign up free</a>
-            <a class="lp-btn lp-btn-ghost" href="<?= $guestHref ?>"><span v-html="icon('user', 18)"></span> Sign in as guest</a>
+            <a class="lp-btn lp-btn-ghost" href="<?= $guestHref ?>"><span v-html="icon('user', 18)"></span> Try as guest</a>
             <a class="lp-btn lp-btn-ghost" href="<?= $loginHref ?>">Log in</a>
 <?php endif; ?>
           </div>

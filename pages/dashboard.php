@@ -221,8 +221,7 @@ const SEARCH_INDEX = [
   { title: 'My bills', href: 'my-bills', hint: 'Open and past bills', kw: 'bills active history receipts split' },
   { title: 'Groups', href: 'groups', hint: 'Your groups and their members', kw: 'group members friends roommates invite join' },
   { title: 'Settle up', href: 'my-settlements', hint: 'Pay what you owe, confirm what you are owed', kw: 'pay payment owe owed gcash maya cash confirm dispute settlement' },
-  { title: 'My debts & repayments', href: 'my-debts', hint: 'Personal loans you lent or borrowed', kw: 'loan lend borrow utang personal repay record' },
-  { title: 'Utang', href: 'utang', hint: 'Debt overview, credits and history', kw: 'debt credits change history overview owe' },
+  { title: 'Utang', href: 'utang', hint: 'Money lent or borrowed, credits and history', kw: 'debt debts loan lend borrow repay repayments credits change history owe personal' },
   { title: 'Personal expenses', href: 'purchases', hint: 'Your own spending outside any bill', kw: 'purchases expenses spending food transport journal to pay' },
   { title: 'Spending overview', href: 'stats', hint: 'Monthly totals and favorite spots', kw: 'stats analytics chart month food budget' },
   { title: 'Settlement history', href: 'stats?tab=history', hint: 'Past bills and settlements', kw: 'history past closed bills paid' },
@@ -243,7 +242,7 @@ Setlo.mount({
   computed: {
     /** Shown when the box is focused and empty: the things people reach for most, and a bill that needs attention. */
     suggestions() {
-      const pick = ['Scan a receipt', 'New bill', 'Settle up', 'My debts & repayments', 'Personal expenses'];
+      const pick = ['Scan a receipt', 'New bill', 'Settle up', 'Utang', 'Personal expenses'];
       const rows = pick.map((t) => SEARCH_INDEX.find((f) => f.title === t)).filter(Boolean);
       const open = (this.d.bills || [])[0];
       return open ? [{ title: open.name, href: open.link, hint: 'Your latest active bill' }, ...rows].slice(0, 5) : rows;

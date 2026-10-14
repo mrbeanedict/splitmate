@@ -17,11 +17,10 @@ $sections = [
     ],
     'Personal Finance' => [
         'purchases' => ['purchases', 'Personal expenses', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12l1 13H5L6 7zM9 7a3 3 0 016 0"/>'],
-        'debts'     => ['my-debts', 'My debts & repayments', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M7 10h10M7 14h6M17 3l4 4-4 4M21 7H9a6 6 0 00-6 6v0a6 6 0 006 6h3"/>'],
+        'utang'     => ['utang', 'Utang', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M7 10h10M7 14h6M17 3l4 4-4 4M21 7H9a6 6 0 00-6 6v0a6 6 0 006 6h3"/>'],
     ],
     // Standalone pages
     'More' => [
-        'utang'     => ['utang', 'Utang', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M7 10h10M7 14h6M17 3l4 4-4 4M21 7H9a6 6 0 00-6 6v0a6 6 0 006 6h3"/>'],
         'stats'     => ['stats', 'Spending overview', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],
         'history'   => ['stats?tab=history', 'Settlement history', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8M3 3v5h5M12 7v5l3 2"/>'],
         'community' => ['community', 'Community', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-1v3l-3-3h-5a2 2 0 01-2-2v-1M15 4H5a2 2 0 00-2 2v6a2 2 0 002 2h1v3l3-3h6a2 2 0 002-2V6a2 2 0 00-2-2z"/>'],

@@ -1,10 +1,8 @@
 <?php
 require __DIR__ . '/../includes/bootstrap.php';
 $user = require_login();
-// my-debts.php sets $personal: the same page, narrowed to personal loans (no kept-change credits)
-$personal = !empty($personal);
-$title = $personal ? 'My Debts & Repayments' : 'Utang';
-$nav = $personal ? 'debts' : 'utang';
+$title = 'Utang';
+$nav = 'utang';
 $back = 'dashboard.php';
 require __DIR__ . '/../partials/head.php';
 ?>
@@ -14,12 +12,12 @@ require __DIR__ . '/../partials/head.php';
     <div class="flex items-center gap-3">
       <?php require __DIR__ . '/../partials/back.php'; ?>
       <div class="min-w-0 flex-1">
-        <h1 class="text-[21px] font-extrabold tracking-tight"><?= $personal ? 'My Debts &amp; Repayments' : 'Utang' ?></h1>
-        <p class="text-[12px] font-medium text-brand-50/90"><?= $personal ? 'Personal loans, apart from group bills' : 'Money lent or borrowed, and cash change kept' ?></p>
+        <h1 class="text-[21px] font-extrabold tracking-tight">Utang</h1>
+        <p class="text-[12px] font-medium text-brand-50/90">Money lent or borrowed, and cash change kept</p>
       </div>
       <button @click="openNew" class="shrink-0 rounded-full bg-white/15 px-3.5 py-2 text-[13px] font-bold text-white hover:bg-white/25">+ Record</button>
     </div>
-    <div class="mt-5 grid gap-2 <?= $personal ? 'grid-cols-2 gap-3' : 'grid-cols-3' ?>">
+    <div class="mt-5 grid grid-cols-3 gap-2">
       <div class="rounded-2xl bg-white/10 px-3 py-2.5">
         <p class="text-[10.5px] font-bold uppercase tracking-wide text-brand-50/80">You owe</p>
         <p class="text-[17px] font-extrabold tabular-nums sm:text-[19px]">{{ (totals.estimated ? "≈ " : "") + peso(totals.borrowed, totals.currency) }}</p>
@@ -28,12 +26,10 @@ require __DIR__ . '/../partials/head.php';
         <p class="text-[10.5px] font-bold uppercase tracking-wide text-brand-50/80">Owed to you</p>
         <p class="text-[17px] font-extrabold tabular-nums sm:text-[19px]">{{ (totals.estimated ? "≈ " : "") + peso(totals.lent, totals.currency) }}</p>
       </div>
-<?php if (!$personal): ?>
       <div class="rounded-2xl bg-white/10 px-3 py-2.5">
         <p class="text-[10.5px] font-bold uppercase tracking-wide text-brand-50/80">Available credits</p>
         <p class="text-[17px] font-extrabold tabular-nums sm:text-[19px]">{{ (totals.estimated ? "≈ " : "") + peso(totals.credit_in, totals.currency) }}</p>
       </div>
-<?php endif; ?>
     </div>
   </div>
 
@@ -43,8 +39,8 @@ require __DIR__ . '/../partials/head.php';
     <div class="grid grid-cols-3 gap-1 rounded-2xl border border-slate-200 bg-white p-1 text-[12.5px] font-bold" role="tablist">
       <button v-for="t in tabs" :key="t.key" role="tab" :aria-selected="tab === t.key" @click="tab = t.key" class="rounded-xl py-2" :class="tab === t.key ? 'bg-brand-600 text-white' : 'text-slate-500'">{{ t.label }}</button>
     </div>
-    <p v-if="!personal && tab === 'overview'" class="px-1 text-[12px] text-slate-500">Personal loans to manage live in <a href="my-debts" class="font-bold text-brand-700">My Debts &amp; Repayments →</a></p>
-    <p v-if="!personal && tab === 'credits'" class="px-1 text-[12px] text-slate-500">Change kept from cash payments. It's used up automatically when the other person owes the holder, so there's nothing to record.</p>
+    <p v-if="tab === 'overview'" class="px-1 text-[12px] text-slate-500">Money you lent or borrowed. Tap “+ Record” to add one.</p>
+    <p v-if="tab === 'credits'" class="px-1 text-[12px] text-slate-500">Change kept from cash payments. It's used up automatically when the other person owes the holder, so there's nothing to record.</p>
     <div v-if="!loans.length" class="tile p-6 text-center">
       <p class="text-sm font-bold text-ink">No utang yet</p>
       <p class="mt-1 text-[12px] text-slate-400">Lent a friend money, or borrowed some? Record it so you both have the same record.</p>
@@ -61,7 +57,7 @@ require __DIR__ . '/../partials/head.php';
             <button v-if="l.other" @click="showPerson(l.other.id)" class="shrink-0 rounded-full" :aria-label="'About ' + l.other.name"><avatar :user="l.other" :size="36"></avatar></button>
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-semibold">{{ headline(l) }}</p>
-              <p class="truncate text-xs text-slate-400">{{ l.purpose }} · {{ fmtDate(l.created_at) }}<?php if ($personal): ?> · {{ statusText(l) }}<?php endif; ?></p>
+              <p class="truncate text-xs text-slate-400">{{ l.purpose }} · {{ fmtDate(l.created_at) }} · {{ statusText(l) }}</p>
               <span v-if="l.from_change" class="pill mt-1 bg-violet-50 text-violet-700">💵 Cash change</span>
               <span v-if="l.interest_rate" class="pill pill-draft mt-1">{{ l.interest_rate }}% per partial payment</span>
             </div>
@@ -165,15 +161,12 @@ require __DIR__ . '/../partials/head.php';
 </div>
 
 <script>
-const PERSONAL = <?= $personal ? 'true' : 'false' ?>;
 const money = (v) => Math.round((parseFloat(String(v).replace(/,/g, '')) || 0) * 100) / 100;
 Setlo.mount({
   mixins: [Setlo.validation],
   data: () => ({
-    loading: true, busy: false, loans: [], serverTotals: null, q: '', personal: PERSONAL, tab: PERSONAL ? 'all' : 'overview',
-    tabs: PERSONAL
-      ? [{ key: 'all', label: 'All' }, { key: 'owe', label: 'You Owe' }, { key: 'owed', label: 'Owed to You' }]
-      : [{ key: 'overview', label: 'Overview' }, { key: 'credits', label: 'Credits' }, { key: 'history', label: 'History' }],
+    loading: true, busy: false, loans: [], serverTotals: null, q: '', tab: 'overview',
+    tabs: [{ key: 'overview', label: 'Overview' }, { key: 'credits', label: 'Credits' }, { key: 'history', label: 'History' }],
     drafting: false, search: '', results: [], timer: null,
     // Installment interest: one of the fixed rates (INSTALLMENT_RATES), the lowest picked by default
     rates: <?= json_encode(INSTALLMENT_RATES) ?>,
@@ -184,12 +177,9 @@ Setlo.mount({
       const q = this.q.trim().toLowerCase();
       const hit = (l) => !q || [l.purpose, l.other && l.other.name].some((v) => v && String(v).toLowerCase().includes(q));
       const all = this.loans.filter(hit).filter((l) => {
-        if (!PERSONAL) {
-          if (this.tab === 'credits') return l.from_change && l.status !== 'closed';
-          if (this.tab === 'history') return l.status === 'closed';
-          return !l.from_change && l.status !== 'closed'; // overview: open personal loans (credits have their own tab)
-        }
-        return this.tab === 'all' || (this.tab === 'owed') === l.i_lent;
+        if (this.tab === 'credits') return l.from_change && l.status !== 'closed';
+        if (this.tab === 'history') return l.status === 'closed';
+        return !l.from_change && l.status !== 'closed'; // overview: open loans (kept-change credits have their own tab)
       });
       const waiting = all.filter((l) => l.status === 'draft' && !l.recorded_by_me);
       const rest = all.filter((l) => !waiting.includes(l));
@@ -213,7 +203,7 @@ Setlo.mount({
     },
   },
   async mounted() {
-    await Setlo.load(this, 'loans.php', PERSONAL ? { scope: 'personal' } : null, (r) => { this.loans = r.loans; this.serverTotals = r.totals || null; });
+    await Setlo.load(this, 'loans.php', null, (r) => { this.loans = r.loans; this.serverTotals = r.totals || null; });
   },
   methods: {
     /** "You lent Ana" / "Ana lent you", or for kept change "You owe Ana change" / "Ana owes you change". */
@@ -228,7 +218,7 @@ Setlo.mount({
       return l.settlement && l.settlement.paid_amount > 0 ? 'Partially paid' : 'Acknowledged';
     },
     showPerson(id) { Setlo.showPerson(id); },
-    async load() { const r = await api.get('loans.php', PERSONAL ? { scope: 'personal' } : undefined); this.loans = r.loans; this.serverTotals = r.totals || null; },
+    async load() { const r = await api.get('loans.php'); this.loans = r.loans; this.serverTotals = r.totals || null; },
     openNew() {
       this.f = { direction: 'lent', person: null, currency: Setlo.homeCurrency, amount: '', purpose: '', interestOn: false, rate: this.rates[0].rate };
       this.search = '';
