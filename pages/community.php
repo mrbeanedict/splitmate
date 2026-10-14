@@ -40,7 +40,7 @@ require __DIR__ . '/../partials/head.php';
           <div class="cm-loc">
             <span class="cm-loc-ic" v-html="ic('pin', 16)"></span><input class="cm-input" v-model="compose.location" @input="onLocation('compose')" @keydown="suggestKey($event, 'compose')" @blur="closeSuggest" maxlength="160" autocomplete="off" role="combobox" :aria-expanded="suggest.key === 'compose' && suggest.items.length ? 'true' : 'false'" aria-autocomplete="list" placeholder="Search a place (optional)" aria-label="Location" />
             <ul v-if="suggest.key === 'compose' && suggest.items.length" class="cm-suggest" role="listbox">
-              <li v-for="(s, i) in suggest.items" :key="s.label + i" role="option" :aria-selected="i === suggest.idx ? 'true' : 'false'" :class="{ on: i === suggest.idx }" @mousedown.prevent="pickPlace('compose', s)" @mouseenter="showPlace($event, s.lat, s.lng, s.label)" @mouseleave="hidePlace()"><span class="cm-ic" v-html="ic('pin', 14)"></span>{{ s.label }}</li>
+              <li v-for="(s, i) in suggest.items" :key="s.label + i" role="option" :aria-selected="i === suggest.idx ? 'true' : 'false'" :class="{ on: i === suggest.idx }" @mousedown.prevent="pickPlace('compose', s)"><span class="cm-ic" v-html="ic('pin', 14)"></span>{{ s.label }}</li>
             </ul>
             <span v-if="compose.lat !== null" class="cm-pinned"><span class="cm-ic" v-html="ic('check', 13)"></span>Pinned on the map</span>
           </div>
@@ -104,7 +104,7 @@ require __DIR__ . '/../partials/head.php';
             <div class="cm-loc">
               <span class="cm-loc-ic" v-html="ic('pin', 16)"></span><input class="cm-input" v-model="editing.location" @input="onLocation('edit')" @keydown="suggestKey($event, 'edit')" @blur="closeSuggest" maxlength="160" autocomplete="off" role="combobox" :aria-expanded="suggest.key === 'edit' && suggest.items.length ? 'true' : 'false'" aria-autocomplete="list" placeholder="Search a place (optional)" aria-label="Location" />
               <ul v-if="suggest.key === 'edit' && suggest.items.length" class="cm-suggest" role="listbox">
-                <li v-for="(s, i) in suggest.items" :key="s.label + i" role="option" :aria-selected="i === suggest.idx ? 'true' : 'false'" :class="{ on: i === suggest.idx }" @mousedown.prevent="pickPlace('edit', s)" @mouseenter="showPlace($event, s.lat, s.lng, s.label)" @mouseleave="hidePlace()"><span class="cm-ic" v-html="ic('pin', 14)"></span>{{ s.label }}</li>
+                <li v-for="(s, i) in suggest.items" :key="s.label + i" role="option" :aria-selected="i === suggest.idx ? 'true' : 'false'" :class="{ on: i === suggest.idx }" @mousedown.prevent="pickPlace('edit', s)"><span class="cm-ic" v-html="ic('pin', 14)"></span>{{ s.label }}</li>
               </ul>
               <span v-if="editing.lat !== null" class="cm-pinned"><span class="cm-ic" v-html="ic('check', 13)"></span>Pinned on the map</span>
             </div>
@@ -119,7 +119,7 @@ require __DIR__ . '/../partials/head.php';
 
         <template v-if="!(editing && editing.id === p.id) && (p.location || p.price !== null)">
           <div class="cm-tags">
-            <span v-if="p.location" class="cm-tag cm-place" tabindex="0" role="button" :aria-expanded="placeCard && placeCard.key === placeKey(p.lat, p.lng, p.location) ? 'true' : 'false'" @mouseenter="showPlace($event, p.lat, p.lng, p.location)" @mouseleave="hidePlace()" @focus="showPlace($event, p.lat, p.lng, p.location, 0)" @blur="hidePlace(0)" @click.stop="showPlace($event, p.lat, p.lng, p.location, 0, true)" @keydown.esc="hidePlace(0)"><span class="cm-ic" v-html="ic('pin', 13)"></span>{{ p.location }}</span>
+            <span v-if="p.location" class="cm-tag"><span class="cm-ic" v-html="ic('pin', 13)"></span>{{ p.location }}</span>
             <span v-if="p.price !== null" class="cm-tag"><span class="cm-ic" v-html="ic('tag', 13)"></span>{{ peso(p.price) }}</span>
             <button type="button" class="cm-more" :aria-expanded="open[p.id] ? 'true' : 'false'" @click="open[p.id] = !open[p.id]">{{ open[p.id] ? 'Hide details' : 'View details' }}</button>
           </div>
@@ -240,19 +240,6 @@ require __DIR__ . '/../partials/head.php';
     </div>
   </div>
 
-  <!-- Place card: a picture, the name and the address of a place, on hover / tap (like Google Maps) -->
-  <div v-if="placeCard" class="cm-placecard" :class="{ above: placeCard.above }" :style="{ left: placeCard.x + 'px', top: placeCard.y + 'px' }" role="tooltip" @mouseenter="keepPlace()" @mouseleave="hidePlace()" @click.stop>
-    <div class="cm-pc-photo" :class="{ loading: placeCard.loading }">
-      <img v-if="placeCard.lat !== null && !placeCard.failed" :src="placeCard.src" alt="" @load="placeCard.loading = false" @error="placeCard.failed = true; placeCard.loading = false" />
-      <span v-if="placeCard.lat === null || placeCard.failed" class="cm-pc-empty" v-html="ic('pin', 34)"></span>
-      <span v-else-if="!placeCard.loading && !placeCard.photo && placeCard.tile" class="cm-pc-pin" :style="{ left: placeCard.tile.fx * 100 + '%', top: placeCard.tile.fy * 100 + '%' }" v-html="ic('pin', 26)"></span>
-    </div>
-    <div class="cm-pc-body">
-      <div class="cm-pc-name">{{ placeCard.name }}</div>
-      <div v-if="placeCard.address" class="cm-pc-addr">{{ placeCard.address }}</div>
-    </div>
-  </div>
-
   <!-- Share sheet -->
   <div v-if="sharing" class="sheet-backdrop" @click.self="sharing = null">
     <form class="sheet" @submit.prevent="submitShare">
@@ -308,12 +295,9 @@ Setlo.mount({
     menuFor: null, pickerFor: null, editing: null, editingComment: null, sharing: null,
     cm: {}, tr: {}, replyBox: null, lang: defaultLang(), langs: LANGS, reactionMap: REACTIONS,
     poller: null, pickerTimer: null, holdTimer: null, held: false,
-    placeCard: null, placeShow: null, placeHide: null, placeInfo: {},
   }),
   async mounted() {
-    document.addEventListener('click', () => { this.menuFor = null; this.pickerFor = null; this.hidePlace(0); });
-    window.addEventListener('scroll', () => this.hidePlace(0), { passive: true });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.hidePlace(0); });
+    document.addEventListener('click', () => { this.menuFor = null; this.pickerFor = null; });
     const wanted = Number(new URLSearchParams(location.search).get('post')) || 0;
     await this.reload(wanted);
     this.poller = setInterval(this.checkNew, 45000);
@@ -399,42 +383,6 @@ Setlo.mount({
       return p.lat !== null
         ? 'https://www.openstreetmap.org/?mlat=' + p.lat + '&mlon=' + p.lng + '#map=17/' + p.lat + '/' + p.lng
         : 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(p.location);
-    },
-
-    /* ---- place card ---- */
-    apiBase() { return document.querySelector('meta[name="api-base"]').content; },
-    placeKey(lat, lng, label) { return lat !== null && lat !== undefined ? lat + ',' + lng : 'x:' + label; },
-    /** Shows the card under (or above) the hovered element after a short pause; toggles it on a tap. */
-    showPlace(ev, lat, lng, label, delay = 250, toggle = false) {
-      clearTimeout(this.placeHide);
-      clearTimeout(this.placeShow);
-      const key = this.placeKey(lat, lng, label);
-      if (this.placeCard && this.placeCard.key === key) { if (toggle) this.hidePlace(0); return; }
-      const rect = ev.currentTarget.getBoundingClientRect();
-      this.placeShow = setTimeout(async () => {
-        const W = 280, H = 230, gap = 8, vw = document.documentElement.clientWidth;
-        const above = rect.bottom + gap + H > window.innerHeight && rect.top > H + gap;
-        const [name, ...rest] = String(label).split(',');
-        const card = { key, lat: lat === undefined ? null : lat, lng, name: name.trim(), address: rest.join(',').trim(), loading: true, failed: false, photo: false, tile: null, src: '', above,
-          x: Math.max(8, Math.min(rect.left, vw - W - 8)), y: above ? rect.top - gap : rect.bottom + gap };
-        this.placeCard = card;
-        if (card.lat === null) { card.loading = false; return; }
-        const q = { lat: card.lat, lng: card.lng };
-        card.src = this.apiBase() + 'place-photo.php?' + new URLSearchParams(q);
-        try {
-          this.placeInfo[key] = this.placeInfo[key] || await api.get('place-card.php', { ...q, name: label });
-          if (this.placeCard !== card) return;
-          Object.assign(card, { photo: this.placeInfo[key].photo, tile: this.placeInfo[key].tile });
-        } catch (e) { if (this.placeCard === card) { card.failed = true; card.loading = false; } }
-      }, delay);
-    },
-    keepPlace() { clearTimeout(this.placeHide); },
-    hidePlace(delay = 200) {
-      clearTimeout(this.placeShow);
-      clearTimeout(this.placeHide);
-      if (!this.placeCard) return;
-      if (!delay) { this.placeCard = null; return; }
-      this.placeHide = setTimeout(() => { this.placeCard = null; }, delay);
     },
 
     /* ---- composing ---- */
