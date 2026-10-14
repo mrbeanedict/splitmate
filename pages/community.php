@@ -38,21 +38,21 @@ require __DIR__ . '/../partials/head.php';
         <input ref="files" type="file" multiple accept="image/jpeg,image/png,image/webp" class="hidden" @change="pickFiles" aria-label="Choose photos" />
         <div class="cm-fields">
           <div class="cm-loc">
-            <input class="cm-input" v-model="compose.location" @input="onLocation('compose')" @keydown="suggestKey($event, 'compose')" @blur="closeSuggest" maxlength="160" autocomplete="off" role="combobox" :aria-expanded="suggest.key === 'compose' && suggest.items.length ? 'true' : 'false'" aria-autocomplete="list" placeholder="📍 Search a place (optional)" aria-label="Location" />
+            <span class="cm-loc-ic" v-html="ic('pin', 16)"></span><input class="cm-input" v-model="compose.location" @input="onLocation('compose')" @keydown="suggestKey($event, 'compose')" @blur="closeSuggest" maxlength="160" autocomplete="off" role="combobox" :aria-expanded="suggest.key === 'compose' && suggest.items.length ? 'true' : 'false'" aria-autocomplete="list" placeholder="Search a place (optional)" aria-label="Location" />
             <ul v-if="suggest.key === 'compose' && suggest.items.length" class="cm-suggest" role="listbox">
-              <li v-for="(s, i) in suggest.items" :key="s.label + i" role="option" :aria-selected="i === suggest.idx ? 'true' : 'false'" :class="{ on: i === suggest.idx }" @mousedown.prevent="pickPlace('compose', s)">📍 {{ s.label }}</li>
+              <li v-for="(s, i) in suggest.items" :key="s.label + i" role="option" :aria-selected="i === suggest.idx ? 'true' : 'false'" :class="{ on: i === suggest.idx }" @mousedown.prevent="pickPlace('compose', s)" @mouseenter="showPlace($event, s.lat, s.lng, s.label)" @mouseleave="hidePlace()"><span class="cm-ic" v-html="ic('pin', 14)"></span>{{ s.label }}</li>
             </ul>
-            <span v-if="compose.lat !== null" class="cm-pinned">✓ Pinned on the map</span>
+            <span v-if="compose.lat !== null" class="cm-pinned"><span class="cm-ic" v-html="ic('check', 13)"></span>Pinned on the map</span>
           </div>
           <input class="cm-input cm-price" v-model="compose.price" type="number" min="0" max="99999999.99" step="0.01" inputmode="decimal" placeholder="₱ Price (optional)" aria-label="Price" />
         </div>
         <div class="cm-compose-bar">
-          <button type="button" class="cm-chip" @click="takePhotos" :disabled="posting || compose.files.length >= MAX_PHOTOS">📷 Camera</button>
-          <button type="button" class="cm-chip" @click="$refs.files.click()" :disabled="posting || compose.files.length >= MAX_PHOTOS">🖼 Photos</button>
+          <button type="button" class="cm-chip" @click="takePhotos" :disabled="posting || compose.files.length >= MAX_PHOTOS"><span class="cm-ic" v-html="ic('camera', 16)"></span>Camera</button>
+          <button type="button" class="cm-chip" @click="choosePhotos" :disabled="posting || compose.files.length >= MAX_PHOTOS"><span class="cm-ic" v-html="ic('image', 16)"></span>Photos</button>
           <span v-if="compose.files.length" class="cm-meta">{{ compose.files.length }} {{ compose.files.length === 1 ? 'photo' : 'photos' }}</span>
           <select class="cm-select" v-model="compose.audience" aria-label="Who can see this post">
-            <option value="public">🌐 Public</option>
-            <option value="only_me">🔒 Only me</option>
+            <option value="public">Public</option>
+            <option value="only_me">Only me</option>
           </select>
           <button class="cm-post-btn" :disabled="posting || (!compose.body.trim() && !compose.files.length)">{{ posting ? (progress || 'Posting…') : 'Post' }}</button>
         </div>
@@ -79,20 +79,20 @@ require __DIR__ . '/../partials/head.php';
           <avatar :user="p.author" :size="40"></avatar>
           <div class="cm-who">
             <div class="cm-name">{{ p.author.name }}<span v-if="p.author.badge" :title="p.author.badge.title"> {{ p.author.badge.emoji }}</span><span v-if="p.shared" class="font-medium text-slate-400"> shared a post</span></div>
-            <div class="cm-meta">{{ timeAgo(p.created_at) }}<span v-if="p.edited"> · Edited</span> · <span :title="p.audience === 'public' ? 'Public' : 'Only me'">{{ p.audience === 'public' ? '🌐' : '🔒' }}</span></div>
+            <div class="cm-meta">{{ timeAgo(p.created_at) }}<span v-if="p.edited"> · Edited</span> · <span :title="p.audience === 'public' ? 'Public' : 'Only me'"><span class="cm-ic" v-html="ic(p.audience === 'public' ? 'globe' : 'lock', 13)"></span></span></div>
           </div>
           <div class="cm-menu-wrap" @click.stop>
             <button class="cm-icon-btn" @click="menuFor = menuFor === p.id ? null : p.id" aria-label="Post options" aria-haspopup="true">⋯</button>
             <div v-if="menuFor === p.id" class="cm-menu" role="menu">
               <template v-if="p.is_mine">
-                <button role="menuitem" @click="startEdit(p)">✏️ Edit post</button>
-                <button role="menuitem" @click="setAudience(p, p.audience === 'public' ? 'only_me' : 'public')">{{ p.audience === 'public' ? '🔒 Make it only me' : '🌐 Make it public' }}</button>
+                <button role="menuitem" @click="startEdit(p)"><span class="cm-ic" v-html="ic('edit', 16)"></span>Edit post</button>
+                <button role="menuitem" @click="setAudience(p, p.audience === 'public' ? 'only_me' : 'public')"><span class="cm-ic" v-html="ic(p.audience === 'public' ? 'lock' : 'globe', 16)"></span>{{ p.audience === 'public' ? 'Make it only me' : 'Make it public' }}</button>
               </template>
-              <button role="menuitem" @click="toggleSave(p)">{{ p.saved ? '🔖 Unsave post' : '🔖 Save post' }}</button>
-              <button role="menuitem" @click="copyLink(p)">🔗 Copy link</button>
+              <button role="menuitem" @click="toggleSave(p)"><span class="cm-ic" v-html="ic('bookmark', 16)"></span>{{ p.saved ? 'Unsave post' : 'Save post' }}</button>
+              <button role="menuitem" @click="copyLink(p)"><span class="cm-ic" v-html="ic('link', 16)"></span>Copy link</button>
               <template v-if="p.can_delete">
                 <hr />
-                <button role="menuitem" class="danger" @click="removePost(p)">🗑 Delete post</button>
+                <button role="menuitem" class="danger" @click="removePost(p)"><span class="cm-ic" v-html="ic('trash', 16)"></span>Delete post</button>
               </template>
             </div>
           </div>
@@ -102,11 +102,11 @@ require __DIR__ . '/../partials/head.php';
           <textarea class="cm-text" v-model="editing.body" @input="grow" rows="3" maxlength="2000" aria-label="Edit your post"></textarea>
           <div v-if="!p.shared" class="cm-fields">
             <div class="cm-loc">
-              <input class="cm-input" v-model="editing.location" @input="onLocation('edit')" @keydown="suggestKey($event, 'edit')" @blur="closeSuggest" maxlength="160" autocomplete="off" role="combobox" :aria-expanded="suggest.key === 'edit' && suggest.items.length ? 'true' : 'false'" aria-autocomplete="list" placeholder="📍 Search a place (optional)" aria-label="Location" />
+              <span class="cm-loc-ic" v-html="ic('pin', 16)"></span><input class="cm-input" v-model="editing.location" @input="onLocation('edit')" @keydown="suggestKey($event, 'edit')" @blur="closeSuggest" maxlength="160" autocomplete="off" role="combobox" :aria-expanded="suggest.key === 'edit' && suggest.items.length ? 'true' : 'false'" aria-autocomplete="list" placeholder="Search a place (optional)" aria-label="Location" />
               <ul v-if="suggest.key === 'edit' && suggest.items.length" class="cm-suggest" role="listbox">
-                <li v-for="(s, i) in suggest.items" :key="s.label + i" role="option" :aria-selected="i === suggest.idx ? 'true' : 'false'" :class="{ on: i === suggest.idx }" @mousedown.prevent="pickPlace('edit', s)">📍 {{ s.label }}</li>
+                <li v-for="(s, i) in suggest.items" :key="s.label + i" role="option" :aria-selected="i === suggest.idx ? 'true' : 'false'" :class="{ on: i === suggest.idx }" @mousedown.prevent="pickPlace('edit', s)" @mouseenter="showPlace($event, s.lat, s.lng, s.label)" @mouseleave="hidePlace()"><span class="cm-ic" v-html="ic('pin', 14)"></span>{{ s.label }}</li>
               </ul>
-              <span v-if="editing.lat !== null" class="cm-pinned">✓ Pinned on the map</span>
+              <span v-if="editing.lat !== null" class="cm-pinned"><span class="cm-ic" v-html="ic('check', 13)"></span>Pinned on the map</span>
             </div>
             <input class="cm-input cm-price" v-model="editing.price" type="number" min="0" max="99999999.99" step="0.01" inputmode="decimal" placeholder="₱ Price (optional)" aria-label="Price" />
           </div>
@@ -119,8 +119,8 @@ require __DIR__ . '/../partials/head.php';
 
         <template v-if="!(editing && editing.id === p.id) && (p.location || p.price !== null)">
           <div class="cm-tags">
-            <span v-if="p.location" class="cm-tag">📍 {{ p.location }}</span>
-            <span v-if="p.price !== null" class="cm-tag">🏷️ {{ peso(p.price) }}</span>
+            <span v-if="p.location" class="cm-tag cm-place" tabindex="0" role="button" :aria-expanded="placeCard && placeCard.key === placeKey(p.lat, p.lng, p.location) ? 'true' : 'false'" @mouseenter="showPlace($event, p.lat, p.lng, p.location)" @mouseleave="hidePlace()" @focus="showPlace($event, p.lat, p.lng, p.location, 0)" @blur="hidePlace(0)" @click.stop="showPlace($event, p.lat, p.lng, p.location, 0, true)" @keydown.esc="hidePlace(0)"><span class="cm-ic" v-html="ic('pin', 13)"></span>{{ p.location }}</span>
+            <span v-if="p.price !== null" class="cm-tag"><span class="cm-ic" v-html="ic('tag', 13)"></span>{{ peso(p.price) }}</span>
             <button type="button" class="cm-more" :aria-expanded="open[p.id] ? 'true' : 'false'" @click="open[p.id] = !open[p.id]">{{ open[p.id] ? 'Hide details' : 'View details' }}</button>
           </div>
           <dl v-if="open[p.id]" class="cm-details">
@@ -132,7 +132,7 @@ require __DIR__ . '/../partials/head.php';
           </dl>
           <div v-if="open[p.id] && p.location" class="cm-mapbox">
             <iframe v-if="p.lat !== null" class="cm-map" :src="mapSrc(p)" :title="'Map of ' + p.location" loading="lazy" referrerpolicy="no-referrer"></iframe>
-            <a class="cm-more" :href="mapLink(p)" target="_blank" rel="noopener noreferrer">{{ p.lat !== null ? '🗺️ Open in Maps' : '🔎 Search in Maps' }}</a>
+            <a class="cm-more" :href="mapLink(p)" target="_blank" rel="noopener noreferrer"><span class="cm-ic" v-html="ic(p.lat !== null ? 'map' : 'search', 14)"></span>{{ p.lat !== null ? 'Open in Maps' : 'Search in Maps' }}</a>
           </div>
         </template>
 
@@ -174,12 +174,12 @@ require __DIR__ . '/../partials/head.php';
               <button v-for="(emo, key) in reactionMap" :key="key" type="button" :title="key" :aria-label="key" @click.stop="react(p, key)">{{ emo }}</button>
             </div>
             <button type="button" class="cm-act" :class="{ on: p.reactions.mine }" style="width:100%" @click="quickLike(p)">
-              <span>{{ p.reactions.mine ? reactionMap[p.reactions.mine] : '👍' }}</span><span class="lbl">{{ p.reactions.mine ? labelFor(p.reactions.mine) : 'Like' }}</span>
+              <span v-if="p.reactions.mine">{{ reactionMap[p.reactions.mine] }}</span><span v-else class="cm-ic" v-html="ic('thumbs', 18)"></span><span class="lbl">{{ p.reactions.mine ? labelFor(p.reactions.mine) : 'Like' }}</span>
             </button>
           </div>
-          <button class="cm-act" @click="toggleComments(p)"><span>💬</span><span class="lbl">Comment</span></button>
-          <button class="cm-act" @click="openShare(p)"><span>↗️</span><span class="lbl">Share</span></button>
-          <button class="cm-act" :class="{ on: p.saved }" @click="toggleSave(p)"><span>{{ p.saved ? '🔖' : '🏷️' }}</span><span class="lbl">{{ p.saved ? 'Saved' : 'Save' }}</span></button>
+          <button class="cm-act" @click="toggleComments(p)"><span class="cm-ic" v-html="ic('chat', 18)"></span><span class="lbl">Comment</span></button>
+          <button class="cm-act" @click="openShare(p)"><span class="cm-ic" v-html="ic('share', 18)"></span><span class="lbl">Share</span></button>
+          <button class="cm-act" :class="{ on: p.saved }" @click="toggleSave(p)"><span class="cm-ic" v-html="ic('bookmark', 18)"></span><span class="lbl">{{ p.saved ? 'Saved' : 'Save' }}</span></button>
         </div>
 
         <!-- Comments -->
@@ -240,6 +240,19 @@ require __DIR__ . '/../partials/head.php';
     </div>
   </div>
 
+  <!-- Place card: a picture, the name and the address of a place, on hover / tap (like Google Maps) -->
+  <div v-if="placeCard" class="cm-placecard" :class="{ above: placeCard.above }" :style="{ left: placeCard.x + 'px', top: placeCard.y + 'px' }" role="tooltip" @mouseenter="keepPlace()" @mouseleave="hidePlace()" @click.stop>
+    <div class="cm-pc-photo" :class="{ loading: placeCard.loading }">
+      <img v-if="placeCard.lat !== null && !placeCard.failed" :src="placeCard.src" alt="" @load="placeCard.loading = false" @error="placeCard.failed = true; placeCard.loading = false" />
+      <span v-if="placeCard.lat === null || placeCard.failed" class="cm-pc-empty" v-html="ic('pin', 34)"></span>
+      <span v-else-if="!placeCard.loading && !placeCard.photo && placeCard.tile" class="cm-pc-pin" :style="{ left: placeCard.tile.fx * 100 + '%', top: placeCard.tile.fy * 100 + '%' }" v-html="ic('pin', 26)"></span>
+    </div>
+    <div class="cm-pc-body">
+      <div class="cm-pc-name">{{ placeCard.name }}</div>
+      <div v-if="placeCard.address" class="cm-pc-addr">{{ placeCard.address }}</div>
+    </div>
+  </div>
+
   <!-- Share sheet -->
   <div v-if="sharing" class="sheet-backdrop" @click.self="sharing = null">
     <form class="sheet" @submit.prevent="submitShare">
@@ -251,7 +264,7 @@ require __DIR__ . '/../partials/head.php';
       </div>
       <textarea class="cm-text" style="margin-top:12px" v-model="sharing.caption" rows="2" maxlength="2000" placeholder="Say something about this… (optional)" aria-label="Your caption"></textarea>
       <div class="mt-3 flex items-center gap-2">
-        <select class="cm-select" v-model="sharing.audience" aria-label="Who can see your share"><option value="public">🌐 Public</option><option value="only_me">🔒 Only me</option></select>
+        <select class="cm-select" v-model="sharing.audience" aria-label="Who can see your share"><option value="public">Public</option><option value="only_me">Only me</option></select>
       </div>
       <div class="mt-4 grid grid-cols-2 gap-2.5">
         <button type="button" class="btn-pill btn-pill-soft" @click="sharing = null">Cancel</button>
@@ -295,15 +308,19 @@ Setlo.mount({
     menuFor: null, pickerFor: null, editing: null, editingComment: null, sharing: null,
     cm: {}, tr: {}, replyBox: null, lang: defaultLang(), langs: LANGS, reactionMap: REACTIONS,
     poller: null, pickerTimer: null, holdTimer: null, held: false,
+    placeCard: null, placeShow: null, placeHide: null, placeInfo: {},
   }),
   async mounted() {
-    document.addEventListener('click', () => { this.menuFor = null; this.pickerFor = null; });
+    document.addEventListener('click', () => { this.menuFor = null; this.pickerFor = null; this.hidePlace(0); });
+    window.addEventListener('scroll', () => this.hidePlace(0), { passive: true });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.hidePlace(0); });
     const wanted = Number(new URLSearchParams(location.search).get('post')) || 0;
     await this.reload(wanted);
     this.poller = setInterval(this.checkNew, 45000);
   },
   unmounted() { clearInterval(this.poller); },
   methods: {
+    ic(name, size = 16) { return window.SetloIcons ? SetloIcons.svg(name, size) : ''; },
     async reload(focus) {
       this.loading = true; this.missing = false; this.newCount = 0; this.focusId = 0;
       try {
@@ -384,6 +401,42 @@ Setlo.mount({
         : 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(p.location);
     },
 
+    /* ---- place card ---- */
+    apiBase() { return document.querySelector('meta[name="api-base"]').content; },
+    placeKey(lat, lng, label) { return lat !== null && lat !== undefined ? lat + ',' + lng : 'x:' + label; },
+    /** Shows the card under (or above) the hovered element after a short pause; toggles it on a tap. */
+    showPlace(ev, lat, lng, label, delay = 250, toggle = false) {
+      clearTimeout(this.placeHide);
+      clearTimeout(this.placeShow);
+      const key = this.placeKey(lat, lng, label);
+      if (this.placeCard && this.placeCard.key === key) { if (toggle) this.hidePlace(0); return; }
+      const rect = ev.currentTarget.getBoundingClientRect();
+      this.placeShow = setTimeout(async () => {
+        const W = 280, H = 230, gap = 8, vw = document.documentElement.clientWidth;
+        const above = rect.bottom + gap + H > window.innerHeight && rect.top > H + gap;
+        const [name, ...rest] = String(label).split(',');
+        const card = { key, lat: lat === undefined ? null : lat, lng, name: name.trim(), address: rest.join(',').trim(), loading: true, failed: false, photo: false, tile: null, src: '', above,
+          x: Math.max(8, Math.min(rect.left, vw - W - 8)), y: above ? rect.top - gap : rect.bottom + gap };
+        this.placeCard = card;
+        if (card.lat === null) { card.loading = false; return; }
+        const q = { lat: card.lat, lng: card.lng };
+        card.src = this.apiBase() + 'place-photo.php?' + new URLSearchParams(q);
+        try {
+          this.placeInfo[key] = this.placeInfo[key] || await api.get('place-card.php', { ...q, name: label });
+          if (this.placeCard !== card) return;
+          Object.assign(card, { photo: this.placeInfo[key].photo, tile: this.placeInfo[key].tile });
+        } catch (e) { if (this.placeCard === card) { card.failed = true; card.loading = false; } }
+      }, delay);
+    },
+    keepPlace() { clearTimeout(this.placeHide); },
+    hidePlace(delay = 200) {
+      clearTimeout(this.placeShow);
+      clearTimeout(this.placeHide);
+      if (!this.placeCard) return;
+      if (!delay) { this.placeCard = null; return; }
+      this.placeHide = setTimeout(() => { this.placeCard = null; }, delay);
+    },
+
     /* ---- composing ---- */
     async addFiles(files) {
       for (const f of files) {
@@ -395,7 +448,16 @@ Setlo.mount({
       }
     },
     async pickFiles(e) { const files = [...e.target.files]; e.target.value = ''; await this.addFiles(files); },
-    async takePhotos() { await this.addFiles(await Setlo.captureCamera({ max: MAX_PHOTOS - this.compose.files.length, title: 'Take photos' })); },
+    /** Asked once (and remembered in this browser) before anyone adds a photo to a post. */
+    async photoConsent() {
+      const key = 'setlo.photoConsent';
+      try { if (localStorage.getItem(key)) return true; } catch (e) { /* storage blocked: ask every time */ }
+      const ok = await Setlo.confirm({ title: 'Allow posting photos?', text: 'Photos you add are visible to the people who can see your post. Only share photos you’re comfortable sharing, and nothing of other people without their OK.', confirmText: 'Allow' });
+      if (ok) { try { localStorage.setItem(key, '1'); } catch (e) { /* ignore */ } }
+      return ok;
+    },
+    async choosePhotos() { if (await this.photoConsent()) this.$refs.files.click(); },
+    async takePhotos() { if (!(await this.photoConsent())) return; await this.addFiles(await Setlo.captureCamera({ max: MAX_PHOTOS - this.compose.files.length, title: 'Take photos' })); },
     /** Photos in groups the server accepts in one request: at most BATCH_PHOTOS files and BATCH_BYTES in total. */
     photoBatches(files) {
       const batches = [];
