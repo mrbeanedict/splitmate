@@ -29,7 +29,7 @@ if (PHP_SAPI !== 'cli' && !headers_sent()) {
         . "font-src 'self' data: https://fonts.gstatic.com; "
         . "img-src 'self' data: blob: https://*.googleusercontent.com; "
         . "connect-src 'self' https://accounts.google.com/gsi/ https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; "
-        . "frame-src https://accounts.google.com/gsi/ https://www.openstreetmap.org; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; "
+        . "frame-src https://accounts.google.com/gsi/ https://www.google.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; "
         . "form-action 'self'; worker-src 'self'; manifest-src 'self'");
     if (is_https()) {
         header('Strict-Transport-Security: max-age=15552000');

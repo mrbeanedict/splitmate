@@ -5,6 +5,7 @@ require __DIR__ . '/../includes/api.php';
 require __DIR__ . '/../includes/uploads.php';
 require_once __DIR__ . '/../includes/gemini.php';
 require_once __DIR__ . '/../includes/community_moderation.php';
+require_once __DIR__ . '/../includes/community_feelings.php';
 
 const COMMUNITY_REACTIONS = ['like' => '👍', 'love' => '❤️', 'haha' => '😆', 'wow' => '😮', 'sad' => '😢', 'angry' => '😡'];
 const COMMUNITY_MAX_PHOTOS_PER_POST = 100;  // a safety ceiling, not a product limit
@@ -14,6 +15,7 @@ const COMMUNITY_TRANSLATE_LANGS = [
     'en' => 'English', 'tl' => 'Filipino (Tagalog)', 'ceb' => 'Cebuano', 'es' => 'Spanish', 'ja' => 'Japanese', 'ko' => 'Korean',
     'zh-CN' => 'Simplified Chinese', 'fr' => 'French', 'de' => 'German', 'id' => 'Indonesian', 'ar' => 'Arabic', 'hi' => 'Hindi',
 ];
+const COMMUNITY_TAGS_MAX = 20;
 const COMMUNITY_BODY_MAX = 2000;
 const COMMUNITY_COMMENT_MAX = 1000;
 
@@ -63,6 +65,54 @@ function clean_location(): ?string
         fail('That location is too long. Keep it to 160 characters or fewer.', 422);
     }
     return $v === '' ? null : $v;
+}
+
+/** The post's "feeling/activity" key (null when none); an unknown key is refused. */
+function clean_feeling(): ?string
+{
+    $key = trim((string) input('feeling', ''));
+    if ($key === '') {
+        return null;
+    }
+    if (!community_feeling($key)) {
+        fail('Pick a feeling or activity from the list.', 422);
+    }
+    return $key;
+}
+
+/** Ids of the people tagged in the request: at most COMMUNITY_TAGS_MAX, not me, and only real active users. */
+function clean_tags(array $me): array
+{
+    $raw = input('tags', []);
+    if (is_string($raw)) {
+        $raw = $raw === '' ? [] : explode(',', $raw);
+    }
+    $ids = array_values(array_unique(array_filter(array_map('intval', is_array($raw) ? $raw : []), fn ($id) => $id > 0 && $id !== $me['id'])));
+    $ids = array_slice($ids, 0, COMMUNITY_TAGS_MAX);
+    if (!$ids) {
+        return [];
+    }
+    $ok = q("SELECT id FROM users WHERE role = 'user' AND status = 'active' AND id IN (" . in_list($ids) . ')', $ids)->fetchAll(PDO::FETCH_COLUMN);
+    return array_values(array_intersect($ids, array_map('intval', $ok))); // keeps the order they were tagged in
+}
+
+/** Replace a post's tags with $ids. Returns the ids that weren't tagged before. */
+function save_tags(int $postId, array $ids): array
+{
+    $before = array_map('intval', q('SELECT user_id FROM community_post_tags WHERE post_id = ?', [$postId])->fetchAll(PDO::FETCH_COLUMN));
+    q('DELETE FROM community_post_tags WHERE post_id = ?', [$postId]);
+    foreach ($ids as $uid) {
+        q('INSERT INTO community_post_tags (post_id, user_id) VALUES (?, ?)', [$postId, $uid]);
+    }
+    return array_values(array_diff($ids, $before));
+}
+
+/** "<name> tagged you in a post." — only for public posts, because a tagged person can't open an Only me post. */
+function notify_tagged(int $postId, array $ids, array $me): void
+{
+    foreach ($ids as $uid) {
+        notify($uid, 'community', first_name($me['full_name']) . ' tagged you in a post.', 'community?post=' . $postId);
+    }
 }
 
 /** [lat, lng] sent with a location picked from the place suggestions, or [null, null]. */
@@ -140,6 +190,10 @@ function hydrate_posts(array $ids, array $me): array
     foreach (q("SELECT id, post_id FROM community_photos WHERE post_id IN ($in) ORDER BY position, id", $ids)->fetchAll() as $r) {
         $photos[(int) $r['post_id']][] = photo_url((int) $r['id']);
     }
+    $tags = [];
+    foreach (q("SELECT t.post_id, u.id, u.full_name, u.avatar_color, u.avatar, u.featured_achievement, u.role FROM community_post_tags t JOIN users u ON u.id = t.user_id WHERE t.post_id IN ($in) ORDER BY t.created_at, u.id", $ids)->fetchAll() as $r) {
+        $tags[(int) $r['post_id']][] = public_user($r);
+    }
 
     // The originals of re-shares (only if the viewer may see them)
     $origIds = array_values(array_unique(array_filter(array_map(fn ($r) => (int) $r['shared_post_id'], $rows))));
@@ -183,6 +237,8 @@ function hydrate_posts(array $ids, array $me): array
             'lat'           => $p['lat'] === null ? null : (float) $p['lat'],
             'lng'           => $p['lng'] === null ? null : (float) $p['lng'],
             'price'         => $p['price'] === null ? null : (float) $p['price'],
+            'feeling'       => community_feeling($p['feeling']),
+            'tags'          => $tags[$id] ?? [],
             'audience'      => $p['audience'],
             'created_at'    => $p['created_at'],
             'edited'        => $p['edited_at'] !== null,
@@ -327,6 +383,8 @@ switch (input('action', '')) {
         community_check($me, 'post', $body, (string) $location); // offensive text: refused before anything is saved, and the author gets a strike
         [$lat, $lng] = clean_coords($location);
         $price = clean_price();
+        $feeling = clean_feeling();
+        $tagIds = clean_tags($me);
         $shareOf = (int) input('share_of', 0);
         $origin = null;
         if ($shareOf) {
@@ -348,12 +406,13 @@ switch (input('action', '')) {
         $pdo = db();
         $pdo->beginTransaction();
         try {
-            q('INSERT INTO community_posts (user_id, body, location, lat, lng, price, audience, shared_post_id, is_share) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [$me['id'], $body === '' ? null : $body, $origin ? null : $location, $origin ? null : $lat, $origin ? null : $lng, $origin ? null : $price, $audience, $origin ? (int) $origin['id'] : null, $origin ? 1 : 0]);
+            q('INSERT INTO community_posts (user_id, body, location, lat, lng, price, feeling, audience, shared_post_id, is_share) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [$me['id'], $body === '' ? null : $body, $origin ? null : $location, $origin ? null : $lat, $origin ? null : $lng, $origin ? null : $price, $origin ? null : $feeling, $audience, $origin ? (int) $origin['id'] : null, $origin ? 1 : 0]);
             $postId = (int) $pdo->lastInsertId();
             foreach ($files as $i => $file) {
                 q('INSERT INTO community_photos (post_id, position, image) VALUES (?, ?, ?)', [$postId, $i, $file]);
             }
+            $tagged = $origin ? [] : save_tags($postId, $tagIds);
             $pdo->commit();
         } catch (Throwable $e) {
             $pdo->rollBack();
@@ -364,6 +423,9 @@ switch (input('action', '')) {
         }
         if ($origin) {
             notify_post($origin, $me, 'shared your post.');
+        }
+        if ($audience === 'public') {
+            notify_tagged($postId, $tagged, $me);
         }
         json_ok(['post' => one_post($postId, $me)]);
 
@@ -422,7 +484,21 @@ switch (input('action', '')) {
         community_check($me, 'edit', $body, (string) $location);
         [$lat, $lng] = clean_coords($location);
         $price = $post['is_share'] ? null : clean_price();
-        q('UPDATE community_posts SET body = ?, location = ?, lat = ?, lng = ?, price = ?, edited_at = NOW() WHERE id = ?', [$body === '' ? null : $body, $location, $lat, $lng, $price, $post['id']]);
+        $feeling = $post['is_share'] ? null : clean_feeling();
+        $tagIds = $post['is_share'] ? [] : clean_tags($me);
+        $pdo = db();
+        $pdo->beginTransaction();
+        try {
+            q('UPDATE community_posts SET body = ?, location = ?, lat = ?, lng = ?, price = ?, feeling = ?, edited_at = NOW() WHERE id = ?', [$body === '' ? null : $body, $location, $lat, $lng, $price, $feeling, $post['id']]);
+            $tagged = save_tags((int) $post['id'], $tagIds);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+        if ($post['audience'] === 'public') {
+            notify_tagged((int) $post['id'], $tagged, $me); // only the people added by this edit
+        }
         json_ok(['post' => one_post((int) $post['id'], $me)]);
 
     case 'set_audience':
@@ -430,7 +506,12 @@ switch (input('action', '')) {
         if ((int) $post['user_id'] !== $me['id']) {
             fail('You can only change the audience of your own posts.', 403);
         }
-        q('UPDATE community_posts SET audience = ? WHERE id = ?', [input('audience') === 'only_me' ? 'only_me' : 'public', $post['id']]);
+        $audience = input('audience') === 'only_me' ? 'only_me' : 'public';
+        q('UPDATE community_posts SET audience = ? WHERE id = ?', [$audience, $post['id']]);
+        if ($audience === 'public' && $post['audience'] !== 'public') {
+            // The tagged people couldn't open it while it was only mine: tell them now that they can
+            notify_tagged((int) $post['id'], array_map('intval', q('SELECT user_id FROM community_post_tags WHERE post_id = ?', [$post['id']])->fetchAll(PDO::FETCH_COLUMN)), $me);
+        }
         json_ok(['post' => one_post((int) $post['id'], $me)]);
 
     case 'delete':

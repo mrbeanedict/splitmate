@@ -386,6 +386,16 @@ $steps = [
     'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS lat DECIMAL(9,6) NULL AFTER location',
     'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS lng DECIMAL(9,6) NULL AFTER lat',
     'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS price DECIMAL(10,2) NULL AFTER lng',
+    // Feeling/activity and tagged people
+    'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS feeling VARCHAR(40) NULL AFTER price',
+    'CREATE TABLE IF NOT EXISTS community_post_tags (
+       post_id    INT UNSIGNED NOT NULL,
+       user_id    INT UNSIGNED NOT NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (post_id, user_id),
+       FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
     // Replies to community comments (one level; deleting a comment removes its replies)
     'ALTER TABLE community_comments ADD COLUMN IF NOT EXISTS parent_id INT UNSIGNED NULL AFTER user_id',
     'ALTER TABLE community_comments ADD CONSTRAINT community_comments_parent_fk FOREIGN KEY IF NOT EXISTS (parent_id) REFERENCES community_comments(id) ON DELETE CASCADE',

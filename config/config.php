@@ -65,6 +65,10 @@ return [
     // (add http://localhost and your site's address under "Authorized JavaScript origins"). Empty = button explains it's not set up.
     'google' => [
         'client_id' => $env('GOOGLE_CLIENT_ID', ''),
+        // Community posts: the official Google Maps Embed API (https://developers.google.com/maps/documentation/embed/get-started).
+        // Create a key in Google Cloud, enable "Maps Embed API", and restrict it to your site's address (HTTP referrers).
+        // Empty = the community map falls back to Google's keyless embed.
+        'maps_embed_key' => $env('GOOGLE_MAPS_EMBED_KEY', ''),
     ],
 
     // "Pay online" on settlements via PayMongo Checkout (demo). Use a TEST secret key (sk_test_...) from

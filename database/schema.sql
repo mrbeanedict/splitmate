@@ -5,7 +5,7 @@ CREATE DATABASE IF NOT EXISTS setlo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicod
 USE setlo;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS qr_payments, community_violations, assistant_messages, purchase_events, purchases, community_translations, community_saves, community_comments, community_reactions, community_photos, community_posts, feedback, settlement_payment_proofs, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
+DROP TABLE IF EXISTS qr_payments, community_violations, assistant_messages, purchase_events, purchases, community_translations, community_saves, community_comments, community_reactions, community_photos, community_post_tags, community_posts, feedback, settlement_payment_proofs, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
 SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE users (
@@ -487,6 +487,7 @@ CREATE TABLE community_posts (
   lat            DECIMAL(9,6) NULL,               -- set when the location was picked from the place suggestions
   lng            DECIMAL(9,6) NULL,
   price          DECIMAL(10,2) NULL,
+  feeling        VARCHAR(40) NULL,                -- "feeling:happy" / "activity:eating" (includes/community_feelings.php)
   audience       ENUM('public','only_me') NOT NULL DEFAULT 'public',
   shared_post_id INT UNSIGNED NULL,               -- a re-share points at the post it shares
   is_share       TINYINT(1) NOT NULL DEFAULT 0,   -- stays 1 if the original is later deleted
@@ -505,6 +506,16 @@ CREATE TABLE community_photos (
   image     VARCHAR(255) NOT NULL,
   FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
   INDEX (post_id, position)
+) ENGINE=InnoDB;
+
+-- People tagged in a post ("with Ana and 2 others")
+CREATE TABLE community_post_tags (
+  post_id    INT UNSIGNED NOT NULL,
+  user_id    INT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (post_id, user_id),
+  FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE community_reactions (
