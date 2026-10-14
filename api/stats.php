@@ -127,5 +127,6 @@ json_ok([
     'currency'   => $home,
     'estimated'  => $estimated,
     'places'     => $top($places),
+    'places_other' => pesos(array_sum(array_slice($places, 5, null, true))), // spending at places beyond the top 5
     'items'      => $top($items),
 ]);

@@ -5,6 +5,7 @@ $user = require_login();
 // ?tab=history opens the past-bills list (the old Bill History page redirects here).
 $title = 'Spending';
 $nav = 'stats';
+$headExtra = ['assets/css/stats-charts.css'];
 $back = 'dashboard.php';
 require __DIR__ . '/../partials/head.php';
 ?>
@@ -131,19 +132,68 @@ require __DIR__ . '/../partials/head.php';
       <p v-else class="mt-2 text-[12px] text-slate-400">Log what you buy on your own and it shows up here.</p>
     </section>
 
-    <!-- Ranked lists -->
-    <section v-for="list in lists" :key="list.key" class="tile p-4">
-      <h2 class="text-[14px] font-extrabold text-ink">{{ list.title }}</h2>
-      <p v-if="!s[list.key].length" class="mt-2 text-[12px] text-slate-400">Nothing yet.</p>
-      <div class="mt-3 space-y-3">
-        <div v-for="row in s[list.key]" :key="row.name">
-          <div class="flex items-baseline justify-between gap-3 text-[13px]">
-            <span class="truncate font-semibold text-slate-700">{{ row.name }}</span>
-            <span class="shrink-0 font-bold text-ink">{{ peso(row.amount) }}</span>
+    <!-- Where your money goes: share of spending per place, as a donut -->
+    <section class="tile p-4">
+      <div class="sc-head">
+        <h2 class="text-[14px] font-extrabold text-ink">Where your money goes</h2>
+        <button v-if="s.places.length" type="button" class="sc-toggle" @click="setView('places')">{{ view.places === 'chart' ? 'Show list' : 'Show chart' }}</button>
+      </div>
+      <p v-if="!s.places.length" class="mt-2 text-[12px] text-slate-400">Nothing yet.</p>
+      <div v-else-if="view.places === 'chart'" class="sc-donut-layout">
+        <div class="sc-donut-wrap">
+          <svg class="sc-donut" viewBox="0 0 120 120" role="img" :aria-label="'Spending by place: ' + donut.rows.map((r) => r.name + ' ' + peso(r.amount) + ' (' + r.label + ')').join(', ')">
+            <circle class="sc-ring-track" cx="60" cy="60" r="46" fill="none" stroke-width="16"></circle>
+            <g transform="rotate(-90 60 60)">
+              <circle v-for="(r, i) in donut.rows" :key="r.name" class="sc-arc" :class="{ dim: hoverPlace !== null && hoverPlace !== i }" cx="60" cy="60" r="46" fill="none" stroke-width="16"
+                      :stroke="r.color" :stroke-dasharray="r.dash" :stroke-dashoffset="r.off" tabindex="0"
+                      :aria-label="r.name + ': ' + peso(r.amount) + ', ' + r.label"
+                      @mouseenter="hoverPlace = i" @mouseleave="hoverPlace = null" @focus="hoverPlace = i" @blur="hoverPlace = null"></circle>
+            </g>
+          </svg>
+          <div class="sc-center" aria-hidden="true">
+            <template v-if="hoverPlace === null"><small>Total spent</small><b>{{ peso(donut.total) }}</b></template>
+            <template v-else><small>{{ donut.rows[hoverPlace].name }}</small><b>{{ peso(donut.rows[hoverPlace].amount) }}</b><small>{{ donut.rows[hoverPlace].label }}</small></template>
           </div>
-          <div class="mt-1 h-2 rounded-full bg-slate-100">
-            <div class="h-2 rounded-full bg-brand-600" :style="{ width: Math.max(2, row.amount / s[list.key][0].amount * 100) + '%' }"></div>
-          </div>
+        </div>
+        <ul class="sc-legend">
+          <li v-for="(r, i) in donut.rows" :key="r.name" :class="{ dim: hoverPlace !== null && hoverPlace !== i }" @mouseenter="hoverPlace = i" @mouseleave="hoverPlace = null">
+            <i :style="{ background: r.color }"></i><span class="n" :title="r.name">{{ r.name }}</span><span class="a">{{ peso(r.amount) }}</span><span class="p">{{ r.label }}</span>
+          </li>
+        </ul>
+      </div>
+      <div v-else class="mt-3 space-y-3">
+        <div v-for="row in s.places" :key="row.name">
+          <div class="flex items-baseline justify-between gap-3 text-[13px]"><span class="truncate font-semibold text-slate-700">{{ row.name }}</span><span class="shrink-0 font-bold text-ink">{{ peso(row.amount) }}</span></div>
+          <div class="mt-1 h-2 rounded-full bg-slate-100"><div class="h-2 rounded-full bg-brand-600" :style="{ width: Math.max(2, row.amount / s.places[0].amount * 100) + '%' }"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- What you order most: ranked bar chart -->
+    <section class="tile p-4">
+      <div class="sc-head">
+        <h2 class="text-[14px] font-extrabold text-ink">What you order most</h2>
+        <button v-if="s.items.length" type="button" class="sc-toggle" @click="setView('items')">{{ view.items === 'chart' ? 'Show list' : 'Show chart' }}</button>
+      </div>
+      <p v-if="!s.items.length" class="mt-2 text-[12px] text-slate-400">Nothing yet.</p>
+      <div v-else-if="view.items === 'chart'" class="sc-bars" role="img" :aria-label="'What you order most: ' + itemBars.rows.map((r) => r.name + ' ' + peso(r.amount)).join(', ')" @mouseleave="hoverItem = null">
+        <div class="sc-grid" aria-hidden="true"><i v-for="t in itemBars.ticks" :key="t.at" :style="{ left: t.at + '%' }"></i></div>
+        <div v-for="(r, i) in itemBars.rows" :key="r.name" class="sc-row" :class="{ dim: hoverItem !== null && hoverItem !== i }">
+          <span class="sc-rank" aria-hidden="true">{{ i + 1 }}</span>
+          <span class="sc-name" :title="r.name">{{ r.name }}</span>
+          <span class="sc-track">
+            <button type="button" class="sc-bar" :class="{ top: i === 0 }" :style="{ width: r.w + '%', animationDelay: (i * 70) + 'ms' }" :aria-label="r.name + ': ' + peso(r.amount) + ', ' + r.label"
+                    @mouseenter="hoverItem = i" @focus="hoverItem = i" @blur="hoverItem = null"></button>
+            <b class="sc-val">{{ peso(r.amount) }}</b>
+          </span>
+        </div>
+        <div class="sc-axis" aria-hidden="true"><span v-for="t in itemBars.ticks" :key="t.at" :style="{ left: t.at + '%' }">{{ t.label }}</span></div>
+        <p class="sc-caption" aria-live="polite">{{ hoverItem === null ? 'Hover or tap a bar for details' : itemBars.rows[hoverItem].name + ' · ' + peso(itemBars.rows[hoverItem].amount) + ' · ' + itemBars.rows[hoverItem].label + ' of these items' }}</p>
+      </div>
+      <div v-else class="mt-3 space-y-3">
+        <div v-for="row in s.items" :key="row.name">
+          <div class="flex items-baseline justify-between gap-3 text-[13px]"><span class="truncate font-semibold text-slate-700">{{ row.name }}</span><span class="shrink-0 font-bold text-ink">{{ peso(row.amount) }}</span></div>
+          <div class="mt-1 h-2 rounded-full bg-slate-100"><div class="h-2 rounded-full bg-brand-600" :style="{ width: Math.max(2, row.amount / s.items[0].amount * 100) + '%' }"></div></div>
         </div>
       </div>
     </section>
@@ -160,15 +210,50 @@ require __DIR__ . '/../partials/head.php';
 </div>
 
 <script>
+/** Chart or list for each card, remembered in this browser. */
+const chartViews = () => {
+  try { return { places: 'chart', items: 'chart', ...JSON.parse(localStorage.getItem('setlo-stats-view') || '{}') }; } catch (e) { return { places: 'chart', items: 'chart' }; }
+};
+const pctLabel = (frac) => { const v = Math.round(frac * 1000) / 10; return (v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)) + '%'; };
 Setlo.useCurrency(Setlo.homeCurrency); // spending is added up in my currency (api/stats.php)
 Setlo.mount({
   data: () => ({
     loading: true, s: null, hover: null, asTable: false,
     tab: new URLSearchParams(location.search).get('tab') === 'history' ? 'history' : 'overview',
     history: null, historyLoading: false, // closed bills, loaded the first time Past bills is opened
-    lists: [{ key: 'places', title: 'Where your money goes' }, { key: 'items', title: 'What you order most' }],
+    hoverPlace: null, hoverItem: null, view: chartViews(),
   }),
   computed: {
+    /** Places as donut arcs: the top places plus "Other places", each with its share of the total. */
+    donut() {
+      const rows = this.s.places.map((p, i) => ({ name: p.name, amount: p.amount, color: 'var(--sc-' + (i + 1) + ')' }));
+      if (this.s.places_other > 0) rows.push({ name: 'Other places', amount: this.s.places_other, color: 'var(--sc-other)' });
+      const total = rows.reduce((a, r) => a + r.amount, 0);
+      const C = 2 * Math.PI * 46;
+      const gap = rows.length > 1 ? 1.5 : 0;
+      let used = 0;
+      return {
+        total,
+        rows: rows.map((r) => {
+          const frac = total ? r.amount / total : 0;
+          const len = Math.max(0.5, frac * C - gap);
+          const arc = { ...r, label: pctLabel(frac), dash: len.toFixed(2) + ' ' + (C - len).toFixed(2), off: (-used).toFixed(2) };
+          used += frac * C;
+          return arc;
+        }),
+      };
+    },
+    /** Items as horizontal bars scaled to the biggest one, with gridlines and peso ticks along the bottom. */
+    itemBars() {
+      const items = this.s.items;
+      const max = items.length ? items[0].amount : 1;
+      const total = items.reduce((a, r) => a + r.amount, 0);
+      const plot = 82; // percent of the track the bars may use; the amount is printed after the bar
+      return {
+        rows: items.map((r) => ({ ...r, w: Math.max(2, r.amount / max * plot), label: pctLabel(total ? r.amount / total : 0) })),
+        ticks: [0, 0.25, 0.5, 0.75, 1].map((t) => ({ at: t * plot, label: t === 0 ? '0' : Setlo.pesoShort(max * t) })),
+      };
+    },
     maxMonth() { return Math.max(1, ...this.s.months.map((m) => m.amount + (m.solo || 0))); },
     change() {
       if (!this.s.last_month) return null;
@@ -196,6 +281,10 @@ Setlo.mount({
     await Setlo.load(this, 'stats.php', null, (r) => { this.s = r; });
   },
   methods: {
+    setView(key) {
+      this.view[key] = this.view[key] === 'chart' ? 'list' : 'chart';
+      try { localStorage.setItem('setlo-stats-view', JSON.stringify(this.view)); } catch (e) { /* private mode */ }
+    },
     /** Switch views; the URL keeps the choice, so Back from a past bill returns to the list. */
     show(tab) {
       this.tab = tab;

@@ -2,7 +2,30 @@
 // Login / sign-up landing shell (design: assets/login.png). The page prints its card, then includes auth-landing-bottom.php.
 // Phones: card only. lg: brand column + card. xl: brand column + card + phone mockup.
 ?>
+<style>
+  /* Sign-in pages: Home and Admin links in an always-visible top bar (plain CSS, no Tailwind rebuild) */
+  .auth-top { position: absolute; top: 0; left: 0; right: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; }
+  .landing .landing-grid { padding-top: 4.5rem; }
+  .auth-top a { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px; border-radius: 999px; font-size: 13.5px; font-weight: 700; text-decoration: none; transition: background .15s, border-color .15s, color .15s; }
+  .auth-top .home { color: rgb(var(--brand-700)); background: rgb(var(--surface) / .8); border: 1px solid rgb(var(--brand-200)); }
+  .auth-top .home:hover { background: rgb(var(--brand-50)); border-color: rgb(var(--brand-400)); }
+  .auth-top .admin { color: rgb(100 116 139); border: 1px solid rgb(148 163 184 / .5); background: transparent; }
+  .auth-top .admin:hover { color: rgb(var(--brand-700)); border-color: rgb(var(--brand-400)); background: rgb(var(--surface) / .8); }
+  .auth-top a:focus-visible { outline: 3px solid rgb(var(--brand-400) / .6); outline-offset: 2px; }
+  .auth-top svg { width: 17px; height: 17px; flex: none; }
+  .auth-top .admin .long { display: none; }
+  @media (min-width: 640px) { .auth-top { padding: 16px 32px; } .auth-top .admin .long { display: inline; } .auth-top .admin .short { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .auth-top a { transition: none; } }
+</style>
 <div class="landing">
+  <nav class="auth-top" aria-label="Setlo navigation">
+    <a class="home" href="<?= h(url('')) ?>" aria-label="Back to the Setlo home page">
+      <svg fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>Home
+    </a>
+    <a class="admin" href="<?= h(url('pages/admin-login')) ?>" aria-label="Admin Panel sign in">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/></svg><span class="long">Admin Panel</span><span class="short">Admin</span>
+    </a>
+  </nav>
   <!-- Soft background shapes -->
   <div class="landing-blob -right-40 -top-40 h-[34rem] w-[34rem] bg-brand-100/60" aria-hidden="true"></div>
   <div class="landing-blob -bottom-56 right-[18%] h-[36rem] w-[36rem] bg-brand-200/40" aria-hidden="true"></div>
