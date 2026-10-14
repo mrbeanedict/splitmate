@@ -568,6 +568,7 @@ CREATE TABLE assistant_messages (
   user_id    INT UNSIGNED NOT NULL,
   role       ENUM('user','model') NOT NULL,
   content    TEXT NOT NULL,
+  flag       TINYINT NOT NULL DEFAULT 0,          -- 0 normal, 1 hidden abusive message (text never saved), 2 Setlo Buddy's calm notice for it
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX (user_id, id),

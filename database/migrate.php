@@ -405,6 +405,8 @@ $steps = [
        content TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, INDEX (user_id, id), INDEX (user_id, created_at)
      ) ENGINE=InnoDB',
+    // Moderation: 0 normal, 1 a hidden (abusive) message whose text was never saved, 2 Setlo Buddy's calm notice for it
+    'ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS flag TINYINT NOT NULL DEFAULT 0 AFTER content',
 ];
 $hadTour = (bool) db()->query("SHOW COLUMNS FROM users LIKE 'onboarded_at'")->fetch();
 foreach ($steps as $sql) {

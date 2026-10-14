@@ -54,6 +54,12 @@
     scrollDown();
     return el;
   }
+  // An abusive message is hidden for good: the text is wiped from the page and only this placeholder stays.
+  function hideBubble(el) {
+    el.className = 'sai-msg sai-hidden';
+    el.innerHTML = '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 10.6a2 2 0 002.8 2.8M9.9 5.1A9.8 9.8 0 0112 5c5 0 9 4.5 10 7a11.6 11.6 0 01-3.2 4.3M6.3 6.3C3.9 8 2.4 10.3 2 12c1 2.5 5 7 10 7a9.7 9.7 0 004.1-.9"/></svg> Message hidden · offensive language';
+    return el;
+  }
   const mascot = (pose) => { const img = fab.querySelector('img'); img.src = base + pose + '.png'; };
 
   // Things the server attached to a reply: a bar chart, or an action waiting for the user's OK. An action only runs
@@ -114,7 +120,10 @@
     loaded = true;
     try {
       const r = await api.poll('assistant.php');
-      (r.messages || []).forEach((m) => add(m.role === 'user' ? 'sai-me' : 'sai-bot', m.content));
+      (r.messages || []).forEach((m) => {
+        if (Number(m.flag) === 1) hideBubble(add('sai-me', ''));
+        else add(m.role === 'user' ? 'sai-me' : 'sai-bot', m.content);
+      });
       if (!r.messages || !r.messages.length) greet();
     } catch (e) { greet(); }
     showChips();
@@ -128,14 +137,16 @@
     if (!text || busy) return;
     busy = true; send.disabled = true;
     chips.innerHTML = '';
-    add('sai-me', text);
+    const mine = add('sai-me', text);
     box.value = ''; box.style.height = '';
     const dots = document.createElement('div');
     dots.className = 'sai-typing'; dots.setAttribute('aria-label', 'Setlo Buddy is typing'); dots.innerHTML = '<i></i><i></i><i></i>';
     log.appendChild(dots); scrollDown(); mascot('think');
     try {
       const r = await api.post('assistant.php', { action: 'chat', message: text });
-      dots.remove(); add('sai-bot', r.reply); renderActions(r.actions); mascot('cheer');
+      dots.remove();
+      if (r.hidden) { hideBubble(mine); text = ''; }
+      add('sai-bot', r.reply); renderActions(r.actions); mascot(r.hidden ? 'wave' : 'cheer');
       setTimeout(() => mascot('wave'), 2500);
     } catch (e) {
       dots.remove(); add('sai-err', e.message || 'Something went wrong. Try again.'); mascot('wave');

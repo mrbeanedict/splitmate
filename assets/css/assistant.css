@@ -100,6 +100,10 @@ html.dark .sai-err { background: #3a1820; border-color: #7a2a38; color: #fda4af;
 html.dark .sai-ok { color: rgb(var(--brand-300)); }
 .sai-no { margin-top: .5rem !important; color: rgb(var(--slate-500)); }
 
+/* An abusive message: the text is gone, only this placeholder is left */
+.sai-hidden { align-self: flex-end; display: flex; align-items: center; gap: .4rem; border: 1.5px dashed var(--line); border-bottom-right-radius: 5px; background: var(--field); color: rgb(var(--slate-500)); font-size: .78rem; font-style: italic; }
+.sai-hidden svg { flex: none; }
+
 .sai-typing { align-self: flex-start; display: flex; gap: 4px; padding: .7rem .85rem; border-radius: 16px; border-bottom-left-radius: 5px; background: rgb(var(--surface)); border: 1px solid var(--line); }
 .sai-typing i { width: 7px; height: 7px; border-radius: 50%; background: rgb(var(--slate-500)); animation: sai-dot 1.1s ease-in-out infinite; }
 .sai-typing i:nth-child(2) { animation-delay: .15s; }
