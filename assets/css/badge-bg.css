@@ -39,6 +39,22 @@ body.badge-bg::before {
 body.badge-bg[data-bg="photo"]::before { opacity: .6; }
 html.dark body.badge-bg[data-bg="photo"]::before { opacity: .45; filter: blur(2px) saturate(.85) brightness(.75); }
 
+/* Switching backdrops: the old layer fades out, the new one fades in, and the page colour eases between presets. */
+body.badge-bg { transition: background-color .5s ease; }
+.badge-field { animation: bg-fade-in .6s ease both; transition: opacity .35s ease; }
+.badge-field.is-leaving { opacity: 0; }
+@keyframes bg-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .badge-field { animation: none; transition: none; } }
+
+/* Sidebar scrollbar: hidden until you hover the sidebar, then a slim brand-coloured pill instead of the chunky default. */
+.nav2 { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.nav2:hover { scrollbar-color: rgb(var(--brand-500) / .45) transparent; }
+.nav2::-webkit-scrollbar { width: 6px; }
+.nav2::-webkit-scrollbar-track { background: transparent; }
+.nav2::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
+.nav2:hover::-webkit-scrollbar-thumb { background: rgb(var(--brand-500) / .45); }
+.nav2::-webkit-scrollbar-thumb:hover { background: rgb(var(--brand-500) / .75); }
+
 /* Each img sets its own position, size, opacity and --dx/--dy/--dur/--delay inline. */
 .badge-field { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
 .badge-field img {
@@ -86,25 +102,32 @@ html.dark .rcpt-paper { background: #12302d; color: rgb(var(--brand-500) / .85);
 
 /* The face sketch repeated over the white page in the theme's green, thick lines, evenly spaced. The PNG has air around the
    face, so 150px tiles show a ~96px face with a gap on every side. */
-body.badge-bg[data-bg="receipts"] { background-color: #fff; background-image: none; }
+body.badge-bg[data-bg="receipts"] { background-color: #fff; }
 html.dark body.badge-bg[data-bg="receipts"] { background-color: rgb(var(--canvas)); }
-body.badge-bg[data-bg="receipts"]::after {
+body.badge-bg::after {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -2; /* under the receipt layer */
   pointer-events: none;
   background: rgb(var(--brand-500));
-  opacity: .3;
+  opacity: 0;
+  transition: opacity .5s ease;
   -webkit-mask: url('../mascot/face-sketch.png') 0 0 / 150px auto repeat;
   mask: url('../mascot/face-sketch.png') 0 0 / 150px auto repeat;
 }
+body.badge-bg[data-bg="receipts"]::after { opacity: .3; }
 html.dark body.badge-bg[data-bg="receipts"]::after { opacity: .22; }
 /* The sidebar is the theme green with white text; the active page is a white pill. */
-body.badge-bg[data-bg="receipts"] .nav2 {
+.nav2 { isolation: isolate; transition: border-color .5s ease; }
+.nav2::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
   background: linear-gradient(180deg, rgb(var(--brand-500)), rgb(var(--brand-600)));
-  border-color: rgb(255 255 255 / .18);
+  opacity: 0; transition: opacity .5s ease;
 }
+body.badge-bg[data-bg="receipts"] .nav2::before { opacity: 1; }
+.nav2 a, .nav2 button, .nav2 .nav-section { transition: color .5s ease, background-color .3s ease; }
+body.badge-bg[data-bg="receipts"] .nav2 { border-color: rgb(255 255 255 / .18); }
 body.badge-bg[data-bg="receipts"] .nav2 a, body.badge-bg[data-bg="receipts"] .nav2 button,
 body.badge-bg[data-bg="receipts"] .nav2 .nav2-logo, body.badge-bg[data-bg="receipts"] .nav2 .nav-burger { color: #fff; }
 body.badge-bg[data-bg="receipts"] .nav2 .nav-section { color: rgb(255 255 255 / .7); }
