@@ -287,6 +287,8 @@ $steps = [
        INDEX (from_user_id, status)
      ) ENGINE=InnoDB',
     "ALTER TABLE qr_payments MODIFY status ENUM('started','paid','cancelled') NOT NULL DEFAULT 'started'",
+    // Money sent through a Pay-me QR counts toward the sender's debts to that person first; this is that part
+    'ALTER TABLE qr_payments ADD COLUMN IF NOT EXISTS applied DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER amount',
     // Personal purchases (pages/purchases.php): one person's own expenses, outside any bill
     'CREATE TABLE IF NOT EXISTS purchases (
        id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

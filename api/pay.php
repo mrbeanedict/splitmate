@@ -15,9 +15,9 @@ $me = api_user();
 // The money others sent me through my Pay-me QR (Payment Methods page): GET pay.php?received=1
 if (method() === 'GET' && isset($_GET['received'])) {
     $rows = q(
-        "SELECT qp.id, qp.amount, qp.currency, qp.note, qp.online_via, qp.online_detail, qp.paid_at, u.id, u.full_name, u.avatar_color, u.role
+        "SELECT qp.id, qp.amount - qp.applied, qp.currency, qp.note, qp.online_via, qp.online_detail, qp.paid_at, u.id, u.full_name, u.avatar_color, u.role
          FROM qr_payments qp JOIN users u ON u.id = qp.from_user_id
-         WHERE qp.to_user_id = ? AND qp.status = 'paid' ORDER BY qp.paid_at DESC, qp.id DESC LIMIT 30",
+         WHERE qp.to_user_id = ? AND qp.status = 'paid' AND qp.amount > qp.applied ORDER BY qp.paid_at DESC, qp.id DESC LIMIT 30",
         [$me['id']]
     )->fetchAll(PDO::FETCH_NUM);
     json_ok(['received' => array_map(fn ($r) => [
@@ -280,10 +280,21 @@ if (method() === 'POST') {
                 "UPDATE qr_payments SET status = 'paid', paid_at = NOW(), payment_ref = ?, online_via = ?, online_detail = ? WHERE id = ? AND status = 'started'",
                 [$paid['id'], $paid['via'], $paid['detail'], $row['id']]
             )->rowCount();
+            $applied = ['applied' => 0, 'left_over' => cents($row['amount']), 'debts' => []];
             if ($counted === 1) {
-                notify((int) $u['id'], 'paid', first_name($me['full_name']) . ' sent you ' . money_str(cents($row['amount']), $row['currency']) . " via $via through your Pay-me QR" . ($row['note'] ? " — “{$row['note']}”" : '') . '.', 'payment-methods');
+                // What I owe this person comes off first (each part is counted and they're told like any online payment)
+                if (($row['currency'] ?? 'PHP') === 'PHP') {
+                    $applied = apply_payment_to_debts((int) $me['id'], (int) $u['id'], cents($row['amount']), $paid);
+                    if ($applied['applied'] > 0) {
+                        q('UPDATE qr_payments SET applied = ? WHERE id = ?', [pesos($applied['applied']), $row['id']]);
+                    }
+                }
+                if ($applied['left_over'] > 0) {
+                    notify((int) $u['id'], 'paid', first_name($me['full_name']) . ' sent you ' . money_str($applied['left_over'], $row['currency']) . " via $via through your Pay-me QR" . ($row['note'] ? " — “{$row['note']}”" : '') . '.', 'payment-methods');
+                }
             }
-            json_ok(['done' => true, 'amount' => (float) $row['amount'], 'via' => $via, 'note' => $row['note'], 'id' => (int) $row['id']]);
+            json_ok(['done' => true, 'amount' => (float) $row['amount'], 'via' => $via, 'note' => $row['note'], 'id' => (int) $row['id'],
+                'applied' => pesos($applied['applied']), 'left_over' => pesos($applied['left_over']), 'debts' => $applied['debts']]);
     }
     fail('Unknown action.', 404);
 }

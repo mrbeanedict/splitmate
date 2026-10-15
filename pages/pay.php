@@ -133,6 +133,8 @@ require __DIR__ . '/../partials/head.php';
       <p class="text-[44px]">✅</p>
       <p class="text-[19px] font-extrabold text-ink">Sent!</p>
       <p class="mt-1 text-[13px] text-slate-600">You sent {{ p.first }} {{ peso(sent.amount, 'PHP') }} via {{ sent.via }}<span v-if="sent.note"> — “{{ sent.note }}”</span>. {{ p.first }} has been told.</p>
+      <p v-for="d in sent.debts" :key="d.bill" class="mt-1 text-[12.5px] font-semibold text-emerald-700">{{ peso(d.amount, 'PHP') }} counted toward {{ d.bill }}<span v-if="d.left > 0"> · {{ peso(d.left, 'PHP') }} left</span><span v-else> · paid in full</span></p>
+      <p v-if="sent.applied > 0 && sent.left_over > 0" class="mt-1 text-[12.5px] text-slate-500">The other {{ peso(sent.left_over, 'PHP') }} went to {{ p.first }} as a plain transfer.</p>
       <button type="button" class="btn btn-primary mt-4 w-full" @click="sent = null">Done</button>
     </div>
     <div v-else-if="sendNotYet" class="tile !border-amber-300 !bg-amber-50 p-4 text-center">
@@ -147,7 +149,7 @@ require __DIR__ . '/../partials/head.php';
         <p class="flex-1 text-[14px] font-extrabold text-ink">Send money to {{ p.first }}</p>
         <span v-if="online.test" class="pill pill-draft">Demo · test mode</span>
       </div>
-      <p class="mt-0.5 text-[12px] text-slate-400">Any amount, even if you don’t owe anything. Paid online through PayMongo.</p>
+      <p class="mt-0.5 text-[12px] text-slate-400">Any amount, even if you don’t owe anything. {{ owePhp > 0 ? 'It counts toward what you owe ' + p.first + ' first. ' : '' }}Paid online through PayMongo.</p>
       <div class="relative mt-3">
         <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-slate-400">₱</span>
         <input v-model="amount" @input="amount = filterMoney($event.target.value); $event.target.value = amount" inputmode="decimal" placeholder="0.00" class="input-soft !pl-8 text-[16px] font-bold" :class="{ 'is-invalid': amountErr }" aria-label="Amount to send" />
@@ -159,7 +161,7 @@ require __DIR__ . '/../partials/head.php';
       <p v-if="amountErr" class="field-error">{{ amountErr }}</p>
       <input v-model="note" maxlength="100" placeholder="Note (optional), e.g. lunch" class="input-soft mt-3" aria-label="Note" />
       <button type="button" @click="sendMoney" class="btn btn-primary mt-3 w-full" :disabled="busy || confirming || !sendOk">{{ sendOk ? 'Send ' + peso(sendCents / 100, 'PHP') + ' with PayMongo' : 'Enter an amount' }}</button>
-      <p class="mt-1.5 text-center text-[11.5px] leading-snug text-slate-400">{{ peso(online.send.min, 'PHP') }} to {{ peso(online.send.max, 'PHP') }}.<span v-if="owePhp > 0"> If you’re paying what you owe, use “Pay with PayMongo” above so it’s counted against your debts.</span></p>
+      <p class="mt-1.5 text-center text-[11.5px] leading-snug text-slate-400">{{ peso(online.send.min, 'PHP') }} to {{ peso(online.send.max, 'PHP') }}.<span v-if="owePhp > 0"> Because you owe {{ p.first }}, what you send comes off what you owe first.</span></p>
       <button v-if="online.send.started" type="button" @click="checkSent" class="mt-2 w-full text-center text-[12.5px] font-bold text-brand-700" :disabled="busy || confirming">Already paid? Check payment status</button>
     </div>
 

@@ -249,10 +249,10 @@ require __DIR__ . '/../partials/head.php';
     <bill-replay v-if="d.items.length" :d="d"></bill-replay>
     <share-summary v-if="d.items.length" :d="d"></share-summary>
 
-    <div v-if="d.me.is_creator && !bill.locked" class="grid grid-cols-2 gap-3">
+    <div v-if="d.me.can_assign && !bill.locked" class="grid grid-cols-2 gap-3">
       <a :href="'review-items.php?bill=' + billId" class="btn btn-outline">Edit items</a>
       <a :href="'assign-items.php?bill=' + billId" class="btn btn-primary">Assign items</a>
-      <button @click="remove" class="btn btn-ghost col-span-2 !text-rose-600">Delete this bill</button>
+      <button v-if="d.me.is_creator" @click="remove" class="btn btn-ghost col-span-2 !text-rose-600">Delete this bill</button>
     </div>
     <!-- Settling but nobody has paid yet: the creator can still undo a mistake -->
     <div v-else-if="bill.locked && d.me.is_creator && !bill.money_moved" class="tile p-3.5">

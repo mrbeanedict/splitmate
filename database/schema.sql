@@ -262,6 +262,7 @@ CREATE TABLE qr_payments (
   from_user_id     INT UNSIGNED NOT NULL,
   to_user_id       INT UNSIGNED NOT NULL,
   amount           DECIMAL(10,2) NOT NULL,
+  applied          DECIMAL(10,2) NOT NULL DEFAULT 0, -- the part of it that went toward debts the sender owed (api/pay.php send_check)
   currency         CHAR(3) NOT NULL DEFAULT 'PHP',
   note             VARCHAR(100) NULL,
   status           ENUM('started','paid','cancelled') NOT NULL DEFAULT 'started', -- started: checkout opened; paid: PayMongo confirmed it; cancelled: replaced by a newer one (kept, so the hourly limit counts it)

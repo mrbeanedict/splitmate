@@ -36,6 +36,7 @@ require __DIR__ . '/../partials/head.php';
       <h2 class="text-[15px] font-extrabold text-ink">Items</h2>
       <div class="flex items-center gap-3">
         <a :href="'bill-detail.php?bill=' + billId" class="text-[13px] font-bold text-slate-500">Details</a>
+        <a v-if="canEdit" :href="'review-items.php?bill=' + billId" class="text-[13px] font-bold text-brand-700">Edit items</a>
         <button v-if="canEdit && unassignedCount" @click="splitEvenly" class="text-[13px] font-bold text-brand-700">Split evenly</button>
       </div>
     </div>

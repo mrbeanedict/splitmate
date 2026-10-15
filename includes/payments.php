@@ -500,6 +500,44 @@ function online_session_cents(string $session): int
 }
 
 /**
+ * Money sent to someone through their Pay-me QR counts toward what the sender owes them first: their open PHP debts
+ * to that person, oldest first, each part counted like an online payment (count_online_payment). $paid is
+ * paymongo_paid_payment()'s reply. Returns ['applied' => cents, 'left_over' => cents, 'debts' => [['bill', 'amount', 'left'], ...]].
+ * Call it outside a transaction (each part has its own).
+ */
+function apply_payment_to_debts(int $fromId, int $toId, int $cents, array $paid): array
+{
+    $debts = [];
+    $remaining = $cents;
+    $ids = q(
+        "SELECT id FROM settlements WHERE from_user_id = ? AND to_user_id = ? AND status = 'pending' AND currency = 'PHP' ORDER BY created_at, id",
+        [$fromId, $toId]
+    )->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($ids as $sid) {
+        if ($remaining <= 0) {
+            break;
+        }
+        $pdo = db();
+        $pdo->beginTransaction();
+        $locked = lock_settlement((int) $sid);
+        $open = $locked['status'] === 'pending' ? open_cents($locked) : 0;
+        $take = min($open, $remaining);
+        if ($take <= 0 || ($take < 100 && $take < $open)) {
+            $pdo->commit(); // nothing to take, or it would leave a sliver under ₱1
+            continue;
+        }
+        $pid = add_payment($locked, $fromId, $take, 'online', 'started');
+        $pdo->commit();
+        $done = count_online_payment(['id' => $pid, 'settlement_id' => (int) $sid], $paid);
+        if ($done) {
+            $remaining -= $done['cents'];
+            $debts[] = ['bill' => $done['bill'], 'amount' => pesos($done['cents']), 'left' => pesos($done['left'])];
+        }
+    }
+    return ['applied' => $cents - $remaining, 'left_over' => $remaining, 'debts' => $debts];
+}
+
+/**
  * Count one payment whose PayMongo checkout was paid: note how it was paid, confirm it (confirm_payment) and tell the
  * receiver. $paid is paymongo_paid_payment()'s reply; the amount counted is this payment's own share of the checkout.
  * Runs in its own transaction. Returns null if it was already counted, else
