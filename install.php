@@ -76,7 +76,17 @@ try {
     $tablesExist = (bool) db()->query("SHOW TABLES LIKE 'users'")->fetchColumn();
     $add('Database connection', 'ok', 'connected to ' . config('db.name'));
 } catch (Throwable $e) {
-    $add('Database connection', 'bad', 'could not connect: ' . preg_replace('/\s+/', ' ', $e->getMessage()) . ' (check DB_HOST, DB_NAME, DB_USER, DB_PASS in config/local.php)');
+    // What the installer is actually trying (the password itself is never shown, only its length and oddities).
+    $dc = config('db');
+    $pw = (string) $dc['pass'];
+    $oddities = array_filter([
+        $pw === '' ? 'the password is EMPTY (is DB_PASS set in config/local.php?)' : '',
+        $pw !== trim($pw) ? 'the password has a space at the start or end' : '',
+        preg_match('/[^\x20-\x7E]/', $pw) ? 'the password has a non-standard character (smart quote or hidden symbol)' : '',
+        strpbrk($pw, "'\"\\") !== false ? 'the password contains a quote or backslash' : '',
+    ]);
+    $tried = "host: {$dc['host']} | database: {$dc['name']} | user: {$dc['user']} | password length: " . strlen($pw) . ($oddities ? ' | WARNING: ' . implode('; ', $oddities) : '');
+    $add('Database connection', 'bad', 'could not connect: ' . preg_replace('/\s+/', ' ', $e->getMessage()) . ' [Trying: ' . $tried . ']');
 }
 
 // Can PHP on this host call the outside services Setlo uses? Any HTTP answer (even 403/404) means the connection works.
