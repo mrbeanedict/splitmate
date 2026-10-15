@@ -437,23 +437,30 @@ Setlo.mount({
     removeTag(key, id) { const t = this.pickTarget(key); t.tags = t.tags.filter((u) => u.id !== id); },
     pickFeeling(key, fk) { this.pickTarget(key).feeling = fk; this.panel.which = ''; },
 
+    /** "Kiamo Ridge View Cafe" from "Kiamo Ridge View Cafe, Mount Kiamo Trail, …": what Google should recognise as the place. */
+    placeName(p) { return String(p.location).split(',')[0].trim() || p.location; },
     /**
-     * Google Maps on a post. With a Maps Embed API key (config google.maps_embed_key): the official embed, on the pinned
-     * place, or a search for the typed one (biased to the Philippines). Without a key: Google's keyless embed on the pin.
-     * The CSP allows www.google.com frames (includes/bootstrap.php).
+     * Google Maps on a post. A pinned place is searched by its name and centred on the pin, so Google shows the place
+     * itself (name, photos, directions), not a bare coordinate; a typed place is searched as written (kept in the
+     * Philippines). With a Maps Embed API key (config google.maps_embed_key) the official embed is used, otherwise
+     * Google's keyless one. The CSP allows www.google.com frames (includes/bootstrap.php).
      */
     mapSrc(p) {
+      const pinned = p.lat !== null;
       if (this.mapsKey) {
-        const q = p.lat !== null ? p.lat + ',' + p.lng : p.location;
-        return 'https://www.google.com/maps/embed/v1/' + (p.lat !== null ? 'place' : 'search') + '?key=' + encodeURIComponent(this.mapsKey)
-          + '&q=' + encodeURIComponent(q) + '&zoom=17&region=PH';
+        return 'https://www.google.com/maps/embed/v1/' + (pinned ? 'place' : 'search') + '?key=' + encodeURIComponent(this.mapsKey)
+          + '&q=' + encodeURIComponent(pinned ? this.placeName(p) : p.location)
+          + (pinned ? '&center=' + p.lat + ',' + p.lng + '&zoom=17' : '&zoom=17&region=PH');
       }
-      return 'https://www.google.com/maps?q=' + p.lat + ',' + p.lng + '&z=17&output=embed';
+      if (pinned) return 'https://www.google.com/maps?q=' + encodeURIComponent(this.placeName(p)) + '&ll=' + p.lat + ',' + p.lng + '&z=17&output=embed&hl=en';
+      const q = /philippines/i.test(p.location) ? p.location : p.location + ', Philippines';
+      return 'https://www.google.com/maps?q=' + encodeURIComponent(q) + '&z=16&output=embed&hl=en';
     },
-    hasMap(p) { return p.lat !== null || !!this.mapsKey; },
-    /** Opens Google Maps (the app on phones): the exact pin, or a search for the typed place. */
+    hasMap(p) { return !!p.location; },
+    /** Opens Google Maps (the app on phones) on the named place around the pin, or on a search for the typed place. */
     mapLink(p) {
-      return 'https://www.google.com/maps/search/?api=1&query=' + (p.lat !== null ? p.lat + ',' + p.lng : encodeURIComponent(p.location));
+      if (p.lat !== null) return 'https://www.google.com/maps/search/' + encodeURIComponent(this.placeName(p)) + '/@' + p.lat + ',' + p.lng + ',17z';
+      return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.location);
     },
 
     /* ---- composing ---- */
