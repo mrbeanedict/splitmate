@@ -99,9 +99,77 @@ function db(): PDO
  */
 function q(string $sql, array $params = []): PDOStatement
 {
-    $stmt = db()->prepare($sql);
-    $stmt->execute($params);
-    return $stmt;
+    static $healed = false;
+    try {
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+    } catch (PDOException $e) {
+        // A table (42S02) or column (42S22) the code expects isn't there: the database is behind the code. Update it once
+        // and retry. Not inside a transaction: the schema change would silently commit it.
+        if ($healed || !in_array((string) $e->getCode(), ['42S02', '42S22'], true) || db()->inTransaction()) {
+            throw $e;
+        }
+        $healed = true;
+        ensure_schema(true);
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+    }
+}
+
+/**
+ * Keeps the database in step with the code, so a `git pull` that adds tables or columns never ends in "Something went
+ * wrong". A marker file (in the system temp folder) remembers which copy of includes/migrations.php the database was last
+ * brought up to; when the file changes (or $force, after a query hit a missing table/column) the migration runs once,
+ * under a lock so concurrent requests wait instead of racing. A failure is logged and not retried for 5 minutes.
+ * Off with 'auto_migrate' => false (AUTO_MIGRATE=0), e.g. when the database user may not ALTER tables.
+ */
+function ensure_schema(bool $force = false): void
+{
+    static $busy = false;
+    if ($busy || PHP_SAPI === 'cli' || !config('auto_migrate')) {
+        return;
+    }
+    $file = __DIR__ . '/migrations.php';
+    $name = (string) (config('db')['name'] ?? '');
+    $stamp = filemtime($file) . '|' . filesize($file) . '|' . $name;
+    $base = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'setlo_schema_' . md5(__DIR__ . '|' . $name);
+    $read = static fn (string $f): string => is_file($f) ? (string) @file_get_contents($f) : '';
+    if (!$force && $read($base . '.ok') === $stamp) {
+        return;
+    }
+    $busy = true;
+    $lock = @fopen($base . '.lock', 'c');
+    try {
+        if ($lock) {
+            flock($lock, LOCK_EX);
+        }
+        if (!$force && $read($base . '.ok') === $stamp) {
+            return; // another request just did it
+        }
+        if ($read($base . '.fail') === $stamp && time() - (int) @filemtime($base . '.fail') < 300) {
+            return; // it failed a moment ago: don't hammer the database
+        }
+        require_once __DIR__ . '/migrations.php';
+        ob_start();
+        try {
+            run_migrations();
+            @file_put_contents($base . '.ok', $stamp);
+            @unlink($base . '.fail');
+        } catch (Throwable $e) {
+            @file_put_contents($base . '.fail', $stamp);
+            error_log('[setlo] Automatic database update failed: ' . $e->getMessage());
+        } finally {
+            ob_end_clean();
+        }
+    } finally {
+        if ($lock) {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+        $busy = false;
+    }
 }
 
 function h(?string $s): string
@@ -335,3 +403,6 @@ function first_name(string $name): string
 {
     return explode(' ', trim($name))[0];
 }
+
+// Every web request checks (cheaply) that the database matches the code.
+ensure_schema();

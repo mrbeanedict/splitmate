@@ -1,0 +1,548 @@
+<?php
+// The database migration: brings an existing Setlo database up to date without losing data. Safe to run repeatedly
+// (every step is idempotent). Used by database/migrate.php (the manual command) and by ensure_schema() in
+// includes/bootstrap.php, which runs it by itself the first time a web request sees a changed copy of this file, or when a
+// query fails on a missing table/column. MariaDB only: it uses ADD COLUMN IF NOT EXISTS.
+// (The body is not indented so the multi-line SQL below stays as it was.)
+
+declare(strict_types=1);
+
+function run_migrations(): void
+{
+$steps = [
+    // Payment QR + account on profile, proof of payment on settlements
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_account VARCHAR(60) NULL AFTER payment_method',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_qr VARCHAR(255) NULL AFTER payment_account',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS payment_ref VARCHAR(60) NULL AFTER dispute_reason',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS proof_image VARCHAR(255) NULL AFTER payment_ref',
+    // Senior/PWD discount + invite links
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS discount DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER service_charge',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS invite_code CHAR(12) NULL UNIQUE AFTER ocr_status',
+    "ALTER TABLE bill_members ADD COLUMN IF NOT EXISTS discount_type ENUM('none','senior','pwd') NOT NULL DEFAULT 'none' AFTER user_id",
+    // Guest members (no account)
+    'ALTER TABLE users MODIFY email VARCHAR(190) NULL',
+    "ALTER TABLE users MODIFY role ENUM('user','admin','guest') NOT NULL DEFAULT 'user'",
+    // Multiple payers
+    'CREATE TABLE IF NOT EXISTS bill_payments (
+       bill_id INT UNSIGNED NOT NULL, user_id INT UNSIGNED NOT NULL, amount DECIMAL(10,2) NOT NULL,
+       PRIMARY KEY (bill_id, user_id),
+       FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE CASCADE,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
+    // Continue with Google
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub VARCHAR(64) NULL UNIQUE AFTER password_hash',
+    // Security: sign-in throttling
+    'CREATE TABLE IF NOT EXISTS login_attempts (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, email VARCHAR(190) NOT NULL, ip VARCHAR(45) NOT NULL,
+       attempted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX (email, ip, attempted_at)
+     ) ENGINE=InnoDB',
+    // Unique username (sign in with it or the email)
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(20) NULL UNIQUE AFTER email',
+    // Personal "Pay me" QR code per account
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS pay_code CHAR(12) NULL UNIQUE AFTER google_sub',
+    // The Pay-me QR is generated client-side now (assets/js/ui.js qrSvg/qrPng); the old uploaded-QR
+    // column is unused dead weight — drop it if an earlier run of this script added it.
+    'ALTER TABLE users DROP COLUMN IF EXISTS payment_qr',
+    // How a settlement was paid (PayMongo online, transfer with proof, or cash in person)
+    "ALTER TABLE settlements ADD COLUMN IF NOT EXISTS settle_method ENUM('online','transfer','cash') NULL AFTER status",
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS paymongo_session VARCHAR(80) NULL AFTER proof_image',
+    // Plain-English item names from receipt codes, and meal-set contents
+    'ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS printed_name VARCHAR(120) NULL AFTER ocr_name',
+    'ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS details VARCHAR(255) NULL AFTER printed_name',
+    // Several receipts per bill, their photos, and duplicate flags
+    "CREATE TABLE IF NOT EXISTS receipts (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, bill_id INT UNSIGNED NOT NULL, position SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+       store_name VARCHAR(120) NULL, receipt_no VARCHAR(60) NULL, txn_date VARCHAR(40) NULL,
+       subtotal DECIMAL(10,2) NULL, tax DECIMAL(10,2) NOT NULL DEFAULT 0, service_charge DECIMAL(10,2) NOT NULL DEFAULT 0,
+       discount DECIMAL(10,2) NOT NULL DEFAULT 0, total DECIMAL(10,2) NULL, ocr_raw MEDIUMTEXT NULL,
+       ocr_status ENUM('ok','failed') NOT NULL DEFAULT 'ok', dup_note VARCHAR(200) NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB",
+    'CREATE TABLE IF NOT EXISTS receipt_photos (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, receipt_id INT UNSIGNED NOT NULL, position SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+       image VARCHAR(255) NOT NULL, sha1 CHAR(40) NULL, dhash CHAR(64) NULL,
+       FOREIGN KEY (receipt_id) REFERENCES receipts(id) ON DELETE CASCADE, INDEX (sha1)
+     ) ENGINE=InnoDB',
+    'ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS receipt_id INT UNSIGNED NULL AFTER bill_id',
+    'ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS dup_note VARCHAR(160) NULL AFTER suggestion',
+    'ALTER TABLE receipt_items ADD CONSTRAINT receipt_items_receipt_fk FOREIGN KEY IF NOT EXISTS (receipt_id) REFERENCES receipts(id) ON DELETE CASCADE',
+    // A title per receipt ("Lunch", "Snacks - Cafe") when a bill has several
+    'ALTER TABLE receipts ADD COLUMN IF NOT EXISTS title VARCHAR(60) NULL AFTER position',
+    // Payment tally: percentage split, installments with interest, partial payments, paying for someone else
+    "ALTER TABLE bills ADD COLUMN IF NOT EXISTS split_mode ENUM('items','percent') NOT NULL DEFAULT 'items' AFTER discount",
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS interest_rate DECIMAL(5,2) NULL AFTER split_mode',
+    'ALTER TABLE bill_members ADD COLUMN IF NOT EXISTS percent DECIMAL(5,2) NULL AFTER discount_type',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS principal DECIMAL(10,2) NULL AFTER to_user_id',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS paid_amount DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER amount',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS interest_rate DECIMAL(5,2) NULL AFTER paid_amount',
+    "ALTER TABLE settlements MODIFY settle_method ENUM('online','transfer','cash','mixed') NULL",
+    "ALTER TABLE settlement_events MODIFY event ENUM('created','marked_paid','confirmed','disputed','resent','nudged','interest','covered','due_set') NOT NULL",
+    "CREATE TABLE IF NOT EXISTS settlement_payments (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, settlement_id INT UNSIGNED NOT NULL, paid_by INT UNSIGNED NOT NULL,
+       amount DECIMAL(10,2) NOT NULL, method ENUM('online','transfer','cash') NOT NULL,
+       status ENUM('started','awaiting','confirmed','rejected') NOT NULL DEFAULT 'awaiting',
+       payment_ref VARCHAR(60) NULL, proof_image VARCHAR(255) NULL, paymongo_session VARCHAR(80) NULL,
+       pay_back TINYINT(1) NOT NULL DEFAULT 0, reject_reason VARCHAR(500) NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, confirmed_at DATETIME NULL,
+       FOREIGN KEY (settlement_id) REFERENCES settlements(id) ON DELETE CASCADE,
+       FOREIGN KEY (paid_by) REFERENCES users(id), INDEX (status)
+     ) ENGINE=InnoDB",
+    // Utang: money lent or borrowed outside any bill, kept as a two-person bill of kind 'loan'
+    "ALTER TABLE bills ADD COLUMN IF NOT EXISTS kind ENUM('bill','loan') NOT NULL DEFAULT 'bill' AFTER name",
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS loan_amount DECIMAL(10,2) NULL AFTER kind',
+    // Cash overpayment: change given back, or kept as credit
+    "ALTER TABLE settlement_payments MODIFY method ENUM('online','transfer','cash','credit') NOT NULL",
+    "ALTER TABLE settlements MODIFY settle_method ENUM('online','transfer','cash','credit','mixed') NULL",
+    'ALTER TABLE settlement_payments ADD COLUMN IF NOT EXISTS tendered DECIMAL(10,2) NULL AFTER pay_back',
+    'ALTER TABLE settlement_payments ADD COLUMN IF NOT EXISTS change_given DECIMAL(10,2) NULL AFTER tendered',
+    'ALTER TABLE settlement_payments ADD COLUMN IF NOT EXISTS credit_kept DECIMAL(10,2) NULL AFTER change_given',
+    'CREATE TABLE IF NOT EXISTS credits (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, owner_id INT UNSIGNED NOT NULL, holder_id INT UNSIGNED NOT NULL,
+       amount DECIMAL(10,2) NOT NULL, remaining DECIMAL(10,2) NOT NULL, source_payment_id INT UNSIGNED NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+       FOREIGN KEY (holder_id) REFERENCES users(id) ON DELETE CASCADE,
+       FOREIGN KEY (source_payment_id) REFERENCES settlement_payments(id) ON DELETE SET NULL,
+       INDEX (owner_id, holder_id)
+     ) ENGINE=InnoDB',
+    // Saved groups
+    'CREATE TABLE IF NOT EXISTS user_groups (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, name VARCHAR(60) NOT NULL, owner_id INT UNSIGNED NOT NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
+    'CREATE TABLE IF NOT EXISTS user_group_members (
+       group_id INT UNSIGNED NOT NULL, user_id INT UNSIGNED NOT NULL, joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (group_id, user_id),
+       FOREIGN KEY (group_id) REFERENCES user_groups(id) ON DELETE CASCADE,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS group_id INT UNSIGNED NULL AFTER loan_amount',
+    'ALTER TABLE bills ADD CONSTRAINT bills_group_fk FOREIGN KEY IF NOT EXISTS (group_id) REFERENCES user_groups(id) ON DELETE SET NULL',
+    // Achievements, and the one shown next to a user's name
+    'CREATE TABLE IF NOT EXISTS user_achievements (
+       user_id INT UNSIGNED NOT NULL, code VARCHAR(30) NOT NULL, bill_id INT UNSIGNED NULL,
+       earned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, seen_at DATETIME NULL, hidden TINYINT(1) NOT NULL DEFAULT 0,
+       PRIMARY KEY (user_id, code),
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE SET NULL
+     ) ENGINE=InnoDB',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS featured_achievement VARCHAR(30) NULL AFTER avatar_color',
+    // Fun Mode: games that decide the split
+    'ALTER TABLE user_groups ADD COLUMN IF NOT EXISTS fun_mode TINYINT(1) NOT NULL DEFAULT 0 AFTER owner_id',
+    "ALTER TABLE bills MODIFY split_mode ENUM('items','percent','game') NOT NULL DEFAULT 'items'",
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS game_bonus_user_id INT UNSIGNED NULL AFTER split_mode',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS game_bonus_cents INT UNSIGNED NULL AFTER game_bonus_user_id',
+    'ALTER TABLE bill_members ADD COLUMN IF NOT EXISTS game_weight TINYINT UNSIGNED NULL AFTER percent',
+    "CREATE TABLE IF NOT EXISTS game_sessions (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, bill_id INT UNSIGNED NOT NULL, host_id INT UNSIGNED NOT NULL,
+       game ENUM('guess','roulette','cards','skip') NOT NULL, mode ENUM('screen','live') NOT NULL DEFAULT 'screen',
+       status ENUM('lobby','playing','choosing','done','cancelled') NOT NULL DEFAULT 'lobby', state TEXT NULL,
+       started_at DATETIME(3) NULL, deadline_at DATETIME(3) NULL, version INT UNSIGNED NOT NULL DEFAULT 1,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE CASCADE, FOREIGN KEY (host_id) REFERENCES users(id),
+       INDEX (bill_id, status)
+     ) ENGINE=InnoDB",
+    'CREATE TABLE IF NOT EXISTS game_players (
+       session_id INT UNSIGNED NOT NULL, user_id INT UNSIGNED NOT NULL, joined_at DATETIME NULL,
+       guess_cents INT UNSIGNED NULL, card_slot TINYINT UNSIGNED NULL,
+       PRIMARY KEY (session_id, user_id), UNIQUE (session_id, card_slot),
+       FOREIGN KEY (session_id) REFERENCES game_sessions(id) ON DELETE CASCADE,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
+    "ALTER TABLE notifications MODIFY type ENUM('added','paid','confirmed','disputed','resent','settling','closed','nudge','admin','achievement','game','community') NOT NULL",
+    // Archiving a closed bill (per member)
+    'ALTER TABLE bill_members ADD COLUMN IF NOT EXISTS archived_at DATETIME NULL AFTER joined_at',
+    // Guess the Bill replaced by Receipt Race and Closest Without Going Over
+    'ALTER TABLE game_players ADD COLUMN IF NOT EXISTS answer_cents INT NULL AFTER joined_at',
+    'ALTER TABLE game_players ADD COLUMN IF NOT EXISTS basket TEXT NULL AFTER answer_cents',
+    'ALTER TABLE game_players ADD COLUMN IF NOT EXISTS turn_started_at DATETIME(3) NULL AFTER basket',
+    'ALTER TABLE game_players ADD COLUMN IF NOT EXISTS answered_at DATETIME(3) NULL AFTER turn_started_at',
+    'ALTER TABLE game_players DROP COLUMN IF EXISTS guess_cents',
+    "UPDATE game_sessions SET game = 'skip' WHERE game = 'guess'",
+    "ALTER TABLE game_sessions MODIFY game ENUM('race','closest','roulette','cards','skip') NOT NULL",
+    // Ball Drop
+    "ALTER TABLE game_sessions MODIFY game ENUM('race','closest','roulette','cards','balls','skip') NOT NULL",
+    // Mystery Card v2: cards move money around an equal split, so a game can set each member's share outright
+    'ALTER TABLE bill_members ADD COLUMN IF NOT EXISTS game_share INT NULL AFTER game_weight',
+    'ALTER TABLE bills DROP COLUMN IF EXISTS game_bonus_user_id',
+    'ALTER TABLE bills DROP COLUMN IF EXISTS game_bonus_cents',
+    'ALTER TABLE game_players ADD COLUMN IF NOT EXISTS target_id INT UNSIGNED NULL AFTER card_slot',
+    // Online payments: which PayMongo channel paid them (card, GCash, Maya…)
+    'ALTER TABLE settlement_payments ADD COLUMN IF NOT EXISTS online_via VARCHAR(20) NULL AFTER method',
+    'ALTER TABLE settlement_payments ADD COLUMN IF NOT EXISTS online_detail VARCHAR(40) NULL AFTER online_via',
+    // …filled in for earlier ones from their audit note: "… online via PayMongo (Gcash, ref pay_…)."
+    "UPDATE settlement_payments p JOIN settlement_events e ON e.settlement_id = p.settlement_id AND e.note LIKE CONCAT('%via PayMongo (%, ref ', p.payment_ref, ')%')
+     SET p.online_via = CASE
+       WHEN e.note LIKE '%via PayMongo (Gcash,%' THEN 'gcash'
+       WHEN e.note LIKE '%via PayMongo (Maya,%' OR e.note LIKE '%via PayMongo (Paymaya,%' THEN 'maya'
+       WHEN e.note LIKE '%via PayMongo (Card,%' THEN 'card'
+       WHEN e.note LIKE '%via PayMongo (Grab_pay,%' THEN 'grab_pay'
+       ELSE NULL END
+     WHERE p.method = 'online' AND p.online_via IS NULL AND p.payment_ref IS NOT NULL",
+    // Item promos: a negative line under an item ("-57.50") taken off that item, not the whole bill
+    'ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS promo DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER unit_price',
+    // Profile pictures: a preset from assets/pfp or a photo from the gallery
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar VARCHAR(120) NULL AFTER avatar_color',
+    // Extra cash kept instead of giving change becomes an utang (the receiver owes it back)
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS change_payment_id INT UNSIGNED NULL AFTER loan_amount',
+    // "Forgot password?": a 6-digit code emailed to the user (only its hash is stored)
+    'CREATE TABLE IF NOT EXISTS password_resets (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT UNSIGNED NOT NULL, code_hash CHAR(64) NOT NULL,
+       expires_at DATETIME NOT NULL, attempts TINYINT UNSIGNED NOT NULL DEFAULT 0, ip VARCHAR(45) NOT NULL DEFAULT "",
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, INDEX (user_id)
+     ) ENGINE=InnoDB',
+    // Currencies: a home currency per user, an agreed settlement currency per bill, receipts in any currency
+    // converted at a recorded rate (includes/currency.php)
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS currency CHAR(3) NOT NULL DEFAULT 'PHP' AFTER payment_account",
+    "ALTER TABLE bills ADD COLUMN IF NOT EXISTS currency CHAR(3) NOT NULL DEFAULT 'PHP' AFTER invite_code",
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS receipt_currency CHAR(3) NULL AFTER currency',
+    "ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_mode ENUM('market','actual','manual') NOT NULL DEFAULT 'market' AFTER receipt_currency",
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_market_rate DECIMAL(20,10) NULL AFTER fx_mode',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_market_source VARCHAR(60) NULL AFTER fx_market_rate',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_market_at DATETIME NULL AFTER fx_market_source',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_actual_total DECIMAL(12,2) NULL AFTER fx_market_at',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_manual_rate DECIMAL(20,10) NULL AFTER fx_actual_total',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_fees DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER fx_manual_rate',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_fees_note VARCHAR(80) NULL AFTER fx_fees',
+    "ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_rounding ENUM('exact','nearest','up') NOT NULL DEFAULT 'exact' AFTER fx_fees_note",
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS fx_set_at DATETIME NULL AFTER fx_rounding',
+    'ALTER TABLE receipts ADD COLUMN IF NOT EXISTS currency CHAR(3) NULL AFTER total',
+    'ALTER TABLE receipts ADD COLUMN IF NOT EXISTS currency_detected CHAR(3) NULL AFTER currency',
+    'ALTER TABLE receipts ADD COLUMN IF NOT EXISTS currency_clues VARCHAR(120) NULL AFTER currency_detected',
+    "ALTER TABLE settlements ADD COLUMN IF NOT EXISTS currency CHAR(3) NOT NULL DEFAULT 'PHP' AFTER to_user_id",
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS local_currency CHAR(3) NULL AFTER paid_amount',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS local_amount DECIMAL(14,2) NULL AFTER local_currency',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS local_rate DECIMAL(20,10) NULL AFTER local_amount',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS local_rate_source VARCHAR(60) NULL AFTER local_rate',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS local_rate_at DATETIME NULL AFTER local_rate_source',
+    'CREATE TABLE IF NOT EXISTS fx_rates (
+       quote CHAR(3) NOT NULL PRIMARY KEY, per_usd DECIMAL(24,10) NOT NULL, source VARCHAR(60) NOT NULL,
+       rate_time DATETIME NOT NULL, fetched_at DATETIME NOT NULL
+     ) ENGINE=InnoDB',
+    "CREATE TABLE IF NOT EXISTS bill_fx_log (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, bill_id INT UNSIGNED NOT NULL, actor_id INT UNSIGNED NULL,
+       receipt_currency CHAR(3) NOT NULL, currency CHAR(3) NOT NULL, mode ENUM('market','actual','manual') NOT NULL,
+       market_rate DECIMAL(20,10) NULL, market_source VARCHAR(60) NULL, market_at DATETIME NULL,
+       actual_total DECIMAL(12,2) NULL, manual_rate DECIMAL(20,10) NULL, fees DECIMAL(10,2) NOT NULL DEFAULT 0,
+       fees_note VARCHAR(80) NULL, rounding ENUM('exact','nearest','up') NOT NULL, note VARCHAR(255) NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE CASCADE,
+       FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL, INDEX (bill_id)
+     ) ENGINE=InnoDB",
+    // Days each user used the app (admin User Management)
+    'CREATE TABLE IF NOT EXISTS user_activity (
+       user_id INT UNSIGNED NOT NULL, day DATE NOT NULL, first_at DATETIME NOT NULL, last_at DATETIME NOT NULL,
+       PRIMARY KEY (user_id, day), INDEX (day),
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
+    // Harder badges: most take several occurrences now, counted from here on (badges already earned are kept)
+    'CREATE TABLE IF NOT EXISTS achievement_progress (
+       user_id INT UNSIGNED NOT NULL, code VARCHAR(30) NOT NULL, ref_id INT UNSIGNED NOT NULL,
+       amount INT UNSIGNED NOT NULL DEFAULT 1, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (user_id, code, ref_id),
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
+    // Page backdrop: floating badges, plain, or the user's own photo
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS bg_mode ENUM('badges','plain','photo') NOT NULL DEFAULT 'badges' AFTER featured_achievement",
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS bg_image VARCHAR(255) NULL AFTER bg_mode',
+    // Username changes: 5 in a row, then a 7-day wait (api/profile.php, case 'username')
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS username_changes TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER username',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS username_locked_until DATETIME NULL AFTER username_changes',
+    // Payment reminders: a due date per debt, the last automatic reminder, and an email opt-out
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS due_on DATE NULL AFTER interest_rate',
+    'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS auto_reminded_at DATETIME NULL AFTER due_on',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS email_reminders TINYINT(1) NOT NULL DEFAULT 1 AFTER email',
+    // Backdrop preset with floating receipts and the camouflaged chameleon
+    "ALTER TABLE users MODIFY COLUMN bg_mode ENUM('badges','receipts','plain','photo') NOT NULL DEFAULT 'badges'",
+    // Calm: a soft aurora backdrop, now the default for new accounts
+    "ALTER TABLE users MODIFY COLUMN bg_mode ENUM('badges','receipts','plain','photo','calm') NOT NULL DEFAULT 'calm'",
+    // Calm backdrops come in several styles; the old Setlo (receipts) backdrop is gone, its users get calm
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS bg_style ENUM('aurora','ocean','sunset','forest','dusk','clouds') NOT NULL DEFAULT 'aurora' AFTER bg_mode",
+    "UPDATE users SET bg_mode = 'calm' WHERE bg_mode = 'receipts'",
+    "ALTER TABLE users MODIFY COLUMN bg_mode ENUM('calm','badges','plain','photo') NOT NULL DEFAULT 'calm'",
+    // Money sent through someone's Pay-me QR without a debt (pages/pay.php "Send money")
+    'CREATE TABLE IF NOT EXISTS qr_payments (
+       id               INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       from_user_id     INT UNSIGNED NOT NULL,
+       to_user_id       INT UNSIGNED NOT NULL,
+       amount           DECIMAL(10,2) NOT NULL,
+       currency         CHAR(3) NOT NULL DEFAULT \'PHP\',
+       note             VARCHAR(100) NULL,
+       status           ENUM(\'started\',\'paid\',\'cancelled\') NOT NULL DEFAULT \'started\',
+       paymongo_session VARCHAR(80) NULL,
+       payment_ref      VARCHAR(60) NULL,
+       online_via       VARCHAR(20) NULL,
+       online_detail    VARCHAR(40) NULL,
+       created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       paid_at          DATETIME NULL,
+       FOREIGN KEY (from_user_id) REFERENCES users(id),
+       FOREIGN KEY (to_user_id)   REFERENCES users(id),
+       INDEX (to_user_id, status),
+       INDEX (from_user_id, status)
+     ) ENGINE=InnoDB',
+    "ALTER TABLE qr_payments MODIFY status ENUM('started','paid','cancelled') NOT NULL DEFAULT 'started'",
+    // Personal purchases (pages/purchases.php): one person's own expenses, outside any bill
+    'CREATE TABLE IF NOT EXISTS purchases (
+       id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       user_id        INT UNSIGNED NOT NULL,
+       title          VARCHAR(80) NOT NULL,
+       category       VARCHAR(30) NOT NULL,
+       amount         DECIMAL(12,2) NOT NULL,
+       purchased_on   DATE NOT NULL,
+       merchant       VARCHAR(60) NULL,
+       receipt_no     VARCHAR(40) NULL,
+       payment_method VARCHAR(30) NULL,
+       note           VARCHAR(300) NULL,
+       created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       INDEX (user_id, purchased_on)
+     ) ENGINE=InnoDB',
+    // Purchases can be to pay later (then settled), carry a scanned receipt photo, and leave a journal trail
+    "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS status ENUM('paid','unpaid') NOT NULL DEFAULT 'paid' AFTER category",
+    'ALTER TABLE purchases ADD COLUMN IF NOT EXISTS due_on DATE NULL AFTER purchased_on',
+    'ALTER TABLE purchases ADD COLUMN IF NOT EXISTS paid_on DATE NULL AFTER due_on',
+    'ALTER TABLE purchases ADD COLUMN IF NOT EXISTS receipt_image VARCHAR(80) NULL AFTER note',
+    "CREATE TABLE IF NOT EXISTS purchase_events (
+       id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       user_id     INT UNSIGNED NOT NULL,
+       purchase_id INT UNSIGNED NULL,
+       event       ENUM('added','scanned','edited','settled','reopened','deleted') NOT NULL,
+       title       VARCHAR(80) NOT NULL,
+       amount      DECIMAL(12,2) NOT NULL,
+       detail      VARCHAR(120) NULL,
+       created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       INDEX (user_id, created_at)
+     ) ENGINE=InnoDB",
+    // Rounding the bill to whole pesos, and who actually received the change when several people paid
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS round_total TINYINT(1) NOT NULL DEFAULT 0 AFTER interest_rate',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS change_holder_id INT UNSIGNED NULL AFTER round_total',
+    // Amount tendered by a single payer, so the change can be worked out for them too (and read off the scanned receipt)
+    'ALTER TABLE receipts ADD COLUMN IF NOT EXISTS tendered DECIMAL(10,2) NULL AFTER total',
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS amount_tendered DECIMAL(10,2) NULL AFTER change_holder_id',
+    'ALTER TABLE bills ADD CONSTRAINT bills_change_holder_fk FOREIGN KEY IF NOT EXISTS (change_holder_id) REFERENCES users(id) ON DELETE SET NULL',
+    // Community feed
+    "CREATE TABLE IF NOT EXISTS community_posts (
+       id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       user_id        INT UNSIGNED NOT NULL,
+       body           VARCHAR(2000) NULL,
+       audience       ENUM('public','only_me') NOT NULL DEFAULT 'public',
+       shared_post_id INT UNSIGNED NULL,
+       is_share       TINYINT(1) NOT NULL DEFAULT 0,
+       edited_at      DATETIME NULL,
+       created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       FOREIGN KEY (shared_post_id) REFERENCES community_posts(id) ON DELETE SET NULL,
+       INDEX (audience, id),
+       INDEX (user_id, id)
+     ) ENGINE=InnoDB",
+    'CREATE TABLE IF NOT EXISTS community_photos (
+       id        INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       post_id   INT UNSIGNED NOT NULL,
+       position  SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+       image     VARCHAR(255) NOT NULL,
+       FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+       INDEX (post_id, position)
+     ) ENGINE=InnoDB',
+    "CREATE TABLE IF NOT EXISTS community_reactions (
+       post_id    INT UNSIGNED NOT NULL,
+       user_id    INT UNSIGNED NOT NULL,
+       type       ENUM('like','love','haha','wow','sad','angry') NOT NULL DEFAULT 'like',
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (post_id, user_id),
+       FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB",
+    'CREATE TABLE IF NOT EXISTS community_comments (
+       id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       post_id    INT UNSIGNED NOT NULL,
+       user_id    INT UNSIGNED NOT NULL,
+       body       VARCHAR(1000) NOT NULL,
+       edited_at  DATETIME NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       INDEX (post_id, id)
+     ) ENGINE=InnoDB',
+    'CREATE TABLE IF NOT EXISTS community_saves (
+       user_id    INT UNSIGNED NOT NULL,
+       post_id    INT UNSIGNED NOT NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (user_id, post_id),
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
+    'CREATE TABLE IF NOT EXISTS community_translations (
+       comment_id      INT UNSIGNED NOT NULL,
+       lang            VARCHAR(12) NOT NULL,
+       translation     VARCHAR(2000) NOT NULL,
+       romanization    VARCHAR(2000) NULL,
+       source_language VARCHAR(60) NULL,
+       created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (comment_id, lang),
+       FOREIGN KEY (comment_id) REFERENCES community_comments(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
+    // Where a community post is about, and what it costs
+    'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS location VARCHAR(160) NULL AFTER body',
+    'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS lat DECIMAL(9,6) NULL AFTER location',
+    'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS lng DECIMAL(9,6) NULL AFTER lat',
+    'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS price DECIMAL(10,2) NULL AFTER lng',
+    // Replies to community comments (one level; deleting a comment removes its replies)
+    'ALTER TABLE community_comments ADD COLUMN IF NOT EXISTS parent_id INT UNSIGNED NULL AFTER user_id',
+    'ALTER TABLE community_comments ADD CONSTRAINT community_comments_parent_fk FOREIGN KEY IF NOT EXISTS (parent_id) REFERENCES community_comments(id) ON DELETE CASCADE',
+    'ALTER TABLE community_comments ADD INDEX IF NOT EXISTS parent_idx (post_id, parent_id, id)',
+    // Extra proof-of-payment photos (the first stays in settlement_payments.proof_image)
+    'CREATE TABLE IF NOT EXISTS settlement_payment_proofs (
+       id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       payment_id INT UNSIGNED NOT NULL,
+       position   SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+       image      VARCHAR(255) NOT NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (payment_id) REFERENCES settlement_payments(id) ON DELETE CASCADE,
+       INDEX (payment_id, position)
+     ) ENGINE=InnoDB',
+    // Landing page ratings and feedback: one per user, public once approved
+    "CREATE TABLE IF NOT EXISTS feedback (
+       id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+       user_id    INT UNSIGNED NOT NULL UNIQUE,
+       rating     TINYINT UNSIGNED NOT NULL,
+       comment    VARCHAR(500) NULL,
+       status     ENUM('pending','approved','hidden') NOT NULL DEFAULT 'pending',
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       INDEX (status, created_at)
+     ) ENGINE=InnoDB",
+    // Reviews go live right away now: publish the ones that were waiting for approval
+    "UPDATE feedback SET status = 'approved' WHERE status = 'pending'",
+    // Anyone can rate from the landing page: reviews without an account are tied to a cookie token instead
+    'ALTER TABLE feedback MODIFY user_id INT UNSIGNED NULL',
+    'ALTER TABLE feedback ADD COLUMN IF NOT EXISTS guest_key CHAR(64) NULL UNIQUE AFTER user_id',
+    'ALTER TABLE feedback ADD COLUMN IF NOT EXISTS guest_name VARCHAR(40) NULL AFTER guest_key',
+    'ALTER TABLE feedback ADD COLUMN IF NOT EXISTS ip_hash CHAR(64) NULL AFTER guest_name',
+    'ALTER TABLE feedback ADD INDEX IF NOT EXISTS ip_day_idx (ip_hash, created_at)',
+    // First-visit dashboard tour (assets/js/tour.js): when the user finished or skipped it
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarded_at DATETIME NULL AFTER bg_image',
+    // Guest access: a guest member's private link to see their share without an account (pages/guest.php)
+    'ALTER TABLE bill_members ADD COLUMN IF NOT EXISTS view_token CHAR(24) NULL UNIQUE AFTER game_share',
+    // Setlo AI chat (api/assistant.php): each user's recent conversation
+    'CREATE TABLE IF NOT EXISTS assistant_messages (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT UNSIGNED NOT NULL, role ENUM(\'user\',\'model\') NOT NULL,
+       content TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, INDEX (user_id, id), INDEX (user_id, created_at)
+     ) ENGINE=InnoDB',
+    // Moderation: 0 normal, 1 a hidden (abusive) message whose text was never saved, 2 Setlo Buddy's calm notice for it
+    'ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS flag TINYINT NOT NULL DEFAULT 0 AFTER content',
+];
+$hadTour = (bool) db()->query("SHOW COLUMNS FROM users LIKE 'onboarded_at'")->fetch();
+foreach ($steps as $sql) {
+    db()->exec($sql);
+}
+// The tour is for new sign-ups: accounts from before it existed count as already shown it.
+if (!$hadTour) {
+    q('UPDATE users SET onboarded_at = NOW() WHERE onboarded_at IS NULL');
+    echo "Marked existing accounts as past the dashboard tour.
+";
+}
+
+// Bills scanned before receipts had their own table: turn each one's photo and totals into a receipt.
+require_once __DIR__ . '/uploads.php';
+$legacy = db()->query(
+    "SELECT * FROM bills b WHERE (b.receipt_image IS NOT NULL OR b.ocr_status IN ('ok','failed'))
+     AND NOT EXISTS (SELECT 1 FROM receipts r WHERE r.bill_id = b.id)"
+)->fetchAll();
+foreach ($legacy as $b) {
+    $pdo = db();
+    $pdo->beginTransaction();
+    q(
+        'INSERT INTO receipts (bill_id, position, store_name, tax, service_charge, discount, total, ocr_raw, ocr_status, created_at)
+         VALUES (?, 0, NULL, ?, ?, ?, ?, ?, ?, ?)',
+        [$b['id'], $b['tax'], $b['service_charge'], $b['discount'], $b['receipt_total'], $b['ocr_raw'], $b['ocr_status'] === 'failed' ? 'failed' : 'ok', $b['created_at']]
+    );
+    $rid = (int) $pdo->lastInsertId();
+    $file = $b['receipt_image'] ? upload_dir('receipts') . '/' . basename($b['receipt_image']) : null;
+    if ($file && is_file($file)) {
+        q('INSERT INTO receipt_photos (receipt_id, position, image, sha1, dhash) VALUES (?, 0, ?, ?, ?)', [$rid, $b['receipt_image'], sha1_file($file), image_dhash($file)]);
+    }
+    q("UPDATE receipt_items SET receipt_id = ? WHERE bill_id = ? AND source = 'ocr' AND receipt_id IS NULL", [$rid, $b['id']]);
+    $pdo->commit();
+}
+if ($legacy) {
+    echo 'Moved ' . count($legacy) . " scanned receipt(s) into the receipts table.\n";
+}
+
+// Settlements from before partial payments: each was paid in one go, so record that one payment.
+q('UPDATE settlements SET principal = amount WHERE principal IS NULL');
+q("UPDATE settlements SET paid_amount = amount WHERE status = 'settled' AND paid_amount = 0");
+$paidOnce = db()->query(
+    "SELECT * FROM settlements s WHERE (s.status IN ('awaiting','settled','disputed') OR s.paymongo_session IS NOT NULL)
+     AND NOT EXISTS (SELECT 1 FROM settlement_payments p WHERE p.settlement_id = s.id)"
+)->fetchAll();
+foreach ($paidOnce as $s) {
+    $status = ['awaiting' => 'awaiting', 'settled' => 'confirmed', 'disputed' => 'rejected', 'pending' => 'started'][$s['status']];
+    $method = $s['settle_method'] ?? ($s['status'] === 'pending' ? 'online' : 'transfer');
+    if ($method === 'mixed') {
+        $method = 'transfer';
+    }
+    q(
+        'INSERT INTO settlement_payments (settlement_id, paid_by, amount, method, status, payment_ref, proof_image, paymongo_session, reject_reason, created_at, confirmed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [$s['id'], $s['from_user_id'], $s['amount'], $method, $status, $s['payment_ref'], $s['proof_image'], $s['paymongo_session'],
+         $status === 'rejected' ? $s['dispute_reason'] : null, $s['paid_at'] ?? $s['created_at'], $s['confirmed_at']]
+    );
+}
+if ($paidOnce) {
+    echo 'Recorded ' . count($paidOnce) . " earlier settlement payment(s) as payment parts.\n";
+}
+
+// Give every real account (not guests) its own Pay-me code.
+require_once __DIR__ . '/domain.php';
+$missing = db()->query("SELECT id FROM users WHERE pay_code IS NULL AND role = 'user'")->fetchAll(PDO::FETCH_COLUMN);
+foreach ($missing as $uid) {
+    q('UPDATE users SET pay_code = ? WHERE id = ?', [new_pay_code(), $uid]);
+}
+if ($missing) {
+    echo 'Created Pay-me QR codes for ' . count($missing) . " account(s).\n";
+}
+// Give every existing account (not guests) a username made from its email or name.
+$noName = db()->query("SELECT id, full_name, email FROM users WHERE username IS NULL AND role <> 'guest' ORDER BY id")->fetchAll();
+foreach ($noName as $u) {
+    q('UPDATE users SET username = ? WHERE id = ?', [generate_username(username_base($u['email'] ? explode('@', $u['email'])[0] : $u['full_name'])), $u['id']]);
+}
+if ($noName) {
+    echo 'Created usernames for ' . count($noName) . " account(s).\n";
+}
+// Credit left from extra cash kept before change utang existed: turn each into a change utang (shown in Utang).
+$credits = db()->query(
+    "SELECT c.*, COALESCE(b.name, 'an earlier payment') AS for_name FROM credits c
+     LEFT JOIN settlement_payments p ON p.id = c.source_payment_id LEFT JOIN settlements s ON s.id = p.settlement_id
+     LEFT JOIN bills b ON b.id = s.bill_id WHERE c.remaining > 0"
+)->fetchAll();
+foreach ($credits as $c) {
+    $pdo = db();
+    $pdo->beginTransaction();
+    record_change_utang((int) $c['owner_id'], (int) $c['holder_id'], cents($c['remaining']), (int) ($c['source_payment_id'] ?? 0), $c['for_name'], null);
+    q('UPDATE credits SET remaining = 0 WHERE id = ?', [$c['id']]);
+    $pdo->commit();
+}
+if ($credits) {
+    echo 'Moved ' . count($credits) . " kept-change credit(s) into Utang.\n";
+}
+// Activity from before it was tracked: the days users created bills or acted on payments.
+$backfilled = q(
+    "INSERT INTO user_activity (user_id, day, first_at, last_at)
+     SELECT x.user_id, DATE(x.at), MIN(x.at), MAX(x.at) FROM (
+       SELECT b.creator_id AS user_id, b.created_at AS at FROM bills b
+       UNION ALL SELECT e.actor_id, e.created_at FROM settlement_events e WHERE e.actor_id IS NOT NULL
+     ) x JOIN users u ON u.id = x.user_id AND u.role = 'user'
+     GROUP BY x.user_id, DATE(x.at)
+     ON DUPLICATE KEY UPDATE first_at = LEAST(first_at, VALUES(first_at)), last_at = GREATEST(last_at, VALUES(last_at))"
+)->rowCount();
+if ($backfilled) {
+    echo "Filled in activity days from earlier bills and payments.\n";
+}
+echo "Database is up to date.\n";
+}
