@@ -13,7 +13,7 @@ function game_reply(int $billId, ?array $g, array $me): array
     $members = bill_members($bill['id']);
     $items = bill_items($bill['id']);
     $calc = compute_shares($bill, $members, $items);
-    $creator = $bill['creator_id'] === $me['id'];
+    $creator = can_assign($bill, $me); // runs the game: the creator, or any member of a group bill
     if ($g && $g['status'] === 'done') {
         // A badge this game gave me in someone else's request (live mode): pop it up here, not just on the dashboard.
         foreach (q("SELECT code FROM user_achievements WHERE user_id = ? AND bill_id = ? AND seen_at IS NULL AND code IN ('human_calculator','bullseye','main_character')", [$me['id'], $bill['id']]) as $row) {
@@ -99,7 +99,7 @@ if ($action === 'start') {
             game_choose_target($g, $me, $for, (int) input('user_id', 0));
             break;
         case 'cancel':
-            require_creator($bill, $me);
+            require_assigner($bill, $me);
             if ($g['status'] !== 'done') {
                 q("UPDATE game_sessions SET status = 'cancelled', version = version + 1 WHERE id = ?", [$g['id']]);
             }

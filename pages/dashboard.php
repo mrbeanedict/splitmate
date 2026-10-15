@@ -127,7 +127,7 @@ foreach ($acctRows as [$href, $color, $paths, $title, $desc]):
         </div>
         <span class="text-[12px] font-semibold text-slate-600">Scan &amp; Pay</span>
       </a>
-      <a href="stats?tab=history" class="flex flex-col items-center gap-1.5">
+      <a href="financial-activity?tab=history" class="flex flex-col items-center gap-1.5">
         <div class="qa-icon bg-slate-200/80 text-slate-600">
           <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 2"/></svg>
         </div>
@@ -135,7 +135,7 @@ foreach ($acctRows as [$href, $color, $paths, $title, $desc]):
       </a>
     </div>
 
-    <a href="stats" class="tile flex items-center gap-3 px-4 py-3">
+    <a href="financial-activity" class="tile flex items-center gap-3 px-4 py-3">
       <span class="qa-icon !h-10 !w-10 bg-brand-100/70 text-brand-700">
         <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
       </span>
@@ -230,8 +230,7 @@ const SEARCH_INDEX = [
   { title: 'Settle up', href: 'my-settlements', hint: 'Pay what you owe, confirm what you are owed', kw: 'pay payment owe owed gcash maya cash confirm dispute settlement' },
   { title: 'Utang', href: 'utang', hint: 'Money lent or borrowed, credits and history', kw: 'debt debts loan lend borrow repay repayments credits change history owe personal' },
   { title: 'Personal expenses', href: 'purchases', hint: 'Your own spending outside any bill', kw: 'purchases expenses spending food transport journal to pay' },
-  { title: 'Spending overview', href: 'stats', hint: 'Monthly totals and favorite spots', kw: 'stats analytics chart month food budget' },
-  { title: 'Settlement history', href: 'stats?tab=history', hint: 'Past bills and settlements', kw: 'history past closed bills paid' },
+  { title: 'Financial Activity', href: 'financial-activity', hint: 'Spending overview and settlement history', kw: 'stats analytics chart month food budget spending overview history past closed bills paid settlement' },
   { title: 'Community', href: 'community', hint: 'Posts from other Setlo users', kw: 'posts social feed share tips' },
   { title: 'Notifications', href: 'notifications', hint: 'What happened on your bills', kw: 'alerts bell inbox updates' },
   { title: 'My profile', href: 'profile', hint: 'Name, username, achievements and balances', kw: 'account name username email picture avatar photo badges achievements' },

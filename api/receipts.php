@@ -26,7 +26,7 @@ if (method() !== 'POST') {
 }
 
 $bill = bill_for(int_param('bill_id'), $me);
-require_creator($bill, $me);
+require_assigner($bill, $me);
 require_editable($bill);
 $action = input('action', 'upload');
 // add: put the new receipt next to the bill's others · replace: start the bill's receipts over (the first scan)

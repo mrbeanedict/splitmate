@@ -5,9 +5,9 @@ $title = 'Bill Breakdown';
 $nav = 'bills';
 $billId = (int) ($_GET['bill'] ?? 0);
 if (!$billId) {
-    redirect('pages/stats?tab=history');
+    redirect('pages/financial-activity?tab=history');
 }
-$back = 'stats?tab=history';
+$back = 'financial-activity?tab=history';
 $headExtra = ['assets/js/summary.js', 'assets/js/replay.js', 'assets/css/print.css'];
 require __DIR__ . '/../partials/head.php';
 ?>

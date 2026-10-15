@@ -8,7 +8,7 @@ if (method() !== 'POST') {
 }
 
 $bill = bill_for(int_param('bill_id'), $me);
-require_creator($bill, $me);
+require_assigner($bill, $me);
 require_editable($bill);
 
 $memberIds = array_column(bill_members($bill['id']), 'id');

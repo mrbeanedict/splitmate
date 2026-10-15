@@ -180,7 +180,7 @@ if (method() === 'GET') {
                     ? ['game' => $g['game'], 'title' => GAMES[$g['game']]['emoji'] . ' ' . GAMES[$g['game']]['title'], 'result' => $g['state']['result'] ?? null]
                     : ($g && isset(GAMES[$g['game']]) && $g['status'] !== 'done' ? ['game' => $g['game'], 'live' => true] : null),
             ],
-            'me'          => ['id' => $me['id'], 'is_creator' => $creator, 'is_payer' => $bill['payer_id'] === $me['id'], 'currency' => user_currency($me['id'])],
+            'me'          => ['id' => $me['id'], 'is_creator' => $creator, 'can_assign' => can_assign($bill, $me), 'is_payer' => $bill['payer_id'] === $me['id'], 'currency' => user_currency($me['id'])],
             'members'     => $members,
             'items'       => $items,
             'receipts'    => $receipts,
@@ -368,7 +368,7 @@ switch ($action) {
         json_ok();
 
     case 'set_discount_type':
-        require_creator($bill, $me);
+        require_assigner($bill, $me);
         require_editable($bill);
         $uid = int_param('user_id');
         $type = input('type', 'none');
@@ -462,7 +462,7 @@ switch ($action) {
 
     case 'set_change_holder':
         // Who physically received the change (any member), or none (user_id 0).
-        require_creator($bill, $me);
+        require_assigner($bill, $me);
         require_editable($bill);
         $uid = (int) input('user_id', 0);
         if ($uid && !is_member($bill['id'], $uid)) {
@@ -638,7 +638,7 @@ switch ($action) {
 
     case 'set_split_mode':
         // items: each item split among who shared it · percent: each member pays a set % of the whole bill
-        require_creator($bill, $me);
+        require_assigner($bill, $me);
         require_editable($bill);
         $mode = input('mode', 'items');
         if (!in_array($mode, ['items', 'percent'], true)) {
@@ -659,7 +659,7 @@ switch ($action) {
 
     case 'set_percents':
         // percents: { user_id: percent }. Saved as typed (they may not add up to 100 yet); settling checks the total.
-        require_creator($bill, $me);
+        require_assigner($bill, $me);
         require_editable($bill);
         $raw = input('percents', []);
         if (!is_array($raw)) {
@@ -683,7 +683,7 @@ switch ($action) {
         json_ok(['members' => bill_members($bill['id'])]);
 
     case 'start_settling':
-        require_creator($bill, $me);
+        require_assigner($bill, $me);
         require_editable($bill);
         // Installments with interest (optional): one of the fixed INSTALLMENT_RATES, added after each partial payment.
         start_settling($bill, $me, installment_rate(input('interest_rate')));

@@ -221,7 +221,7 @@ function game_touch(array $g): void
  */
 function start_game(array $bill, array $me, string $game, string $mode, int $payers = 1): void
 {
-    require_creator($bill, $me);
+    require_assigner($bill, $me);
     require_editable($bill);
     if ($game !== 'skip' && !isset(GAMES[$game])) {
         fail('Pick a game.', 422);

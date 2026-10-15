@@ -333,7 +333,7 @@ Setlo.mount({
     let shown = null; // assignments as filled from this tab's saved reply
     const state = () => JSON.stringify([this.items, this.members, this.paidBy]);
     await Setlo.load(this, 'bills.php', { id: this.billId }, (r, fresh) => {
-      if (!r.me.is_creator || r.bill.locked) { location.replace('bill-items?bill=' + this.billId); return; }
+      if (!r.me.can_assign || r.bill.locked) { location.replace('bill-items?bill=' + this.billId); return; }
       if (!r.items.length) { location.replace('review-items?bill=' + this.billId); return; }
       if (fresh && r.bill.game_pending) { location.replace('game?bill=' + this.billId); return; }
       if (fresh && shown !== null && shown !== state()) return; // already tapping: keep their work

@@ -62,7 +62,7 @@ require __DIR__ . '/../partials/head.php';
             <div class="pc-bar mt-1.5"><span :style="{ width: Math.max(4, c.amount / d.total * 100) + '%', background: color(c.category) }"></span></div>
           </div>
         </div>
-        <a v-if="d.by_category.length" href="stats" class="mt-3 block text-[12px] font-bold text-brand-700">See it in Spending ›</a>
+        <a v-if="d.by_category.length" href="financial-activity" class="mt-3 block text-[12px] font-bold text-brand-700">See it in Financial Activity ›</a>
       </div>
     </div>
 

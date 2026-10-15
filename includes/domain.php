@@ -53,6 +53,22 @@ function require_creator(array $bill, array $user): void
     }
 }
 
+/** The creator always; on a bill started from a saved group, every member can assign items and start settling. */
+function can_assign(array $bill, array $user): bool
+{
+    if ($bill['creator_id'] === $user['id']) {
+        return true;
+    }
+    return $bill['group_id'] !== null && is_member((int) $bill['id'], (int) $user['id']);
+}
+
+function require_assigner(array $bill, array $user): void
+{
+    if (!can_assign($bill, $user)) {
+        fail('Only the Bill Creator or group members can do this.', 403);
+    }
+}
+
 function require_editable(array $bill): void
 {
     if (($bill['kind'] ?? 'bill') === 'loan') {

@@ -229,7 +229,7 @@ Setlo.mount({
       return;
     }
     await Setlo.load(this, 'bills.php', { id: this.billId }, (r) => {
-      if (!r.me.is_creator || r.bill.locked) {
+      if (!r.me.can_assign || r.bill.locked) {
         location.replace('bill-detail?bill=' + this.billId);
         return;
       }

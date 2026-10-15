@@ -131,7 +131,7 @@ Setlo.mount({
     /** Items under their receipt's title when the bill has several receipts (see Setlo.groupByReceipt). */
     itemGroups() { return Setlo.groupByReceipt(this.d.items, this.d.receipts); },
     memberMap() { return Object.fromEntries(this.d.members.map((m) => [m.id, m])); },
-    canEdit() { return this.bill && this.d.me.is_creator && !this.bill.locked; },
+    canEdit() { return this.bill && this.d.me.can_assign && !this.bill.locked; },
     creatorName() { return (this.memberMap[this.bill.creator_id] || {}).name; },
     byPercent() { return !!this.bill && this.bill.split_mode === 'percent'; },
     byGame() { return !!this.bill && this.bill.split_mode === 'game'; },

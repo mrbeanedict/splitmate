@@ -18,12 +18,13 @@ $sections = [
     ],
     'Personal Finance' => [
         'purchases' => ['purchases', 'Personal expenses', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12l1 13H5L6 7zM9 7a3 3 0 016 0"/>'],
+    ],
+    'Activity & Records' => [
+        'activity'  => ['financial-activity', 'Financial Activity', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],
         'utang'     => ['utang', 'Utang', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M7 10h10M7 14h6M17 3l4 4-4 4M21 7H9a6 6 0 00-6 6v0a6 6 0 006 6h3"/>'],
     ],
     // Standalone pages
     'More' => [
-        'stats'     => ['stats', 'Spending overview', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],
-        'history'   => ['stats?tab=history', 'Settlement history', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8M3 3v5h5M12 7v5l3 2"/>'],
         'community' => ['community', 'Community', null, '<path stroke-linecap="round" stroke-linejoin="round" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-1v3l-3-3h-5a2 2 0 01-2-2v-1M15 4H5a2 2 0 00-2 2v6a2 2 0 002 2h1v3l3-3h6a2 2 0 002-2V6a2 2 0 00-2-2z"/>'],
         'help'      => ['help', 'Help & Support', null, '<circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M9.5 9.5a2.5 2.5 0 115 0c0 1.5-2.5 2-2.5 3.5M12 17h.01"/>'],
     ],
@@ -39,13 +40,12 @@ $groups = [
     'Group Finance'    => ['group', true,  '<circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path stroke-linecap="round" d="M3 19c.8-3 3.2-4.6 6-4.6s5.2 1.6 6 4.6"/>'],
     'Account'          => ['account', false, '<circle cx="12" cy="12" r="3"/><path stroke-linecap="round" d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>'],
     'Personal Finance' => ['personal', false, '<circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/>'],
+    'Activity & Records' => ['records', false, '<path stroke-linecap="round" stroke-linejoin="round" d="M6 3h12v18l-3-2-3 2-3-2-3 2V3zM9 8h6M9 12h6"/>'],
 ];
-// "Settlement history" shares the stats page, so tell the two apart by ?tab=
-$onHistory = ($_GET['tab'] ?? '') === 'history';
 $icon = fn (string $paths) => '<svg class="h-[22px] w-[22px] shrink-0" fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24">' . $paths . '</svg>';
 $burger = '<svg class="h-[22px] w-[22px] shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></svg>';
 $signOut = $icon('<path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>');
-$isActive = fn (string $key) => $key === 'history' ? (($nav ?? '') === 'stats' && $onHistory) : (($nav ?? '') === 'stats' && $key === 'stats' ? !$onHistory : ($nav ?? '') === $key);
+$isActive = fn (string $key) => ($nav ?? '') === $key;
 $chev = '<svg class="nav-chev h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>';
 $groupOpen = function (string $heading, array $links) use ($groups, $isActive): bool {
     if (!isset($groups[$heading])) return true;

@@ -150,7 +150,6 @@
     .device:not(.auth-layout) > :not(.nav2):not(.sheet-backdrop):not(.fixed) {
       width: 100%; max-width: 60rem; margin-left: auto; margin-right: auto;
     }
-    .device.device-narrow > :not(.nav2):not(.sheet-backdrop):not(.fixed) { max-width: 50rem; }
     .device.device-solo:not(.auth-layout), html.sb-collapsed .device.device-solo:not(.auth-layout) { padding-left: 0; }
     .device:not(.auth-layout) > .app-hero { margin-top: 1.5rem; border-radius: 1.5rem; }
     .device:not(.auth-layout) > .steps { border-radius: 1rem; margin-top: .75rem; border: 1px solid var(--line); }
@@ -338,6 +337,7 @@
   .nav-group-head { @apply flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[15px] font-bold; }
   .nav-group-group .nav-group-head { color: theme('colors.brand.700'); }
   .nav-group-personal .nav-group-head { color: #A99AFB; }
+  .nav-group-records .nav-group-head { color: #A99AFB; }
   .nav-group-account .nav-group-head { @apply text-slate-500; }
   .nav-group-head:hover { background: var(--field); }
   .nav-group-head .nav-label { @apply flex-1; }
