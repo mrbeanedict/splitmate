@@ -693,6 +693,37 @@
     });
   }
 
+  /** Photos from the device's gallery or files (no camera hint), at most max. */
+  function pickFiles(max) {
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/jpeg,image/png,image/webp';
+      input.multiple = max > 1;
+      input.addEventListener('change', () => resolve([...input.files].slice(0, max)));
+      input.addEventListener('cancel', () => resolve([]));
+      input.click();
+    });
+  }
+
+  /**
+   * Ask how to add photos (camera or gallery), then return them ready to upload (JPG/PNG/WebP, 8 MB each, shrunk).
+   * Resolves [] when cancelled.
+   */
+  async function choosePhotos({ max = 5, title = 'Add photos' } = {}) {
+    const r = await swal({ title, showDenyButton: true, showCancelButton: true, confirmButtonText: '📷 Take photos', denyButtonText: '🖼 Choose photos', cancelButtonText: 'Cancel', reverseButtons: false, denyButtonColor: '#64748b' });
+    let files = [];
+    if (r.isConfirmed) files = await captureCamera({ max });
+    else if (r.isDenied) files = await pickFiles(max);
+    const out = [];
+    for (const f of files) {
+      if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { toast(f.name + ' isn’t a JPG, PNG or WebP photo.'); continue; }
+      if (f.size > 8 * 1024 * 1024) { toast(f.name + ' is too large (max 8 MB).'); continue; }
+      out.push(await compressImage(f));
+    }
+    return out.slice(0, max);
+  }
+
   let camCssAdded = false;
   function addCameraCss() {
     if (camCssAdded) return;
@@ -1230,6 +1261,72 @@
         a.download = this.fileName();
         a.click();
       },
+      /** Prints this bill's summary (shares with their items, who pays whom) through the shared print report styles. */
+      print() {
+        const data = SetloSummary.fromBill(this.d);
+        const app = document.getElementById('app');
+        if (!app) return;
+        const el = (tag, cls, txt) => { const n = document.createElement(tag); if (cls) n.className = cls; if (txt !== undefined) n.textContent = txt; return n; };
+        const money = (n) => peso(n, data.currency || 'PHP');
+        const root = el('div', 'print-report');
+        const head = el('header');
+        const logo = document.createElement('img');
+        logo.src = (document.querySelector('meta[name="api-base"]')?.content || '').replace(/api\/?$/, '') + 'assets/mascot/read.png';
+        logo.alt = '';
+        const title = el('div');
+        title.append(el('h1', '', 'Setlo · Bill summary'), el('p', 'meta', data.name + ' · ' + data.date + ' · printed ' + new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })));
+        head.append(logo, title);
+        root.append(head);
+
+        const totals = el('div', 'totals');
+        const box = (label, value) => { const d = el('div'); d.append(el('small', '', label), el('b', '', value)); return d; };
+        totals.append(box('Bill total', money(data.total)), box('People', String(data.members.length)), box(data.discount > 0 ? 'Discount' : 'Tax & service', data.discount > 0 ? peso(data.discount, data.receipt_currency) : peso(data.extras || 0, data.receipt_currency)));
+        root.append(totals);
+
+        root.append(el('h2', '', 'Each person’s share'));
+        const t1 = el('table');
+        const h1 = el('thead'), hr = el('tr');
+        [['Person', ''], ['Paid', 'num'], ['Share', 'num']].forEach(([l, c]) => hr.append(el('th', c, l)));
+        h1.append(hr); t1.append(h1);
+        const b1 = el('tbody');
+        for (const m of data.members) {
+          const lines = SetloSummary.itemLines(data, m);
+          const tr = el('tr', lines.length ? 'has-items' : '');
+          tr.append(el('td', '', m.name + (m.is_guest ? ' (guest)' : '')), el('td', 'num', m.paid > 0 ? money(m.paid) : '—'), el('td', 'num', money(m.share)));
+          b1.append(tr);
+          if (lines.length) {
+            const row = el('tr', 'items-row'), td = el('td'); td.colSpan = 3;
+            td.append(el('p', 'sub items-title', 'Items in ' + m.name.split(' ')[0] + '’s share'));
+            for (const ln of lines) { const p = el('p', 'item-line'); p.append(el('span', '', ln.text), el('b', '', ln.amount)); td.append(p); }
+            row.append(td); b1.append(row);
+          }
+        }
+        t1.append(b1); root.append(t1);
+
+        if (data.transfers.length) {
+          root.append(el('h2', '', 'Who pays whom'));
+          const byId = Object.fromEntries(data.members.map((m) => [m.id, m]));
+          const t2 = el('table'), h2 = el('thead'), r2 = el('tr');
+          [['From', ''], ['To', ''], ['Status', ''], ['Amount', 'num']].forEach(([l, c]) => r2.append(el('th', c, l)));
+          h2.append(r2); t2.append(h2);
+          const b2 = el('tbody');
+          const label = { pending: 'Pending', awaiting: 'Awaiting confirmation', settled: 'Settled', disputed: 'Disputed' };
+          for (const t of data.transfers) {
+            const tr = el('tr');
+            tr.append(el('td', '', (byId[t.from] || { name: '?' }).name), el('td', '', (byId[t.to] || { name: '?' }).name), el('td', '', label[t.status] || 'Proposed'), el('td', 'num', money(t.amount)));
+            b2.append(tr);
+          }
+          t2.append(b2); root.append(t2);
+        }
+        if (data.note) root.append(el('p', 'meta', data.note));
+        root.append(el('footer', '', 'Generated by Setlo — split bills, settle utang.'));
+
+        app.appendChild(root);
+        const cleanup = () => { root.remove(); window.removeEventListener('afterprint', cleanup); };
+        window.addEventListener('afterprint', cleanup);
+        setTimeout(cleanup, 120000); // browsers that never fire afterprint
+        window.print();
+      },
       async copyText() {
         const text = SetloSummary.asText(SetloSummary.fromBill(this.d));
         try { await navigator.clipboard.writeText(text); } catch (e) { showCopy('Copy the summary', text); }
@@ -1254,9 +1351,10 @@
             <div v-if="busy" class="flex justify-center py-16"><span class="h-7 w-7 animate-spin rounded-full border-[3px] border-brand-200 border-t-brand-600"></span></div>
             <img v-else-if="url" :src="url" alt="Bill summary image" class="w-full" />
           </div>
-          <div class="mt-4 grid gap-2.5" :class="canShareFiles ? 'grid-cols-3' : 'grid-cols-2'">
+          <div class="mt-4 grid grid-cols-2 gap-2.5">
             <button v-if="canShareFiles" @click="share" class="btn btn-primary" :disabled="busy">Share</button>
             <button @click="download" class="btn btn-outline" :disabled="busy">Download</button>
+            <button @click="print" class="btn btn-outline" :disabled="busy">🖨 Print</button>
             <button @click="copyText" class="btn btn-ghost" :disabled="busy">{{ copied ? 'Copied ✓' : 'Copy text' }}</button>
           </div>
         </div>
@@ -1614,5 +1712,5 @@
     }
   });
 
-  global.Setlo = { mount, run, load, useCurrency, allocate, roundShares, convertShares, currencies: CURRENCIES, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', confirm: confirmDialog, alert: alertDialog, promptText, showCopy, escapeHtml, payLink, isLocalLink, parsePayQr, decodeQr, qrCard, qrSvg, qrPng, showPayQr, groupByReceipt, toggleArchive, afterSignUp, cropPhoto, captureCamera, compressImage, photoViewer, confetti, showAchievements, showAchievement: (a) => achievementModal(a, { reopened: true }), ...helpers };
+  global.Setlo = { mount, run, load, useCurrency, allocate, roundShares, convertShares, currencies: CURRENCIES, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', confirm: confirmDialog, alert: alertDialog, promptText, showCopy, escapeHtml, payLink, isLocalLink, parsePayQr, decodeQr, qrCard, qrSvg, qrPng, showPayQr, groupByReceipt, toggleArchive, afterSignUp, cropPhoto, captureCamera, compressImage, choosePhotos, photoViewer, confetti, showAchievements, showAchievement: (a) => achievementModal(a, { reopened: true }), ...helpers };
 })(window);

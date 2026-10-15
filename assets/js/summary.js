@@ -15,7 +15,11 @@
     const rows = [];
     let y = 250;
     rows.push({ type: 'label', text: 'EACH PERSON’S SHARE', y }); y += 30;
-    for (const m of data.members) { rows.push({ type: 'member', m, y }); y += 58; }
+    for (const m of data.members) {
+      rows.push({ type: 'member', m, y }); y += 58;
+      for (const ln of itemLines(data, m)) { rows.push({ type: 'mitem', ln, y }); y += ln.more ? 24 : 26; }
+      if (itemLines(data, m).length) y += 6;
+    }
     if (data.transfers.length) {
       y += 18; rows.push({ type: 'label', text: 'WHO PAYS WHOM', y }); y += 30;
       for (const t of data.transfers) { rows.push({ type: 'transfer', t, y }); y += 50; }
@@ -28,6 +32,20 @@
       for (const m of receivers) { rows.push({ type: 'payto', m, y }); y += 40; }
     }
     return { rows, height: y + 90 };
+  }
+
+  /** The items behind one person's share, ready to print or draw: [{ text, amount }] (+ a final "+ n more"). */
+  const MAX_ITEM_LINES = 10;
+  function itemLines(data, m) {
+    const it = m.items;
+    if (!it || !it.lines || !it.lines.length) return [];
+    const peso = (n) => global.Setlo.peso(n, it.currency || data.currency || 'PHP');
+    const lines = it.lines.map((l) => ({
+      text: (l.qty > 1 ? l.qty + '× ' : '') + l.name + (l.shared_by > 1 ? '  ÷' + l.shared_by : ''),
+      amount: peso(l.portion !== null && l.portion !== undefined ? l.portion : l.line_total),
+    }));
+    if (lines.length <= MAX_ITEM_LINES) return lines;
+    return [...lines.slice(0, MAX_ITEM_LINES), { text: '+ ' + (lines.length - MAX_ITEM_LINES) + ' more items', amount: '', more: true }];
   }
 
   function roundRect(ctx, x, y, w, h, r, fill) {
@@ -89,6 +107,10 @@
         text(ctx, m.name + (m.is_guest ? ' (guest)' : ''), PAD + 60, row.y + (m.paid > 0 ? 8 : 16), { size: 21, weight: 700, max: 380 });
         if (m.paid > 0) text(ctx, 'paid ' + fmt(data, m.paid), PAD + 60, row.y + 32, { size: 15, weight: 600, color: window.SetloTheme ? SetloTheme.color(700) : '#0f766e' });
         text(ctx, fmt(data, m.share), W - PAD - 6, row.y + 16, { size: 22, weight: 800, align: 'right' });
+      } else if (row.type === 'mitem') {
+        const ln = row.ln;
+        text(ctx, ln.text, PAD + 60, row.y + 10, { size: 16, weight: ln.more ? 600 : 500, color: '#64748b', max: W - PAD * 2 - 200 });
+        if (ln.amount) text(ctx, ln.amount, W - PAD - 6, row.y + 10, { size: 16, weight: 600, color: '#475569', align: 'right' });
       } else if (row.type === 'transfer') {
         const t = row.t;
         const from = byId[t.from] || { name: '?' };
@@ -118,7 +140,10 @@
   function asText(data) {
     const byId = Object.fromEntries(data.members.map((m) => [m.id, m]));
     const lines = [`🧾 ${data.name} — ${fmt(data, data.total)} (${data.date})`, ''];
-    for (const m of data.members) lines.push(`• ${m.name}: ${fmt(data, m.share)}${m.paid > 0 ? ` (paid ${fmt(data, m.paid)})` : ''}`);
+    for (const m of data.members) {
+      lines.push(`• ${m.name}: ${fmt(data, m.share)}${m.paid > 0 ? ` (paid ${fmt(data, m.paid)})` : ''}`);
+      for (const ln of itemLines(data, m)) lines.push(ln.amount ? `    ${ln.text} — ${ln.amount}` : `    ${ln.text}`);
+    }
     if (data.transfers.length) {
       lines.push('', 'Who pays whom:');
       for (const t of data.transfers) {
@@ -146,11 +171,11 @@
       total: d.total, extras: d.extras, tax_included: d.bill.tax_included, discount: d.bill.discount, currency: d.bill.currency || 'PHP',
       // extras and discount are on the receipt, in its own currency
       receipt_currency: d.bill.receipt_currency || d.bill.currency || 'PHP',
-      members: d.members.map((m) => ({ ...m, share: d.shares[m.id] || 0, paid: (d.payments && d.payments.paid[m.id]) || 0 })),
+      members: d.members.map((m) => ({ ...m, share: d.shares[m.id] || 0, paid: (d.payments && d.payments.paid[m.id]) || 0, items: (d.member_items && d.member_items[m.id]) || null })),
       transfers,
       note: d.settlements.length ? null : 'Proposed split — final once the bill starts settling.',
     };
   }
 
-  global.SetloSummary = { render, asText, fromBill };
+  global.SetloSummary = { render, asText, fromBill, itemLines };
 })(window);

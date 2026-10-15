@@ -78,6 +78,8 @@ $steps = [
     'ALTER TABLE settlements ADD COLUMN IF NOT EXISTS interest_rate DECIMAL(5,2) NULL AFTER paid_amount',
     "ALTER TABLE settlements MODIFY settle_method ENUM('online','transfer','cash','mixed') NULL",
     "ALTER TABLE settlement_events MODIFY event ENUM('created','marked_paid','confirmed','disputed','resent','nudged','interest','covered','due_set') NOT NULL",
+    // Payers can add proof photos after paying (settlement history entry)
+    "ALTER TABLE settlement_events MODIFY event ENUM('created','marked_paid','confirmed','disputed','resent','nudged','interest','covered','due_set','proof_added') NOT NULL",
     "CREATE TABLE IF NOT EXISTS settlement_payments (
        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, settlement_id INT UNSIGNED NOT NULL, paid_by INT UNSIGNED NOT NULL,
        amount DECIMAL(10,2) NOT NULL, method ENUM('online','transfer','cash') NOT NULL,

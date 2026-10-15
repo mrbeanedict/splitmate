@@ -8,7 +8,7 @@ if (!$billId) {
     redirect('pages/my-bills');
 }
 $back = 'my-bills.php';
-$headExtra = ['assets/js/summary.js', 'assets/js/replay.js'];
+$headExtra = ['assets/js/summary.js', 'assets/js/replay.js', 'assets/css/print.css'];
 require __DIR__ . '/../partials/head.php';
 ?>
 <div id="app" class="device" v-cloak>

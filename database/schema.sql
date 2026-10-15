@@ -223,7 +223,7 @@ CREATE TABLE settlement_events (
   id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   settlement_id  INT UNSIGNED NOT NULL,
   actor_id       INT UNSIGNED NULL,
-  event          ENUM('created','marked_paid','confirmed','disputed','resent','nudged','interest','covered','due_set') NOT NULL,
+  event          ENUM('created','marked_paid','confirmed','disputed','resent','nudged','interest','covered','due_set','proof_added') NOT NULL,
   note           VARCHAR(500) NULL,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (settlement_id) REFERENCES settlements(id) ON DELETE CASCADE,

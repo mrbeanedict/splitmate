@@ -8,7 +8,7 @@ if (!$billId) {
     redirect('pages/stats?tab=history');
 }
 $back = 'stats?tab=history';
-$headExtra = ['assets/js/summary.js', 'assets/js/replay.js'];
+$headExtra = ['assets/js/summary.js', 'assets/js/replay.js', 'assets/css/print.css'];
 require __DIR__ . '/../partials/head.php';
 ?>
 <div id="app" class="device device-narrow" v-cloak>

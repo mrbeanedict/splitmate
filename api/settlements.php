@@ -175,8 +175,8 @@ switch (input('action', '')) {
             $cents = part_cents($locked);
             $paidBy = $covering ? $me['id'] : (int) $s['from_user_id'];
             $paymentId = add_payment($locked, $paidBy, $cents, 'transfer', 'awaiting', ['ref' => $ref ?: null, 'proof' => $proof, 'pay_back' => $covering && input('pay_back')]);
-            foreach (array_slice($proofs, 1) as $i => $extra) {
-                q('INSERT INTO settlement_payment_proofs (payment_id, position, image) VALUES (?, ?, ?)', [$paymentId, $i + 1, $extra]);
+            foreach (array_slice($proofs, 1) as $i => $moreProof) { // not $extra: the reply below uses that name for its own data
+                q('INSERT INTO settlement_payment_proofs (payment_id, position, image) VALUES (?, ?, ?)', [$paymentId, $i + 1, $moreProof]);
             }
         } catch (Throwable $e) {
             $pdo->rollBack();
@@ -197,6 +197,38 @@ switch (input('action', '')) {
             notify((int) $s['from_user_id'], 'paid', "$myName is paying " . s_money($s, $cents) . " of your debt to $receiverName for {$s['bill_name']}" . (input('pay_back') ? ". You'll owe $myName that instead once it's confirmed (in Utang)." : ' as a treat.'), 'my-settlements');
         }
         $pdo->commit();
+        break;
+
+    case 'add_proof':
+        // More proof photos on a payment that's already been made (also an online one, or one that's settled)
+        $part = q('SELECT * FROM settlement_payments WHERE id = ? AND settlement_id = ?', [int_param('payment_id'), $id])->fetch();
+        if (!$part || !in_array($part['status'], ['awaiting', 'confirmed'], true)) {
+            fail('That payment can’t take proof photos.', 409);
+        }
+        if ((int) $part['paid_by'] !== $me['id'] && !$isSender) {
+            fail('Only the person who paid can add proof.', 403);
+        }
+        $have = ($part['proof_image'] ? 1 : 0) + (int) q('SELECT COUNT(*) FROM settlement_payment_proofs WHERE payment_id = ?', [$part['id']])->fetchColumn();
+        $room = MAX_PROOF_PHOTOS - $have;
+        if ($room < 1) {
+            fail('This payment already has the maximum of ' . MAX_PROOF_PHOTOS . ' proof photos.', 409);
+        }
+        $files = save_uploaded_images('proofs', 'proofs', 'settlement' . $id, $room);
+        if (!$files) {
+            fail('Choose at least one photo.', 422);
+        }
+        try {
+            store_payment_proofs((int) $part['id'], $files);
+        } catch (Throwable $e) {
+            foreach ($files as $file) {
+                delete_upload('proofs', $file);
+            }
+            throw $e;
+        }
+        log_event($id, $me['id'], 'proof_added', "$myName added " . (count($files) === 1 ? 'a proof photo' : count($files) . ' proof photos') . ' to the ' . part_words(cents($part['amount']), $s) . ' payment.');
+        if (!$isReceiver) {
+            notify((int) $s['to_user_id'], 'paid', "$myName added proof of payment for {$s['bill_name']}.", 'my-settlements?tab=owed');
+        }
         break;
 
     case 'confirm':
@@ -348,13 +380,17 @@ switch (input('action', '')) {
             if ($paidOld) {
                 fail('An earlier online payment for this went through — tap “Check payment status” to count it first.', 409);
             }
-            // The whole checkout goes, also the other debts it covered (a combined one from the Pay page)
+            // The whole checkout goes, also the other debts it covered (a combined one from the Pay page), and any photos attached to it
+            $gone = q("SELECT id FROM settlement_payments WHERE status = 'started' AND (id = ? OR (paymongo_session IS NOT NULL AND paymongo_session = ?))", [$old['id'], $old['paymongo_session']])->fetchAll(PDO::FETCH_COLUMN);
+            delete_payment_proof_files(array_map('intval', $gone));
             q("DELETE FROM settlement_payments WHERE status = 'started' AND (id = ? OR (paymongo_session IS NOT NULL AND paymongo_session = ?))", [$old['id'], $old['paymongo_session']]);
         }
         $cents = part_cents($locked, PAYMONGO_MIN_CENTS);
         if ($cents < PAYMONGO_MIN_CENTS) {
             fail('Online payment needs at least ' . s_money($s, PAYMONGO_MIN_CENTS) . '. Pay this one another way.', 422);
         }
+        // Photos attached in the pay window ride along: they're saved with this payment and stay once PayMongo confirms it
+        $proofs = save_uploaded_images('proofs', 'proofs', 'settlement' . $id, MAX_PROOF_PHOTOS);
         try {
             $checkout = paymongo_create_checkout(
                 $cents,
@@ -365,9 +401,20 @@ switch (input('action', '')) {
                 absolute_url('pages/my-settlements?online=cancelled')
             );
         } catch (PayMongoException $e) {
+            foreach ($proofs as $file) {
+                delete_upload('proofs', $file);
+            }
             fail($e->getMessage(), 502);
         }
-        add_payment($locked, $paidBy, $cents, 'online', 'started', ['session' => $checkout['id'], 'pay_back' => $covering && input('pay_back')]);
+        try {
+            $paymentId = add_payment($locked, $paidBy, $cents, 'online', 'started', ['session' => $checkout['id'], 'pay_back' => $covering && input('pay_back')]);
+            store_payment_proofs($paymentId, $proofs);
+        } catch (Throwable $e) {
+            foreach ($proofs as $file) {
+                delete_upload('proofs', $file);
+            }
+            throw $e;
+        }
         json_ok(['checkout_url' => $checkout['url']]);
 
     case 'check_online':

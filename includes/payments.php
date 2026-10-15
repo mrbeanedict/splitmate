@@ -42,6 +42,32 @@ function load_payment(int $settlementId, ?int $paymentId, string $status): array
     return $p;
 }
 
+/** Attach proof photos (already stored in uploads/proofs) to a payment: the first one fills proof_image, the rest go in settlement_payment_proofs. */
+function store_payment_proofs(int $paymentId, array $files): void
+{
+    $current = q('SELECT proof_image FROM settlement_payments WHERE id = ?', [$paymentId])->fetchColumn();
+    if ($files && !$current) {
+        q('UPDATE settlement_payments SET proof_image = ? WHERE id = ?', [array_shift($files), $paymentId]);
+    }
+    $pos = (int) q('SELECT COALESCE(MAX(position), 0) FROM settlement_payment_proofs WHERE payment_id = ?', [$paymentId])->fetchColumn();
+    foreach ($files as $file) {
+        q('INSERT INTO settlement_payment_proofs (payment_id, position, image) VALUES (?, ?, ?)', [$paymentId, ++$pos, $file]);
+    }
+}
+
+/** Remove the proof photo files of these payments from disk (call before their rows are deleted). */
+function delete_payment_proof_files(array $paymentIds): void
+{
+    if (!$paymentIds) {
+        return;
+    }
+    $in = implode(',', array_fill(0, count($paymentIds), '?'));
+    $names = q("SELECT proof_image FROM settlement_payments WHERE id IN ($in) AND proof_image IS NOT NULL UNION ALL SELECT image FROM settlement_payment_proofs WHERE payment_id IN ($in)", array_merge($paymentIds, $paymentIds))->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($names as $name) {
+        delete_upload('proofs', $name);
+    }
+}
+
 /**
  * Record a payment part. Returns its id. $extra: ref, proof, session, pay_back, and for cash handed over beyond
  * the part: tendered, change (given back) or credit (kept), in cents.

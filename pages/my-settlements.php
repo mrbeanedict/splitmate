@@ -8,13 +8,22 @@ $back = 'dashboard.php';
 $headExtra = ['assets/css/print.css'];
 require __DIR__ . '/../partials/head.php';
 ?>
+<style>
+  /* Choose which debts to print */
+  .sel-check { flex: none; width: 18px; height: 18px; margin-top: 9px; accent-color: rgb(var(--brand-600)); cursor: pointer; }
+  .sel-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 8px 12px; border-radius: 14px; background: rgb(var(--brand-50)); font-size: 13px; font-weight: 600; color: rgb(var(--brand-800, 17 94 89)); }
+  html.dark .sel-bar { background: rgb(var(--brand-900) / .4); color: rgb(var(--brand-200)); }
+  .sel-bar label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+  .sel-bar button { border: 0; background: none; padding: 4px 6px; font: inherit; font-weight: 800; color: inherit; cursor: pointer; text-decoration: underline; }
+  .sel-bar .sel-print { text-decoration: none; padding: 7px 14px; border-radius: 999px; background: rgb(var(--brand-600)); color: #fff; }
+</style>
 <div id="app" class="device" v-cloak>
 
   <div class="app-hero px-5 pb-5 pt-8">
     <div class="flex items-center gap-3">
       <?php require __DIR__ . '/../partials/back.php'; ?>
       <h1 class="min-w-0 flex-1 text-[21px] font-extrabold tracking-tight">My Settlements</h1>
-      <button @click="printList" :disabled="loading || !(owe.length || owed.length || cover.length)" class="shrink-0 rounded-full bg-white/15 px-3.5 py-2 text-[13px] font-bold text-white hover:bg-white/25 disabled:opacity-50" aria-label="Print list of debts">🖨 Print</button>
+      <button @click="printList" :disabled="loading || !(owe.length || owed.length || cover.length)" class="shrink-0 rounded-full bg-white/15 px-3.5 py-2 text-[13px] font-bold text-white hover:bg-white/25 disabled:opacity-50" aria-label="Print list of debts">🖨 Print<span v-if="selectedCount"> ({{ selectedCount }})</span></button>
     </div>
     <div class="seg mt-5">
       <button :class="{ on: tab === 'owe' }" @click="tab = 'owe'">You Owe <span v-if="openCount('owe')" class="ml-1 opacity-70">{{ openCount('owe') }}</span></button>
@@ -30,6 +39,12 @@ require __DIR__ . '/../partials/head.php';
       <p class="text-sm font-bold text-ink">{{ tab === 'owe' ? "You don't owe anyone" : 'Nobody owes you' }}</p>
       <p class="mt-1 text-[12px] text-slate-400">Settlements appear once a bill's split is confirmed.</p>
     </div>
+    <div v-if="!loading && (list.length || cover.length)" class="sel-bar" role="group" aria-label="Choose debts to print">
+      <label><input type="checkbox" class="sel-check !mt-0" :checked="allSelected" :indeterminate.prop="someSelected && !allSelected" @change="allSelected ? clearSel() : selectAll()" /> Select all</label>
+      <span v-if="selectedCount">{{ selectedCount }} selected</span>
+      <span v-else class="font-medium opacity-80">Tick debts to print only those</span>
+      <span v-if="selectedCount"><button type="button" @click="clearSel">Clear</button> <button type="button" class="sel-print" @click="printList">🖨 Print selected</button></span>
+    </div>
     <p v-if="q.trim() && !loading && !sections.length" class="tile p-5 text-center text-[13px] text-slate-400">Nothing matches “{{ q.trim() }}”.</p>
     <section v-for="sec in sections" :key="sec.key">
       <div v-if="sec.title" class="mb-2 flex items-baseline justify-between gap-2 px-1">
@@ -39,6 +54,7 @@ require __DIR__ . '/../partials/head.php';
       <div class="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0">
     <div v-for="s in sec.items" :key="s.id" class="tile p-3.5" :class="{ '!border-red-200 ring-1 ring-red-100': s.status === 'disputed', 'tile-muted': s.status === 'settled' }">
       <div class="flex items-start gap-3">
+        <input type="checkbox" class="sel-check" :checked="isSel(s)" @change="toggleSel(s)" :aria-label="'Select ' + other(s).name + ' · ' + s.bill_name + ' for printing'" />
         <button @click="showPerson(other(s).id)" class="shrink-0 rounded-full" :aria-label="'About ' + other(s).name"><avatar :user="other(s)" :size="36"></avatar></button>
         <div class="min-w-0 flex-1">
           <button @click="showPerson(other(s).id)" class="block max-w-full truncate text-left text-sm font-semibold hover:underline">{{ tab === 'owe' ? (s.from.is_guest ? s.from.first + ' → ' + s.to.name : 'To ' + s.to.name) : 'From ' + s.from.name }}</button>
@@ -95,6 +111,7 @@ require __DIR__ . '/../partials/head.php';
             <span class="min-w-0 break-all opacity-80">{{ p.reject_reason ? '“' + p.reject_reason + '”' : p.payment_ref ? 'Ref no. ' + p.payment_ref : '' }}</span>
             <button v-if="p.has_proof" @click="viewProof(p)" class="shrink-0 font-bold underline">View proof{{ p.proof_count > 1 ? ' (' + p.proof_count + ')' : '' }}</button>
           </div>
+          <div v-if="canAddProof(p)" class="mt-1 text-right"><button @click="addProof(s, p)" class="font-bold underline" :disabled="busy">+ Add proof</button></div>
           <div v-if="tab === 'owed' && p.status === 'awaiting'" class="mt-2 flex justify-end gap-2">
             <button @click="openReject(s, p)" class="btn btn-danger btn-sm" :disabled="busy">Reject</button>
             <button @click="confirmPart(s, p)" class="btn btn-accent btn-sm" :disabled="busy">Confirm {{ peso(p.amount, s.currency) }}</button>
@@ -106,6 +123,10 @@ require __DIR__ . '/../partials/head.php';
         <b class="text-slate-700">Old record</b> · settled {{ fmtDate(s.confirmed_at || s.paid_at, true) }}<span v-if="s.settle_method"> · {{ methodLabel[s.settle_method] }}</span>
         <span v-if="received(s).length" class="mt-1 flex flex-wrap gap-x-3 gap-y-1">
           <button v-for="p in received(s)" :key="p.id" @click="showReceipt(p.id)" class="font-bold text-brand-700">Receipt {{ peso(p.amount, s.currency) }}</button>
+        </span>
+        <span v-if="proofParts(s).length || addableParts(s).length" class="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+          <button v-for="p in proofParts(s)" :key="'pr' + p.id" @click="viewProof(p)" class="font-bold text-brand-700">View proof{{ p.proof_count > 1 ? ' (' + p.proof_count + ')' : '' }}<span v-if="proofParts(s).length > 1"> · {{ peso(p.amount, s.currency) }}</span></button>
+          <button v-for="p in addableParts(s)" :key="'ad' + p.id" @click="addProof(s, p)" class="font-bold text-slate-500" :disabled="busy">+ Add proof</button>
         </span>
       </p>
 
@@ -162,6 +183,7 @@ require __DIR__ . '/../partials/head.php';
       <div class="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0">
         <div v-for="s in cover" :key="'c' + s.id" class="tile p-3.5">
           <div class="flex items-center gap-3">
+            <input type="checkbox" class="sel-check !mt-0" :checked="isSel(s)" @change="toggleSel(s)" :aria-label="'Select ' + s.from.name + ' · ' + s.bill_name + ' for printing'" />
             <button @click="showPerson(s.from.id)" class="shrink-0 rounded-full" :aria-label="'About ' + s.from.name"><avatar :user="s.from" :size="32"></avatar></button>
             <div class="min-w-0 flex-1">
               <button @click="showPerson(s.from.id)" class="block max-w-full truncate text-left text-sm font-semibold hover:underline">{{ s.from.first }} → {{ s.to.id === me ? 'you' : s.to.first }}</button>
@@ -189,10 +211,10 @@ require __DIR__ . '/../partials/head.php';
       <img src="<?= h(url('assets/mascot/read.png')) ?>" alt="" />
       <div>
         <h1>Setlo · Debts report</h1>
-        <p class="meta"><?= h($user['full_name'] ?? '') ?> · Printed {{ printedOn }}</p>
+        <p class="meta"><?= h($user['full_name'] ?? '') ?> · Printed {{ printedOn }}<span v-if="selectedCount"> · {{ selectedCount }} selected {{ selectedCount === 1 ? 'debt' : 'debts' }}</span></p>
       </div>
     </header>
-    <p v-if="!printGroups.length" class="meta">No settlements yet.</p>
+    <p v-if="!printGroups.length" class="meta">Nothing to print.</p>
     <template v-for="g in printGroups" :key="g.key">
       <h2>{{ g.title }} ({{ g.items.length }})</h2>
       <table>
@@ -265,7 +287,7 @@ require __DIR__ . '/../partials/head.php';
           <p class="flex-1 text-[13px] font-extrabold text-ink">Pay online</p>
           <span v-if="online.test" class="pill pill-draft">Demo · test mode</span>
         </div>
-        <p class="mt-0.5 text-[12px] text-slate-500">GCash, Maya or card through PayMongo. Counts automatically once PayMongo confirms it. No screenshot needed.</p>
+        <p class="mt-0.5 text-[12px] text-slate-500">GCash, Maya or card through PayMongo. Counts automatically once PayMongo confirms it. No screenshot needed; any photos you attach below are saved with this payment too.</p>
         <button type="button" @click="payOnline" class="btn btn-primary mt-3 w-full" :disabled="busy || tooSmallOnline">
           {{ tooSmallOnline ? 'Online needs at least ' + peso(online.min / 100, 'PHP') : 'Pay ' + peso(money(payAmount)) + ' with PayMongo' }}
         </button>
@@ -380,7 +402,7 @@ Setlo.mount({
     me: <?= (int) $user['id'] ?>, loading: true, busy: false, tab: new URLSearchParams(location.search).get('tab') === 'owed' ? 'owed' : 'owe',
     q: '', owe: [], owed: [], cover: [], rejecting: null, reason: '',
     paying: null, covering: false, payBack: true, payAmount: '', cashing: null, extraMode: 'change', cashMembers: [], cashPayer: '', cashPayBack: true,
-    payRef: '', proofs: [], maxProofs: 5, viewer: null,
+    payRef: '', proofs: [], maxProofs: 5, viewer: null, selected: [],
     online: { enabled: <?= paymongo_available() ? 'true' : 'false' ?>, test: <?= paymongo_test_mode() ? 'true' : 'false' ?>, min: <?= PAYMONGO_MIN_CENTS ?> },
     methodLabel: { online: 'Paid online · verified by PayMongo', transfer: 'Paid by transfer · confirmed by receiver', cash: 'Paid in cash · settled by receiver', credit: 'Paid from kept change (extra cash)', mixed: 'Paid in parts, several ways' },
     methodName: { online: 'Online', transfer: 'Transfer', cash: 'Cash', credit: 'Kept change' },
@@ -402,14 +424,21 @@ Setlo.mount({
         { key: 'done', title: 'Past settlements', hint: 'Archive a closed bill to clear it from here', items: done },
       ].filter((sec) => sec.items.length);
     },
-    /** Everything, ignoring tab and search, for the printed report. */
+    /** What the printed report holds: the debts I ticked, or everything (ignoring tab and search) when none are ticked. */
     printGroups() {
+      const pick = (items) => (this.selected.length ? items.filter((s) => this.selected.includes(s.id)) : items);
       return [
-        { key: 'owe', title: 'You owe', items: this.owe },
-        { key: 'owed', title: 'Owed to you', items: this.owed },
-        { key: 'cover', title: 'Others’ open debts you could pay for', items: this.cover },
+        { key: 'owe', title: 'You owe', items: pick(this.owe) },
+        { key: 'owed', title: 'Owed to you', items: pick(this.owed) },
+        { key: 'cover', title: 'Others’ open debts you could pay for', items: pick(this.cover) },
       ].filter((g) => g.items.length);
     },
+    /** How many of the ticked debts still exist (a refresh can drop some). */
+    selectedCount() { return this.printGroups.reduce((n, g) => n + (this.selected.length ? g.items.length : 0), 0); },
+    /** Debts on screen now (this tab and search), plus the "pay for someone else" ones. */
+    shownDebts() { return [...this.list, ...(this.tab === 'owe' ? this.cover : [])]; },
+    allSelected() { return this.shownDebts.length > 0 && this.shownDebts.every((s) => this.selected.includes(s.id)); },
+    someSelected() { return this.shownDebts.some((s) => this.selected.includes(s.id)); },
     printedOn() { return new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }); },
     /** The settlement in the open sheet (pay or cash). */
     current() { return this.paying || this.cashing; },
@@ -478,7 +507,14 @@ Setlo.mount({
       this.cover = r.others_open || []; // a cached reply from before paying for others existed has none
     },
     async load() { this.fill(await api.get('settlements.php')); },
-    printList() { window.print(); },
+    isSel(s) { return this.selected.includes(s.id); },
+    toggleSel(s) { const i = this.selected.indexOf(s.id); if (i >= 0) this.selected.splice(i, 1); else this.selected.push(s.id); },
+    selectAll() { this.selected = [...new Set([...this.selected, ...this.shownDebts.map((s) => s.id)])]; },
+    clearSel() { this.selected = []; },
+    printList() {
+      if (this.selected.length && !this.selectedCount) this.selected = []; // everything ticked has gone: print it all
+      this.$nextTick(() => window.print());
+    },
     printStatus(s) {
       if (s.status === 'settled') return 'Settled';
       if (s.status === 'disputed') return 'Disputed';
@@ -520,6 +556,21 @@ Setlo.mount({
     },
     confirmPart(s, p) { return this.act(s, 'confirm', { payment_id: p.id }); },
     proofSrc(paymentId, n) { return '<?= h(url('api/settlements.php')) ?>?payment_proof=' + paymentId + (n ? '&n=' + n : ''); },
+    /** Payments of mine (or a settled record's) that already have photos, and those that can still take more. */
+    proofParts(s) { return (s.payments || []).filter((p) => p.has_proof); },
+    canAddProof(p) { return p.paid_by.id === this.me && ['awaiting', 'confirmed'].includes(p.status) && (p.proof_count || 0) < this.maxProofs; },
+    addableParts(s) { return (s.payments || []).filter((p) => this.canAddProof(p)); },
+    async addProof(s, p) {
+      const files = await Setlo.choosePhotos({ max: this.maxProofs - (p.proof_count || 0), title: 'Add proof of payment' });
+      if (!files.length) return;
+      const fd = new FormData();
+      fd.append('action', 'add_proof');
+      fd.append('id', s.id);
+      fd.append('payment_id', p.id);
+      files.forEach((f, i) => fd.append('proofs[]', f, f.name || 'proof-' + (i + 1) + '.jpg'));
+      const r = await Setlo.run(this, () => api.post('settlements.php', fd));
+      if (r) { Setlo.toast(files.length === 1 ? 'Proof photo added' : files.length + ' proof photos added', 'ok'); await this.load(); }
+    },
     viewProof(p) {
       const count = Math.max(1, p.proof_count || 1);
       Setlo.photoViewer(Array.from({ length: count }, (_, n) => this.proofSrc(p.id, n)), { title: 'Proof of payment' });
@@ -645,7 +696,14 @@ Setlo.mount({
     },
     async payOnline() {
       if (!this.validateAll(['amount'])) return;
-      const r = await Setlo.run(this, () => api.post('settlements.php', { action: 'pay_online', ...this.payFields() }));
+      let body = { action: 'pay_online', ...this.payFields() };
+      if (this.proofs.length) { // photos attached in this window are saved with the online payment too
+        body = new FormData();
+        body.append('action', 'pay_online');
+        for (const [k, v] of Object.entries(this.payFields())) body.append(k, v);
+        this.proofs.forEach((f, i) => body.append('proofs[]', f.file, f.file.name || 'proof-' + (i + 1) + '.jpg'));
+      }
+      const r = await Setlo.run(this, () => api.post('settlements.php', body));
       if (r) location.href = r.checkout_url;
     },
     async submitCash() {

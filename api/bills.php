@@ -184,6 +184,8 @@ if (method() === 'GET') {
             'members'     => $members,
             'items'       => $items,
             'receipts'    => $receipts,
+            // The items behind each person's share (their part of split items), for the Bill summary card and its print
+            'member_items' => (object) array_filter(array_map(fn ($m) => share_items((int) $bill['id'], (int) $m['id']), array_column($members, null, 'id'))),
             // shares / total / balances / plan / payments: settlement currency. Items, subtotal, extras, discounts,
             // unassigned and native_*: the receipt's currency.
             'shares'      => array_map('pesos', $calc['shares']),
