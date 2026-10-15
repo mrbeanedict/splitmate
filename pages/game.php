@@ -248,6 +248,16 @@ require __DIR__ . '/../partials/head.php';
           <div class="wheel-hub">🎡</div>
         </div>
       </div>
+      <!-- several payers: each pick stops the wheel and is announced; the next spin waits for the player -->
+      <div v-if="pickModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-5" role="dialog" aria-modal="true" aria-labelledby="pick-title">
+        <div class="pop-in tile w-full max-w-sm !border-amber-300 !bg-amber-50 p-6 text-center">
+          <p class="text-[44px]">💸</p>
+          <p class="text-[12px] font-bold uppercase tracking-wide text-amber-700">Pick {{ pickModal.n + 1 }} of {{ payers.length }}</p>
+          <p id="pick-title" class="mt-1 text-[19px] font-extrabold text-ink">{{ pickModal.uid === me.id ? 'Your wallet has been selected!' : nameOf(pickModal.uid) + '’s wallet has been selected!' }}</p>
+          <p class="mt-1 text-[13px] text-slate-600">{{ pickModal.last ? 'That’s everyone the wheel picked.' : (payers.length - pickModal.n - 1) + ' more to pick.' }}</p>
+          <button ref="pickBtn" @click="continuePick" class="btn-pill btn-fun mt-4">{{ pickModal.last ? 'See who pays' : 'Spin for the next payer 🎡' }}</button>
+        </div>
+      </div>
       <!-- the wheel waits for the host: nothing is picked until they tap Spin -->
       <button v-if="wheelPhase === 'ready' && game.is_host" @click="post('spin')" class="btn-pill btn-fun" :disabled="busy">Spin the wheel 🎡</button>
       <div v-if="view === 'done' && result && landed" class="pop-in tile !border-amber-300 !bg-amber-50 p-5 text-center">
@@ -470,7 +480,7 @@ Setlo.mount({
     bill: null, me: { id: <?= (int) $user['id'] ?>, is_creator: false }, members: [], games: {}, cards: {}, game: null, shares: null,
     pick: { game: 'roulette', mode: 'screen', payers: 1 }, gameArt: <?= json_encode(url('assets/games/')) ?>, seen: {}, gameArtV: <?= (int) max(array_map('filemtime', glob(__DIR__ . '/../assets/games/*.svg'))) ?>, scrollFrame: null,
     offset: 0, now: Date.now(), poller: null, ticker: null,
-    angle: 0, spinning: false, landed: false, wheelRaf: null, wheelTimer: null, hits: [],
+    angle: 0, spinning: false, landed: false, wheelRaf: null, wheelTimer: null, hits: [], pickModal: null, pickResume: null,
     cupCounts: {}, flying: [], ballsLanded: false, ballsRaf: null, ballsLandedN: 0,
     answerInput: '', basket: {}, revealed: false, replaying: false, lastNudge: 0, reveal: null,
   }),
@@ -531,6 +541,7 @@ Setlo.mount({
     payerNames() { return this.payers.map(this.nameOf).join(' & '); },
     wheelStatus() {
       if (this.landed) return 'The wheel has spoken';
+      if (this.pickModal) return `Pick ${this.pickModal.n + 1} of ${this.payers.length}: ${this.nameOf(this.pickModal.uid)}`;
       if (this.wheelPhase === 'ready') return this.game.is_host ? 'Ready when you are' : 'Waiting for ' + this.hostName + ' to spin…';
       if (this.wheelPhase === 'done' && this.payers.length > 1) return `Pick ${Math.min(this.hits.length + 1, this.payers.length)} of ${this.payers.length}…`;
       return 'Spinning… 🎡';
@@ -631,6 +642,13 @@ Setlo.mount({
       }
     },
     // ----- Roulette wheel -----
+    /** The player dismissed a pick announcement: spin for the next payer, or reveal the final result after the last one. */
+    continuePick() {
+      const next = this.pickResume;
+      this.pickModal = null;
+      this.pickResume = null;
+      if (next) next();
+    },
     sliceCenter(i) { return (i + 0.5) * 360 / this.game.players.length; },
     /**
      * Spin freely while the game plays; once the server names the payers, ease to a stop on each one in turn
@@ -643,6 +661,8 @@ Setlo.mount({
       const phase = this.wheelPhase;
       this.spinning = false;
       this.hits = [];
+      this.pickModal = null;
+      this.pickResume = null;
       if (phase === 'playing') {
         this.landed = false;
         if (calm) return;
@@ -671,8 +691,12 @@ Setlo.mount({
             if (k < 1) { this.wheelRaf = requestAnimationFrame(step); return; }
             this.angle = to % 360;
             this.hits = [...this.hits, payers[n]];
-            if (n + 1 < payers.length) this.wheelTimer = setTimeout(() => spinUp(n + 1), 900);
-            else this.landed = true;
+            if (payers.length === 1) { this.landed = true; return; }
+            // Several payers: stop here and announce this pick; the next spin (or the final result) waits for the player.
+            const last = n + 1 === payers.length;
+            this.pickModal = { n, uid: payers[n], last };
+            this.pickResume = last ? () => { this.landed = true; } : () => spinUp(n + 1);
+            this.$nextTick(() => { const b = this.$refs.pickBtn; if (b) b.focus(); });
           };
           this.wheelRaf = requestAnimationFrame(step);
         };

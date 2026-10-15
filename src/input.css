@@ -679,6 +679,7 @@
   /* The wheel sits on a wooden tabletop: planks, grain and a dark vignette, all CSS layers (no image) */
   .wheel-stage {
     @apply rounded-[1.5rem];
+    overflow: hidden; /* the spinning labels' invisible corners would otherwise stretch the page and make its scrollbar jump */
     background:
       radial-gradient(ellipse at 50% 45%, transparent 45%, rgb(40 20 5 / .45) 100%),
       repeating-linear-gradient(90deg, transparent 0 calc(25% - 2px), rgb(45 22 6 / .55) calc(25% - 2px) 25%),
