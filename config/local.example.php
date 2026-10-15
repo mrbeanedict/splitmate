@@ -20,4 +20,5 @@ return [
     'MAIL_FROM'           => '',      // leave empty to send from SMTP_USER
     'MAIL_FROM_NAME'      => 'Setlo',
     'APP_URL'             => '',      // public address for links in reminder emails, e.g. https://yourdomain.com/setlo-splitmate
+    'INSTALL_KEY'         => '',      // only for a first install on a host with no terminal: a long random secret for install.php, then remove the file
 ];

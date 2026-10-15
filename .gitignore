@@ -11,3 +11,6 @@ backups/
 .vscode/
 Thumbs.db
 desktop.ini
+
+# Written by install.php once the site is installed
+config/installed.lock
