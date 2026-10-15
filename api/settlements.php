@@ -303,7 +303,7 @@ switch (input('action', '')) {
             fail('Enter at least ' . s_money($s, min(100, $open)) . '.', 422, ['fields' => ['amount' => 'At least ' . s_money($s, min(100, $open)) . '.']]);
         }
         $cents = min($tendered, $open);
-        $extra = $tendered - $cents;
+        $overage = $tendered - $cents;
         $keep = in_array(input('extra', 'change'), ['keep', 'credit'], true); // 'credit': older pages
         // Cash handed over by someone else on the bill for the debtor (paid_by): they're recorded as the payer, and the
         // debtor owes them back through Utang unless it was a treat. Change is always given back in that case.
@@ -317,20 +317,20 @@ switch (input('action', '')) {
             $keep = false;
         }
         $payBack = $payerId !== (int) $s['from_user_id'] && in_array(input('pay_back', '1'), ['1', 1, true], true);
-        if ($extra > 0 && $keep && $fromGuest) {
+        if ($overage > 0 && $keep && $fromGuest) {
             fail('A guest has no account to keep change for — give it back as change.', 422);
         }
-        $over = $extra > 0 ? ['tendered' => $tendered] + ($keep ? ['credit' => $extra] : ['change' => $extra]) : [];
+        $over = $overage > 0 ? ['tendered' => $tendered] + ($keep ? ['credit' => $overage] : ['change' => $overage]) : [];
         $pid = add_payment($locked, $payerId, $cents, 'cash', 'awaiting', $over + ['pay_back' => $payBack]);
         $payer = $payerId === (int) $s['from_user_id'] ? $debtorName . ($fromGuest ? ' (guest)' : '') : first_names([$payerId])[$payerId] . " (for $debtorName)";
         log_event($id, $me['id'], 'marked_paid', "$myName received " . part_words($cents, $locked) . " in cash from $payer"
-            . ($extra > 0 ? ' (handed over ' . s_money($s, $tendered) . '; ' . s_money($s, $extra) . ($keep ? ' kept — owed back as utang' : ' given back as change') . ')' : '') . '.');
+            . ($overage > 0 ? ' (handed over ' . s_money($s, $tendered) . '; ' . s_money($s, $overage) . ($keep ? ' kept — owed back as utang' : ' given back as change') . ')' : '') . '.');
         confirm_payment($locked, ['id' => $pid, 'amount' => pesos($cents), 'paid_by' => $payerId, 'pay_back' => (int) $payBack], $me['id']);
-        if ($extra > 0 && $keep) {
-            record_change_utang((int) $s['from_user_id'], $me['id'], $extra, $pid, $s['bill_name'], $me['id'], $s['currency']);
+        if ($overage > 0 && $keep) {
+            record_change_utang((int) $s['from_user_id'], $me['id'], $overage, $pid, $s['bill_name'], $me['id'], $s['currency']);
             $used = apply_credits((int) $s['from_user_id'], $me['id'], $me['id'], $s['currency']);
-            $still = $extra - $used;
-            notify((int) $s['from_user_id'], 'confirmed', "$myName kept " . s_money($s, $extra) . " change from your cash"
+            $still = $overage - $used;
+            notify((int) $s['from_user_id'], 'confirmed', "$myName kept " . s_money($s, $overage) . " change from your cash"
                 . ($used ? ' — ' . s_money($s, $used) . ' already paid your other debts to them' : '')
                 . ($still > 0 ? '. They owe you ' . s_money($s, $still) . ' (in Utang); it pays your next debts to them, or they pay it back.' : '.'), 'utang');
         }
