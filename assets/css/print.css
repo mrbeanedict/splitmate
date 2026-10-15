@@ -1,0 +1,36 @@
+/* Printable reports (e.g. pages/utang.php). The report is hidden on screen and is the only thing printed. */
+.print-report { display: none; }
+
+@media print {
+  /* Zero page margin makes browsers omit their own header/footer (page title and URL); the report pads itself instead. */
+  @page { margin: 0; }
+  html, body { background: #fff !important; }
+  body::before, body::after { display: none !important; }
+  body > *:not(#app) { display: none !important; }
+  #app { display: block !important; width: auto !important; max-width: none !important; height: auto !important; min-height: 0 !important; overflow: visible !important; box-shadow: none !important; border: 0 !important; background: #fff !important; }
+  #app > *:not(.print-report) { display: none !important; }
+
+  .print-report { display: block; padding: 14mm; color: #0f172a; font-size: 12px; line-height: 1.45; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .print-report header { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #0d9488; padding-bottom: 10px; }
+  .print-report header img { height: 84px; width: auto; }
+  .print-report h1 { margin: 0; font-size: 22px; font-weight: 800; color: #0d9488; }
+  .print-report .meta { margin: 2px 0 0; color: #475569; font-size: 11.5px; }
+  .print-report .totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 6px; }
+  .print-report .totals div { border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 10px; }
+  .print-report .totals small { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #64748b; }
+  .print-report .totals b { font-size: 15px; }
+  .print-report h2 { margin: 16px 0 6px; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #0f766e; break-after: avoid; }
+  .print-report table { width: 100%; border-collapse: collapse; }
+  .print-report th { text-align: left; font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; color: #64748b; border-bottom: 1px solid #94a3b8; padding: 4px 6px; }
+  .print-report td { padding: 5px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  .print-report tr { break-inside: avoid; }
+  .print-report tr.has-items td { border-bottom: 0; }
+  .print-report .items-row { break-before: avoid; }
+  .print-report .items-row td { padding: 0 6px 7px 22px; background: #f8fafc; }
+  .print-report .items-title { margin: 3px 0 2px; font-weight: 700; }
+  .print-report .item-line { display: flex; justify-content: space-between; gap: 12px; margin: 0; padding: 1px 0; font-size: 11px; border-bottom: 1px dotted #e2e8f0; }
+  .print-report .item-line b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .print-report .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .print-report .sub { color: #64748b; font-size: 10.5px; }
+  .print-report footer { margin-top: 18px; border-top: 1px solid #cbd5e1; padding-top: 6px; color: #64748b; font-size: 10.5px; text-align: center; }
+}

@@ -186,6 +186,8 @@ $steps = [
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar VARCHAR(120) NULL AFTER avatar_color',
     // Extra cash kept instead of giving change becomes an utang (the receiver owes it back)
     'ALTER TABLE bills ADD COLUMN IF NOT EXISTS change_payment_id INT UNSIGNED NULL AFTER loan_amount',
+    // An utang for paying part of someone's debt remembers that bill, so its receipt items can be shown
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS source_bill_id INT UNSIGNED NULL AFTER change_payment_id',
     // "Forgot password?": a 6-digit code emailed to the user (only its hash is stored)
     'CREATE TABLE IF NOT EXISTS password_resets (
        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT UNSIGNED NOT NULL, code_hash CHAR(64) NOT NULL,
@@ -390,6 +392,16 @@ $steps = [
     'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS lat DECIMAL(9,6) NULL AFTER location',
     'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS lng DECIMAL(9,6) NULL AFTER lat',
     'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS price DECIMAL(10,2) NULL AFTER lng',
+    // Feeling/activity and tagged people
+    'ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS feeling VARCHAR(40) NULL AFTER price',
+    'CREATE TABLE IF NOT EXISTS community_post_tags (
+       post_id    INT UNSIGNED NOT NULL,
+       user_id    INT UNSIGNED NOT NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (post_id, user_id),
+       FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+     ) ENGINE=InnoDB',
     // Replies to community comments (one level; deleting a comment removes its replies)
     'ALTER TABLE community_comments ADD COLUMN IF NOT EXISTS parent_id INT UNSIGNED NULL AFTER user_id',
     'ALTER TABLE community_comments ADD CONSTRAINT community_comments_parent_fk FOREIGN KEY IF NOT EXISTS (parent_id) REFERENCES community_comments(id) ON DELETE CASCADE',
@@ -436,6 +448,20 @@ $steps = [
      ) ENGINE=InnoDB',
     // Moderation: 0 normal, 1 a hidden (abusive) message whose text was never saved, 2 Setlo Buddy's calm notice for it
     'ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS flag TINYINT NOT NULL DEFAULT 0 AFTER content',
+    // Community strikes for offensive posts and comments (includes/community_moderation.php)
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS violation_count TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER status',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS restricted_until DATETIME NULL AFTER violation_count',
+    'CREATE TABLE IF NOT EXISTS community_violations (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT UNSIGNED NOT NULL,
+       kind ENUM(\'post\',\'comment\',\'edit\') NOT NULL, category ENUM(\'profanity\',\'hate\',\'violence\') NOT NULL,
+       strike TINYINT UNSIGNED NOT NULL, restricted_until DATETIME NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, INDEX (user_id, created_at)
+     ) ENGINE=InnoDB',
+    // Guest mode's free receipt scans, counted per browser and per network (api/guest-scan.php)
+    'CREATE TABLE IF NOT EXISTS guest_scans (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, cookie_id CHAR(32) NOT NULL, ip_hash CHAR(64) NOT NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX (cookie_id, created_at), INDEX (ip_hash, created_at)
+     ) ENGINE=InnoDB',
 ];
 $hadTour = (bool) db()->query("SHOW COLUMNS FROM users LIKE 'onboarded_at'")->fetch();
 foreach ($steps as $sql) {

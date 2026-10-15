@@ -92,7 +92,7 @@ switch ($action) {
         $ip = substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
         login_throttle($email, $ip);
 
-        $u = q('SELECT id, password_hash, role, status FROM users WHERE email = ? OR username = ?', [$email, $email])->fetch();
+        $u = q('SELECT id, password_hash, role, status, violation_count, restricted_until, (restricted_until IS NOT NULL AND restricted_until > NOW()) AS restricted FROM users WHERE email = ? OR username = ?', [$email, $email])->fetch();
         if (!$u || $password === '' || !password_verify($password, $u['password_hash'])) {
             q('INSERT INTO login_attempts (email, ip) VALUES (?, ?)', [$email, $ip]);
             $left = LOGIN_MAX_FAILS - (int) q(
@@ -106,6 +106,10 @@ switch ($action) {
             fail('Incorrect email/username or password.' . $warn, 422);
         }
         q('DELETE FROM login_attempts WHERE email = ? AND ip = ?', [$email, $ip]);
+        require_once __DIR__ . '/../includes/community_moderation.php';
+        if ($msg = community_restriction_message($u)) { // strike 1 / 2 (restricted for a while) or strike 3 (disabled)
+            fail($msg, 403);
+        }
         if ($u['status'] !== 'active') {
             fail('This account is suspended. Contact the app manager.', 403);
         }
@@ -185,11 +189,16 @@ switch ($action) {
         $sub = (string) $claims['sub'];
         $email = strtolower((string) $claims['email']);
 
-        $u = q('SELECT id, role, status, google_sub FROM users WHERE google_sub = ?', [$sub])->fetch()
-            ?: q('SELECT id, role, status, google_sub FROM users WHERE email = ?', [$email])->fetch();
+        $cols = 'id, role, status, google_sub, violation_count, restricted_until, (restricted_until IS NOT NULL AND restricted_until > NOW()) AS restricted';
+        $u = q("SELECT $cols FROM users WHERE google_sub = ?", [$sub])->fetch()
+            ?: q("SELECT $cols FROM users WHERE email = ?", [$email])->fetch();
         if ($u) {
             if ($u['role'] !== 'user') {
                 fail('This account can’t sign in with Google. Use the email and password instead.', 403);
+            }
+            require_once __DIR__ . '/../includes/community_moderation.php';
+            if ($msg = community_restriction_message($u)) {
+                fail($msg, 403);
             }
             if ($u['status'] !== 'active') {
                 fail('This account is suspended. Contact the app manager.', 403);
@@ -298,8 +307,13 @@ switch ($action) {
         if ($password !== $confirm) {
             fail('Passwords don’t match.', 422, ['fields' => ['password_confirm' => 'Passwords don’t match.']]);
         }
-        $u = q("SELECT id, email FROM users WHERE id = ? AND role = 'user' AND status = 'active'", [$grant['user_id']])->fetch();
-        if (!$u) {
+        $u = q("SELECT id, email, status, violation_count, restricted_until, (restricted_until IS NOT NULL AND restricted_until > NOW()) AS restricted FROM users WHERE id = ? AND role = 'user'", [$grant['user_id']])->fetch();
+        require_once __DIR__ . '/../includes/community_moderation.php';
+        if ($u && ($msg = community_restriction_message($u))) { // a community restriction can't be skipped by resetting the password
+            unset($_SESSION['pw_reset']);
+            fail($msg, 403);
+        }
+        if (!$u || $u['status'] !== 'active') {
             unset($_SESSION['pw_reset']);
             fail('This account can’t be reset. Contact the app manager.', 403);
         }

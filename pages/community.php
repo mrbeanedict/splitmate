@@ -2,6 +2,7 @@
 require __DIR__ . '/../includes/bootstrap.php';
 $user = require_login();
 require_once __DIR__ . '/../includes/domain.php'; // public_user()
+require_once __DIR__ . '/../includes/community_feelings.php'; // the Feeling/activity choices
 $title = 'Community';
 $nav = 'community';
 $back = 'dashboard.php';
@@ -49,6 +50,7 @@ require __DIR__ . '/../partials/head.php';
         <div class="cm-compose-bar">
           <button type="button" class="cm-chip" @click="takePhotos" :disabled="posting || compose.files.length >= MAX_PHOTOS"><span class="cm-ic" v-html="ic('camera', 16)"></span>Camera</button>
           <button type="button" class="cm-chip" @click="choosePhotos" :disabled="posting || compose.files.length >= MAX_PHOTOS"><span class="cm-ic" v-html="ic('image', 16)"></span>Photos</button>
+<?php $cmPart = 'buttons'; $cmT = 'compose'; $cmK = 'compose'; require __DIR__ . '/../partials/cm-pickers.php'; ?>
           <span v-if="compose.files.length" class="cm-meta">{{ compose.files.length }} {{ compose.files.length === 1 ? 'photo' : 'photos' }}</span>
           <select class="cm-select" v-model="compose.audience" aria-label="Who can see this post">
             <option value="public">Public</option>
@@ -56,6 +58,7 @@ require __DIR__ . '/../partials/head.php';
           </select>
           <button class="cm-post-btn" :disabled="posting || (!compose.body.trim() && !compose.files.length)">{{ posting ? (progress || 'Posting…') : 'Post' }}</button>
         </div>
+<?php $cmPart = 'panels'; require __DIR__ . '/../partials/cm-pickers.php'; ?>
       </form>
 
       <div class="cm-tabs" role="tablist">
@@ -78,7 +81,8 @@ require __DIR__ . '/../partials/head.php';
         <div class="cm-head">
           <avatar :user="p.author" :size="40"></avatar>
           <div class="cm-who">
-            <div class="cm-name">{{ p.author.name }}<span v-if="p.author.badge" :title="p.author.badge.title"> {{ p.author.badge.emoji }}</span><span v-if="p.shared" class="font-medium text-slate-400"> shared a post</span></div>
+            <div class="cm-name">{{ p.author.name }}<span v-if="p.author.badge" :title="p.author.badge.title"> {{ p.author.badge.emoji }}</span><span v-if="p.shared" class="font-medium text-slate-400"> shared a post</span><span v-else-if="p.feeling || p.tags.length" class="cm-with"><template v-if="p.feeling"> is {{ p.feeling.emoji }} {{ p.feeling.text }}</template><template v-if="p.tags.length">{{ p.feeling ? ' with ' : ' is with ' }}<b>{{ p.tags[0].name }}</b><template v-if="p.tags.length === 2"> and <b>{{ p.tags[1].name }}</b></template><template v-else-if="p.tags.length > 2"> and <button type="button" class="cm-others" @click.stop="othersFor = othersFor === p.id ? null : p.id" :aria-expanded="othersFor === p.id ? 'true' : 'false'">{{ p.tags.length - 1 }} others</button></template></template></span></div>
+            <div v-if="othersFor === p.id && p.tags.length > 2" class="cm-others-list" @click.stop><span v-for="u in p.tags" :key="u.id" class="cm-pick-chip"><avatar :user="u" :size="18"></avatar>{{ u.name }}</span></div>
             <div class="cm-meta">{{ timeAgo(p.created_at) }}<span v-if="p.edited"> · Edited</span> · <span :title="p.audience === 'public' ? 'Public' : 'Only me'"><span class="cm-ic" v-html="ic(p.audience === 'public' ? 'globe' : 'lock', 13)"></span></span></div>
           </div>
           <div class="cm-menu-wrap" @click.stop>
@@ -110,6 +114,12 @@ require __DIR__ . '/../partials/head.php';
             </div>
             <input class="cm-input cm-price" v-model="editing.price" type="number" min="0" max="99999999.99" step="0.01" inputmode="decimal" placeholder="₱ Price (optional)" aria-label="Price" />
           </div>
+          <template v-if="!p.shared">
+            <div class="cm-compose-bar">
+<?php $cmPart = 'buttons'; $cmT = 'editing'; $cmK = 'edit'; require __DIR__ . '/../partials/cm-pickers.php'; ?>
+            </div>
+<?php $cmPart = 'panels'; require __DIR__ . '/../partials/cm-pickers.php'; ?>
+          </template>
           <div class="row">
             <button type="button" class="cm-chip" @click="editing = null">Cancel</button>
             <button type="button" class="cm-post-btn" style="margin-left:0" :disabled="busy" @click="saveEdit(p)">Save</button>
@@ -126,13 +136,14 @@ require __DIR__ . '/../partials/head.php';
           <dl v-if="open[p.id]" class="cm-details">
             <div v-if="p.location"><dt>Location</dt><dd>{{ p.location }}</dd></div>
             <div v-if="p.price !== null"><dt>Price</dt><dd>{{ peso(p.price) }}</dd></div>
+            <div v-if="p.tags.length"><dt>With</dt><dd>{{ p.tags.map((u) => u.name).join(', ') }}</dd></div>
             <div><dt>Posted by</dt><dd>{{ p.author.name }}</dd></div>
             <div><dt>Posted</dt><dd>{{ fmtDateTime(p.created_at) }}</dd></div>
             <div><dt>Audience</dt><dd>{{ p.audience === 'public' ? 'Public' : 'Only me' }}</dd></div>
           </dl>
           <div v-if="open[p.id] && p.location" class="cm-mapbox">
-            <iframe v-if="p.lat !== null" class="cm-map" :src="mapSrc(p)" :title="'Map of ' + p.location" loading="lazy" referrerpolicy="no-referrer"></iframe>
-            <a class="cm-more" :href="mapLink(p)" target="_blank" rel="noopener noreferrer"><span class="cm-ic" v-html="ic(p.lat !== null ? 'map' : 'search', 14)"></span>{{ p.lat !== null ? 'Open in Maps' : 'Search in Maps' }}</a>
+            <iframe v-if="hasMap(p)" class="cm-map" :src="mapSrc(p)" :title="'Map of ' + p.location" loading="lazy" referrerpolicy="no-referrer"></iframe>
+            <a class="cm-more" :href="mapLink(p)" target="_blank" rel="noopener noreferrer"><span class="cm-ic" v-html="ic(p.lat !== null ? 'map' : 'search', 14)"></span>{{ p.lat !== null ? 'Open in Google Maps' : 'Search in Google Maps' }}</a>
           </div>
         </template>
 
@@ -279,6 +290,11 @@ const defaultLang = () => {
   return LANGS.some((l) => l.code === base) ? base : 'en';
 };
 
+// Feeling/activity choices (includes/community_feelings.php): keys look like "feeling:happy" / "activity:eating"
+const FEELINGS = <?= json_encode(COMMUNITY_FEELINGS) ?>;
+const ACTIVITIES = <?= json_encode(COMMUNITY_ACTIVITIES) ?>;
+const MAX_TAGS = 20; // people per post (the server allows the same)
+
 // Photos per post (the server allows the same), per upload request, and the size limits (see api/community.php)
 const MAX_PHOTOS = 100;
 const MAX_PHOTO_BYTES = 20 * 1024 * 1024;
@@ -288,16 +304,18 @@ const BATCH_BYTES = 30 * 1024 * 1024;
 Setlo.mount({
   data: () => ({
     me: <?= json_encode(public_user($user + ['avatar' => $user['avatar'] ?? null])) ?>,
+    mapsKey: <?= json_encode((string) config('google.maps_embed_key')) ?>, // public by design; restrict it by HTTP referrer in Google Cloud
     tab: 'feed', tabs: [{ id: 'feed', label: 'Feed' }, { id: 'saved', label: 'Saved' }, { id: 'mine', label: 'My posts' }],
     posts: [], loading: true, loadingMore: false, hasMore: false, newCount: 0, missing: false, focusId: 0,
-    compose: { body: '', location: '', lat: null, lng: null, price: '', audience: 'public', files: [] }, posting: false, busy: false, open: {},
+    compose: { body: '', location: '', lat: null, lng: null, price: '', feeling: null, tags: [], audience: 'public', files: [] }, posting: false, busy: false, open: {},
+    panel: { key: '', which: '' }, people: { q: '', items: [], loading: false }, peopleTimer: null, peopleSeq: 0, feelTab: 'feeling', othersFor: null, MAX_TAGS,
     suggest: { key: '', items: [], idx: -1 }, suggestTimer: null, suggestSeq: 0, progress: '', MAX_PHOTOS,
     menuFor: null, pickerFor: null, editing: null, editingComment: null, sharing: null,
     cm: {}, tr: {}, replyBox: null, lang: defaultLang(), langs: LANGS, reactionMap: REACTIONS,
     poller: null, pickerTimer: null, holdTimer: null, held: false,
   }),
   async mounted() {
-    document.addEventListener('click', () => { this.menuFor = null; this.pickerFor = null; });
+    document.addEventListener('click', () => { this.menuFor = null; this.pickerFor = null; this.panel.which = ''; this.othersFor = null; });
     const wanted = Number(new URLSearchParams(location.search).get('post')) || 0;
     await this.reload(wanted);
     this.poller = setInterval(this.checkNew, 45000);
@@ -374,15 +392,75 @@ Setlo.mount({
       else if (e.key === 'Enter' && s.idx >= 0) { e.preventDefault(); this.pickPlace(key, s.items[s.idx]); }
       else if (e.key === 'Escape') { this.closeSuggest(); }
     },
-    mapSrc(p) {
-      const d = 0.004;
-      const bbox = [p.lng - d, p.lat - d, p.lng + d, p.lat + d].join(',');
-      return 'https://www.openstreetmap.org/export/embed.html?bbox=' + bbox + '&layer=mapnik&marker=' + p.lat + ',' + p.lng;
+    /* ---- tag people, feeling/activity ---- */
+    pickTarget(key) { return key === 'edit' ? this.editing : this.compose; },
+    /** {emoji, text} for a stored key like "feeling:happy" / "activity:eating". */
+    feelingOf(key) {
+      const [kind, name] = String(key).split(':');
+      const f = (kind === 'activity' ? ACTIVITIES : FEELINGS)[name] || { emoji: '', text: name };
+      return { emoji: f.emoji, text: f.text };
     },
+    feelList() {
+      const src = this.feelTab === 'activity' ? ACTIVITIES : FEELINGS, kind = this.feelTab;
+      return Object.keys(src).map((n) => ({ key: kind + ':' + n, emoji: src[n].emoji, label: src[n].text.replace(/^feeling /, '') }));
+    },
+    togglePanel(key, which) {
+      this.closeSuggest();
+      const same = this.panel.key === key && this.panel.which === which;
+      this.panel = { key, which: same ? '' : which };
+      if (!same && which === 'people') {
+        this.people = { q: '', items: [], loading: false };
+        this.$nextTick(() => { const el = this.$refs.peopleInput; const box = Array.isArray(el) ? el.find((x) => x && x.offsetParent) : el; if (box) box.focus(); });
+      }
+    },
+    searchPeople() {
+      clearTimeout(this.peopleTimer);
+      const q = this.people.q.trim(), seq = ++this.peopleSeq;
+      if (q.length < 2) { this.people.items = []; this.people.loading = false; return; }
+      this.people.loading = true;
+      this.peopleTimer = setTimeout(async () => {
+        try {
+          const r = await api.get('users.php', { q });
+          if (seq !== this.peopleSeq) return; // a newer search replaced this one
+          const chosen = new Set(this.pickTarget(this.panel.key).tags.map((u) => u.id));
+          this.people.items = r.users.filter((u) => !chosen.has(u.id));
+        } catch (e) { if (seq === this.peopleSeq) this.people.items = []; }
+        if (seq === this.peopleSeq) this.people.loading = false;
+      }, 300);
+    },
+    addTag(key, u) {
+      const t = this.pickTarget(key);
+      if (t.tags.length >= MAX_TAGS) { Setlo.toast('You can tag up to ' + MAX_TAGS + ' people.', 'warn'); return; }
+      if (!t.tags.some((x) => x.id === u.id)) t.tags.push(u);
+      this.people.items = this.people.items.filter((x) => x.id !== u.id);
+    },
+    removeTag(key, id) { const t = this.pickTarget(key); t.tags = t.tags.filter((u) => u.id !== id); },
+    pickFeeling(key, fk) { this.pickTarget(key).feeling = fk; this.panel.which = ''; },
+
+    /** "Kiamo Ridge View Cafe" from "Kiamo Ridge View Cafe, Mount Kiamo Trail, …": what Google should recognise as the place. */
+    placeName(p) { return String(p.location).split(',')[0].trim() || p.location; },
+    /**
+     * Google Maps on a post. A pinned place is searched by its name and centred on the pin, so Google shows the place
+     * itself (name, photos, directions), not a bare coordinate; a typed place is searched as written (kept in the
+     * Philippines). With a Maps Embed API key (config google.maps_embed_key) the official embed is used, otherwise
+     * Google's keyless one. The CSP allows www.google.com frames (includes/bootstrap.php).
+     */
+    mapSrc(p) {
+      const pinned = p.lat !== null;
+      if (this.mapsKey) {
+        return 'https://www.google.com/maps/embed/v1/' + (pinned ? 'place' : 'search') + '?key=' + encodeURIComponent(this.mapsKey)
+          + '&q=' + encodeURIComponent(pinned ? this.placeName(p) : p.location)
+          + (pinned ? '&center=' + p.lat + ',' + p.lng + '&zoom=17' : '&zoom=17&region=PH');
+      }
+      if (pinned) return 'https://www.google.com/maps?q=' + encodeURIComponent(this.placeName(p)) + '&ll=' + p.lat + ',' + p.lng + '&z=17&output=embed&hl=en';
+      const q = /philippines/i.test(p.location) ? p.location : p.location + ', Philippines';
+      return 'https://www.google.com/maps?q=' + encodeURIComponent(q) + '&z=16&output=embed&hl=en';
+    },
+    hasMap(p) { return !!p.location; },
+    /** Opens Google Maps (the app on phones) on the named place around the pin, or on a search for the typed place. */
     mapLink(p) {
-      return p.lat !== null
-        ? 'https://www.openstreetmap.org/?mlat=' + p.lat + '&mlon=' + p.lng + '#map=17/' + p.lat + '/' + p.lng
-        : 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(p.location);
+      if (p.lat !== null) return 'https://www.google.com/maps/search/' + encodeURIComponent(this.placeName(p)) + '/@' + p.lat + ',' + p.lng + ',17z';
+      return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.location);
     },
 
     /* ---- composing ---- */
@@ -432,6 +510,8 @@ Setlo.mount({
       fd.append('lat', this.compose.lat === null ? '' : String(this.compose.lat));
       fd.append('lng', this.compose.lng === null ? '' : String(this.compose.lng));
       fd.append('price', this.compose.price === null ? '' : String(this.compose.price).trim());
+      fd.append('feeling', this.compose.feeling || '');
+      this.compose.tags.forEach((u) => fd.append('tags[]', u.id));
       fd.append('audience', this.compose.audience);
       const batches = this.photoBatches(this.compose.files);
       (batches[0] || []).forEach((f, i) => fd.append('photos[]', f.file, f.file.name || 'photo-' + (i + 1) + '.jpg'));
@@ -458,7 +538,8 @@ Setlo.mount({
       this.progress = '';
       this.posting = false;
       this.compose.files.forEach((f) => URL.revokeObjectURL(f.url));
-      this.compose = { body: '', location: '', lat: null, lng: null, price: '', audience: this.compose.audience, files: [] };
+      this.compose = { body: '', location: '', lat: null, lng: null, price: '', feeling: null, tags: [], audience: this.compose.audience, files: [] };
+      this.panel = { key: '', which: '' };
       this.closeSuggest();
       if (this.tab === 'saved') this.tab = 'feed';
       if (this.tab === 'feed' || this.tab === 'mine') this.posts.unshift(r.post); else await this.reload();
@@ -483,13 +564,17 @@ Setlo.mount({
     },
 
     /* ---- post menu actions ---- */
-    startEdit(p) { this.menuFor = null; this.closeSuggest(); this.editing = { id: p.id, body: p.body, location: p.location || '', lat: p.lat, lng: p.lng, price: p.price === null ? '' : p.price }; },
+    startEdit(p) {
+      this.menuFor = null; this.closeSuggest(); this.panel = { key: '', which: '' };
+      this.editing = { id: p.id, body: p.body, location: p.location || '', lat: p.lat, lng: p.lng, price: p.price === null ? '' : p.price, feeling: p.feeling ? p.feeling.key : null, tags: [...p.tags] };
+    },
     async saveEdit(p) {
       const e = this.editing;
       const r = await Setlo.run(this, () => api.post('community.php', {
         action: 'edit', id: p.id, body: e.body, location: (e.location || '').trim(),
         lat: e.lat === null ? '' : String(e.lat), lng: e.lng === null ? '' : String(e.lng),
         price: e.price === null ? '' : String(e.price).trim(),
+        feeling: e.feeling || '', tags: e.tags.map((u) => u.id),
       }));
       if (r) { this.replace(r.post); this.editing = null; Setlo.toast('Post updated', 'ok'); }
     },

@@ -154,3 +154,35 @@ html.dark .cm {
 .cm-loc-ic { position: absolute; left: 12px; top: 11px; display: inline-flex; color: #e11d48; pointer-events: none; }
 .cm-loc .cm-input { padding-left: 34px; }
 .cm-act.on .cm-ic .ic { fill: currentColor; fill-opacity: .18; }
+
+/* Tag people and feeling/activity (partials/cm-pickers.php) */
+.cm-chip.on { border-color: rgb(var(--brand-400)); background: var(--cm-tint); color: var(--cm-brand); }
+.cm-chosen { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.cm-pick-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 3px 4px 3px 8px; border-radius: 999px; background: var(--cm-tint); color: var(--cm-brand); font-size: 12.5px; font-weight: 700; overflow-wrap: anywhere; }
+.cm-pick-chip .av { flex: none; }
+.cm-pick-chip button { border: 0; background: none; color: inherit; width: 20px; height: 20px; border-radius: 50%; font-size: 15px; line-height: 1; cursor: pointer; }
+.cm-pick-chip button:hover { background: rgb(var(--brand-400) / .25); }
+.cm-others-list .cm-pick-chip { padding-right: 9px; }
+.cm-panel { margin-top: 10px; padding: 12px; border: 1px solid var(--cm-line); border-radius: 16px; background: var(--cm-surface); box-shadow: var(--cm-shadow); }
+.cm-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 14px; color: var(--cm-text); }
+.cm-x { border: 0; background: var(--cm-soft); color: var(--cm-muted); width: 28px; height: 28px; border-radius: 50%; font-size: 18px; line-height: 1; cursor: pointer; }
+.cm-panel .cm-input { width: 100%; flex: none; }
+.cm-people { list-style: none; margin: 8px 0 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.cm-person { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; border: 0; border-radius: 10px; background: none; color: var(--cm-text); text-align: left; cursor: pointer; }
+.cm-person:hover, .cm-person:focus-visible { background: var(--cm-tint); outline: none; }
+.cm-person-name { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
+.cm-person-name small { color: var(--cm-muted); font-weight: 600; }
+.cm-panel-empty { margin: 8px 2px 0; font-size: 12.5px; color: var(--cm-muted); }
+.cm-tabs-mini { display: flex; gap: 6px; margin-bottom: 8px; }
+.cm-tabs-mini button { flex: 1; border: 0; padding: 7px 8px; border-radius: 10px; background: var(--cm-soft); color: var(--cm-muted); font-weight: 700; font-size: 13px; cursor: pointer; }
+.cm-tabs-mini button.on { background: var(--cm-tint); color: var(--cm-brand); }
+.cm-feel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; max-height: 260px; overflow-y: auto; }
+.cm-feel-btn { display: flex; align-items: center; gap: 8px; padding: 8px 9px; border: 1px solid var(--cm-line); border-radius: 12px; background: var(--cm-surface); color: var(--cm-text); font-size: 13px; font-weight: 600; text-align: left; cursor: pointer; }
+.cm-feel-btn:hover { border-color: rgb(var(--brand-400)); }
+.cm-feel-btn.on { background: var(--cm-tint); border-color: rgb(var(--brand-400)); color: var(--cm-brand); }
+.cm-feel-emoji { font-size: 20px; line-height: 1; }
+.cm-with { font-weight: 500; color: var(--cm-muted); }
+.cm-with b { font-weight: 800; color: var(--cm-text); }
+.cm-others { border: 0; background: none; padding: 0; font: inherit; font-weight: 800; color: var(--cm-text); cursor: pointer; }
+.cm-others:hover { text-decoration: underline; }
+.cm-others-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0 50px; }

@@ -23,6 +23,9 @@ if ($action === 'split_evenly') {
             $map[$it['id']] = $memberIds;
         }
     }
+} elseif ($action === 'split_all') {
+    // Everything shared by all members, replacing what was assigned before.
+    $map = array_fill_keys($itemIds, $memberIds);
 } else {
     $map = input('assignments', []);
     if (!is_array($map)) {

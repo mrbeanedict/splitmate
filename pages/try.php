@@ -46,7 +46,23 @@ $mascot = fn (string $pose) => h(url('assets/mascot/' . $pose . '.png'));
 
     <!-- 2. Items (looks like a receipt) -->
     <section class="g-card t-receipt g-pop">
-      <h2><span class="t-num">2</span> What did everyone order?</h2>
+      <div class="t-head">
+        <h2><span class="t-num">2</span> What did everyone order?</h2>
+        <button v-if="s.items.length" type="button" class="t-split-all" @click="splitAll">Split everything equally</button>
+      </div>
+      <!-- Free receipt scan: a taste of the real scanner (api/guest-scan.php, 5 per guest) -->
+      <div class="t-scan">
+        <div class="t-scan-btns">
+          <button type="button" class="t-scan-btn" :disabled="scan.busy || scan.left === 0" @click="takePhoto">
+            <span v-html="icon('scan', 18)"></span>{{ scan.busy ? 'Reading your receipt…' : 'Take a photo' }}
+          </button>
+          <button type="button" class="t-scan-btn alt" :disabled="scan.busy || scan.left === 0" @click="$refs.scanFile.click()">Upload a photo</button>
+        </div>
+        <input ref="scanFile" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden @change="pickScan" />
+        <p class="t-scan-left" :class="{ out: scan.left === 0 }">{{ scan.left === null ? 'Try the receipt scanner free' : scan.left === 0 ? 'No free scans left' : scan.left + ' of ' + scan.limit + ' free scans left' }}</p>
+      </div>
+      <p v-if="scan.message" class="t-scan-msg" :class="scan.check === 'mismatch' ? 'warn' : scan.check === 'match' ? 'ok' : ''" role="status">{{ scan.message }}</p>
+      <div v-if="scan.total !== null" class="t-scan-total"><span>Total on the receipt</span><b>{{ peso(scan.total) }}</b></div>
       <p v-if="s.sample" class="t-paper-head">KUYA BONG’S GRILL<small>Table 5 · sample receipt</small></p>
       <p v-if="!s.items.length" class="g-small g-muted" style="margin:0 0 10px">Add the dishes below, or load the sample receipt up top. Then tap the names under each dish to say who had it.</p>
       <div v-for="(it, i) in s.items" :key="i" class="t-item">
@@ -63,7 +79,8 @@ $mascot = fn (string $pose) => h(url('assets/mascot/' . $pose . '.png'));
           </button>
           <button type="button" class="t-pill all" :class="{ on: it.who.length === s.people.length }" @click="everyone(it)">Everyone</button>
         </div>
-        <p class="t-lineamt">{{ it.who.length ? 'Split ' + it.who.length + ' way' + (it.who.length > 1 ? 's' : '') : 'Nobody yet' }} · {{ money(lineCents(it)) }}</p>
+        <p v-if="it.printed" class="t-printed">Receipt says “{{ it.printed }}”</p>
+        <p class="t-lineamt">{{ it.qty }} × {{ money(cents(it.price)) }} = <b>{{ money(lineCents(it)) }}</b> · {{ it.who.length ? 'split ' + it.who.length + ' way' + (it.who.length > 1 ? 's' : '') : 'nobody yet' }}</p>
       </div>
       <form class="t-add t-add-item" @submit.prevent="addItem">
         <input class="t-in t-qty" type="number" min="1" max="99" step="1" inputmode="numeric" v-model.number="newItem.qty" placeholder="Qty" aria-label="New item quantity" />
@@ -138,8 +155,9 @@ const SHARE_DELAY = 9000;
 Setlo.mount({
   data: () => ({
     s: SD.load() || SD.blank(), newPerson: '', newItem: { name: '', qty: 1, price: '' }, nudged: false,
+    scan: { busy: false, left: null, limit: 5, message: '', check: '', total: null },
     locks: [
-      { i: 'save', t: 'Save this bill', ask: 'save this bill' }, { i: 'scan', t: 'Scan a receipt', ask: 'scan a receipt' }, { i: 'users', t: 'Invite friends', ask: 'invite your friends' },
+      { i: 'save', t: 'Save this bill', ask: 'save this bill' }, { i: 'scan', t: 'Unlimited scans', ask: 'scan as many receipts as you like' }, { i: 'users', t: 'Invite friends', ask: 'invite your friends' },
       { i: 'phone', t: 'Pay with GCash or Maya', ask: 'pay with GCash or Maya' }, { i: 'clock', t: 'See your history', ask: 'see your bill history' }, { i: 'trophy', t: 'Earn badges, play games', ask: 'earn badges and play Fun Mode' },
     ],
   }),
@@ -152,8 +170,62 @@ Setlo.mount({
     s: { deep: true, handler(v) { SD.save(v); } },
     engaged(v) { if (v) this.nudgeLater(); },
   },
-  mounted() { if (this.engaged) this.nudgeLater(); },
+  mounted() {
+    if (this.engaged) this.nudgeLater();
+    api.get('guest-scan.php').then((r) => { this.scan.left = r.left; this.scan.limit = r.limit; }).catch(() => {});
+  },
   methods: {
+    cents: SD.cents,
+    /** Scan up to 3 photos of one receipt, then fill the split with what was read (items, prices, extras). */
+    pickScan(e) {
+      const files = [...e.target.files];
+      e.target.value = '';
+      return this.scanPhotos(files);
+    },
+    /** Photo mode: the live camera (or the phone's camera app), same scan and same free-scan count as an upload. */
+    async takePhoto() {
+      if (this.scan.busy) return;
+      this.scanPhotos(await Setlo.captureCamera({ max: 3, title: 'Photo of your receipt' }));
+    },
+    async scanPhotos(all) {
+      const files = all.slice(0, 3);
+      if (!files.length || this.scan.busy) return;
+      if (this.s.items.length && !(await Setlo.confirm({ title: 'Replace your items?', text: 'The scanned receipt will take the place of the items you have now.', confirmText: 'Replace' }))) return;
+      this.scan.busy = true;
+      this.scan.message = '';
+      this.scan.total = null;
+      try {
+        const fd = new FormData();
+        for (const f of files) {
+          if (!/^image\/(jpeg|png|webp)$/.test(f.type)) throw new Error(f.name + ' isn’t a JPG, PNG or WebP photo.');
+          const small = await Setlo.compressImage(f);
+          fd.append('images[]', small, f.name || 'receipt.jpg');
+        }
+        const r = await api.post('guest-scan.php', fd);
+        this.scan.left = r.left;
+        this.scan.message = r.message;
+        this.scan.check = r.total_check || '';
+        if (!r.found) return;
+        this.fillFromScan(r);
+        this.scan.total = r.total;
+        if (r.currency && r.currency !== 'PHP') this.scan.message += ' The receipt looks like ' + r.currency + '; guest mode shows amounts in pesos.';
+      } catch (err) {
+        this.scan.check = 'warn';
+        this.scan.message = err.message;
+        if (err.data && typeof err.data.left === 'number') this.scan.left = err.data.left;
+        if (err.data && err.data.code === 'limit') this.locked('scan as many receipts as you like');
+      } finally {
+        this.scan.busy = false;
+      }
+    },
+    fillFromScan(r) {
+      this.s.sample = false;
+      this.s.items = r.items.map((it) => ({ name: it.name, printed: it.printed_name !== it.name ? it.printed_name : '', qty: it.qty, price: it.price, who: [] }));
+      this.s.tax = r.tax || 0;
+      this.s.service = r.service || 0;
+      this.s.discount = r.discount || 0;
+      this.s.taxIncluded = !!r.tax_included;
+    },
     icon: SetloIcons.svg,
     initials: SD.initials,
     color(id) { return SD.COLORS[(id - 1) % SD.COLORS.length]; },
@@ -180,6 +252,12 @@ Setlo.mount({
     },
     removeItem(i) { this.s.items.splice(i, 1); },
     toggle(it, id) { it.who = it.who.includes(id) ? it.who.filter((x) => x !== id) : [...it.who, id]; },
+    /** Every dish shared by everyone. */
+    async splitAll() {
+      if (this.s.items.some((it) => it.who.length) && !(await Setlo.confirm({ title: 'Split everything equally?', text: 'Every item will be shared by everyone, replacing who you picked for each one.', confirmText: 'Split equally' }))) return;
+      const all = this.s.people.map((p) => p.id);
+      this.s.items.forEach((it) => { it.who = [...all]; });
+    },
     everyone(it) { it.who = it.who.length === this.s.people.length ? [] : this.s.people.map((p) => p.id); },
     useSample() { this.s = SD.sample(); Setlo.toast('Sample receipt loaded. Try changing who had what.', 'ok'); },
     reset() { this.s = SD.blank(); this.nudged = false; },

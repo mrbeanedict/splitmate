@@ -303,7 +303,7 @@ $guides = [
           <img class="lp-guest-mascot" src="<?= $m('think') ?>" alt="" loading="lazy" />
           <div class="lp-guest-copy">
             <p class="lp-eyebrow">No account? No problem</p>
-            <h2 class="lp-h2">Not ready to sign up? Sign in as guest</h2>
+            <h2 class="lp-h2">Not ready to sign up? Try as guest</h2>
             <ul class="lp-gbul">
               <li><span v-html="icon('calc', 18)"></span><div><b>Try the calculator</b> with a sample receipt. Nothing is saved, so closing the tab clears it.</div></li>
               <li><span v-html="icon('link', 18)"></span><div><b>Added to a friend’s bill?</b> Open your private link and see your exact share, with no account.</div></li>
@@ -311,7 +311,7 @@ $guides = [
             </ul>
             <div class="lp-cta">
 <?php if (!$user): ?>
-              <a class="lp-btn lp-btn-primary" href="<?= $guestHref ?>"><span v-html="icon('user', 18)"></span> Sign in as guest</a>
+              <a class="lp-btn lp-btn-primary" href="<?= $guestHref ?>"><span v-html="icon('user', 18)"></span> Try as guest</a>
               <a class="lp-btn lp-btn-ghost" href="<?= $registerHref ?>">Create an account</a>
 <?php else: ?>
               <a class="lp-btn lp-btn-primary" href="<?= $guestHref ?>"><span v-html="icon('calc', 18)"></span> Open the calculator</a>
@@ -433,7 +433,7 @@ $guides = [
   <footer class="lp-foot">
     <div class="lp-wrap">
       <span>© <?= date('Y') ?> Setlo. Split. Track. Stay Together.</span>
-      <nav aria-label="Footer"><a href="#features">Features</a><a href="#guest">Guest mode</a><a href="#guidelines">Guidelines</a><a href="#reviews">Reviews</a><a href="<?= h(url('pages/admin-login')) ?>">Admin Panel</a></nav>
+      <nav aria-label="Footer"><a href="#features">Features</a><a href="#guest">Guest mode</a><a href="#guidelines">Guidelines</a><a href="#reviews">Reviews</a></nav>
     </div>
   </footer>
 

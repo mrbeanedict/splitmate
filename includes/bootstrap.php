@@ -29,7 +29,7 @@ if (PHP_SAPI !== 'cli' && !headers_sent()) {
         . "font-src 'self' data: https://fonts.gstatic.com; "
         . "img-src 'self' data: blob: https://*.googleusercontent.com; "
         . "connect-src 'self' https://accounts.google.com/gsi/ https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; "
-        . "frame-src https://accounts.google.com/gsi/ https://www.openstreetmap.org; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; "
+        . "frame-src https://accounts.google.com/gsi/ https://www.google.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; "
         . "form-action 'self'; worker-src 'self'; manifest-src 'self'");
     if (is_https()) {
         header('Strict-Transport-Security: max-age=15552000');
@@ -196,10 +196,11 @@ function current_user(): ?array
     if ($user === false) {
         $user = null;
         if (!empty($_SESSION['user_id'])) {
-            $row = q('SELECT id, full_name, email, payment_method, currency, avatar_color, avatar, bg_mode, bg_style, bg_image, role, status FROM users WHERE id = ?', [$_SESSION['user_id']])->fetch();
+            $row = q('SELECT id, full_name, email, payment_method, currency, avatar_color, avatar, bg_mode, bg_style, bg_image, role, status, (restricted_until IS NOT NULL AND restricted_until > NOW()) AS restricted FROM users WHERE id = ?', [$_SESSION['user_id']])->fetch();
             // An admin account is only ever signed in under the admin cookie. Under the user cookie it can only be a
             // stale session (e.g. the database was reset and its id now belongs to the admin), so treat it as signed out.
-            if ($row && $row['status'] === 'active' && !($row['role'] === 'admin' && session_area() === 'user')) {
+            // A community restriction (strike 1 or 2) signs the account out until it ends: includes/community_moderation.php
+            if ($row && $row['status'] === 'active' && !$row['restricted'] && !($row['role'] === 'admin' && session_area() === 'user')) {
                 $row['id'] = (int) $row['id'];
                 $user = $row;
                 if ($row['role'] === 'user') {

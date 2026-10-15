@@ -1,0 +1,18 @@
+/* Personal money UI: a darker shade of the user's accent (--pf-50..900, set by assets/js/theme.js).
+   <body class="personal"> (set in partials/head.php for personal expenses and utang) swaps the brand scale for it, so every
+   brand-colored element, the hero and the sidebar follow along. Group-money pages keep the plain accent. */
+body.personal {
+  --brand-50: var(--pf-50); --brand-100: var(--pf-100); --brand-200: var(--pf-200); --brand-300: var(--pf-300); --brand-400: var(--pf-400);
+  --brand-500: var(--pf-500); --brand-600: var(--pf-600); --brand-700: var(--pf-700); --brand-800: var(--pf-800); --brand-900: var(--pf-900);
+  /* these were resolved on <html> against the group accent, so restate them here */
+  --hero-1: rgb(var(--pf-500)); --hero-2: rgb(var(--pf-600)); --hero-3: rgb(var(--pf-700));
+  --tint: color-mix(in srgb, rgb(var(--pf-500)) 12%, rgb(var(--surface)));
+  --tint-2: color-mix(in srgb, rgb(var(--pf-500)) 20%, rgb(var(--surface)));
+  --brand-glow: rgb(var(--pf-600) / .6);
+}
+
+/* Sidebar: the Personal Finance group is always in its own shade (was a fixed violet), the Group Finance group in the accent */
+.nav-group-personal .nav-group-head { color: rgb(var(--pf-600)); }
+html.dark .nav-group-personal .nav-group-head { color: rgb(var(--pf-300)); }
+.nav-group-personal .nav-group-body a.active { color: rgb(var(--pf-700)); background: color-mix(in srgb, rgb(var(--pf-500)) 14%, transparent); }
+html.dark .nav-group-personal .nav-group-body a.active { color: rgb(var(--pf-200)); }

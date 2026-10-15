@@ -91,8 +91,8 @@ function record_change_utang(int $ownerId, int $holderId, int $cents, int $payme
 function record_paid_for_utang(int $payerId, int $debtorId, int $cents, array $s, ?int $actorId, string $currency = 'PHP'): int
 {
     $name = mb_substr('Paid for ' . first_names([$debtorId])[$debtorId] . ': ' . $s['bill_name'], 0, 120);
-    q("INSERT INTO bills (name, kind, loan_amount, creator_id, payer_id, status, settling_at, currency) VALUES (?, 'loan', ?, ?, ?, 'settling', NOW(), ?)",
-        [$name, pesos($cents), $payerId, $payerId, $currency]);
+    q("INSERT INTO bills (name, kind, loan_amount, source_bill_id, creator_id, payer_id, status, settling_at, currency) VALUES (?, 'loan', ?, ?, ?, ?, 'settling', NOW(), ?)",
+        [$name, pesos($cents), $s['bill_id'] ?? null, $payerId, $payerId, $currency]);
     $billId = (int) db()->lastInsertId();
     q('INSERT INTO bill_members (bill_id, user_id) VALUES (?, ?), (?, ?)', [$billId, $payerId, $billId, $debtorId]);
     q('INSERT INTO settlements (bill_id, from_user_id, to_user_id, currency, principal, amount) VALUES (?, ?, ?, ?, ?, ?)', [$billId, $debtorId, $payerId, $currency, pesos($cents), pesos($cents)]);
@@ -398,12 +398,43 @@ function payment_receipt(array $p, array $s): array
     ];
 }
 
+/**
+ * What a debtor's share of a bill is made of, for printing: the receipt items they're part of (split items show their
+ * part), in the receipt's currency. For an utang that came from paying someone's debt, the items of that bill. Null when
+ * there's nothing to show (a plain loan, kept change, or a bill without items).
+ */
+function share_items(int $billId, int $debtorId): ?array
+{
+    $bill = q('SELECT id, kind, split_mode, currency, receipt_currency, source_bill_id FROM bills WHERE id = ?', [$billId])->fetch();
+    if ($bill && $bill['kind'] === 'loan') {
+        $bill = $bill['source_bill_id'] ? q('SELECT id, kind, split_mode, currency, receipt_currency FROM bills WHERE id = ?', [$bill['source_bill_id']])->fetch() : null;
+    }
+    if (!$bill) {
+        return null;
+    }
+    $byItems = ($bill['split_mode'] ?? 'items') === 'items';
+    $lines = [];
+    foreach (bill_items((int) $bill['id']) as $it) {
+        $line = ['name' => $it['name'], 'qty' => $it['qty'], 'line_total' => $it['line_total'], 'details' => $it['details'], 'shared_by' => null, 'portion' => null];
+        if ($byItems) {
+            if (!in_array($debtorId, $it['who'], true)) {
+                continue;
+            }
+            $line['shared_by'] = count($it['who']);
+            $line['portion'] = pesos(split_evenly(cents($it['line_total']), $it['who'])[$debtorId] ?? 0);
+        }
+        $lines[] = $line;
+    }
+    return $lines ? ['currency' => $bill['receipt_currency'] ?: $bill['currency'], 'by_items' => $byItems, 'lines' => $lines] : null;
+}
+
 /** settlement_row() plus its parts and what's open to pay now, for a list of settlement rows. */
 function settlement_rows_with_parts(array $rows): array
 {
     $parts = settlement_parts(array_map(fn ($r) => (int) $r['id'], $rows));
     return array_map(function ($r) use ($parts) {
         $row = settlement_row($r);
+        $row['items'] = share_items($row['bill_id'], $row['from']['id']);
         $row['payments'] = $parts[$row['id']] ?? [];
         $awaiting = array_sum(array_map(fn ($p) => cents($p['amount']), array_filter($row['payments'], fn ($p) => $p['status'] === 'awaiting')));
         $row['open'] = pesos(max(0, cents($row['remaining']) - $awaiting));

@@ -192,3 +192,22 @@ html.dark .t-locked button > span { color: rgb(var(--brand-300)); }
 }
 @media (prefers-reduced-motion: reduce) { .g-hero-mascot { animation: none; } }
 @media (min-width: 640px) { .t-name { flex: 1 1 0; } .t-item-top .t-x { margin-left: 0; } }
+
+/* Free receipt scan (api/guest-scan.php) */
+.t-scan { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; }
+.t-scan-btn { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 999px; padding: 10px 16px; font-weight: 800; font-size: 13.5px; color: #fff; cursor: pointer; background: linear-gradient(to bottom, rgb(var(--brand-500)), rgb(var(--brand-600))); }
+.t-scan-btn:disabled { opacity: .55; cursor: default; }
+.t-scan-left { margin: 0; font-size: 12px; font-weight: 700; color: rgb(var(--brand-700)); }
+.t-scan-left.out { color: rgb(225 29 72); }
+.t-scan-msg { margin: 0 0 10px; padding: 9px 12px; border-radius: 12px; background: rgb(var(--slate-100)); color: rgb(var(--slate-700)); font-size: 12.5px; font-weight: 600; line-height: 1.4; }
+.t-scan-msg.ok { background: rgb(209 250 229); color: rgb(6 95 70); }
+.t-scan-msg.warn { background: rgb(254 243 199); color: rgb(146 64 14); }
+html.dark .t-scan-msg.ok { background: rgb(16 185 129 / .15); color: rgb(110 231 183); }
+html.dark .t-scan-msg.warn { background: rgb(245 158 11 / .15); color: rgb(252 211 77); }
+.t-scan-total { display: flex; justify-content: space-between; margin: 0 0 12px; padding: 8px 12px; border: 1px dashed rgb(var(--slate-300)); border-radius: 12px; font-size: 13px; }
+.t-printed { margin: 4px 0 0; font-size: 11.5px; color: rgb(var(--slate-400)); }
+.t-scan-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.t-scan-btn.alt { background: rgb(var(--brand-50)); color: rgb(var(--brand-700)); box-shadow: inset 0 0 0 1.5px rgb(var(--brand-200)); }
+.t-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.t-head h2 { min-width: 0; }
+.t-split-all { flex-shrink: 0; margin: 0; white-space: nowrap; border: 0; background: none; padding: 0; font-size: 13px; font-weight: 800; color: rgb(var(--brand-700)); cursor: pointer; }
