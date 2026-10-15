@@ -12,7 +12,7 @@ $detectBase = function (): string {
     $root = realpath($_SERVER['DOCUMENT_ROOT'] ?? '') ?: '';
     $app = realpath(__DIR__ . '/..') ?: '';
     if ($root === '' || stripos($app, $root) !== 0) {
-        return '/SplitMate'; // command line (setup/migrate scripts) or an unusual server layout
+        return '/setlo-splitmate'; // command line (setup/migrate scripts) or an unusual server layout
     }
     return rtrim(str_replace('\\', '/', substr($app, strlen($root))), '/');
 };
