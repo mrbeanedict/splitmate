@@ -35,7 +35,7 @@ $acctRows = [
     ['profile', 'c-brand', '<circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/>', 'My Profile', 'Name and photo'],
     ['payment-methods', 'c-amber', '<rect x="3" y="6" width="18" height="13" rx="2.5"/><path stroke-linecap="round" d="M3 10h18M7 15h3"/>', 'Payment Methods', 'GCash, Maya, QR'],
     ['account-settings', 'c-indigo', '<circle cx="12" cy="12" r="3"/><path stroke-linecap="round" d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>', 'Account Settings', 'Password, theme'],
-    ['help', 'c-brand', '<circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M9.5 9.5a2.5 2.5 0 115 0c0 1.5-2.5 2-2.5 3.5M12 17h.01"/>', 'Help &amp; Support', 'FAQs, contact'],
+    
 ];
 foreach ($acctRows as [$href, $color, $paths, $title, $desc]):
     $inner = '<span class="acct-ic ' . $color . '"><svg fill="none" stroke="currentColor" stroke-width="1.9" viewBox="0 0 24 24">' . $paths . '</svg></span>'
@@ -237,7 +237,6 @@ const SEARCH_INDEX = [
   { title: 'My profile', href: 'profile', hint: 'Name, username, achievements and balances', kw: 'account name username email picture avatar photo badges achievements' },
   { title: 'Payment methods', href: 'payment-methods', hint: 'GCash/Maya, bank, Pay-me QR, currency', kw: 'gcash maya bank qr pay-me currency peso preferred' },
   { title: 'Account settings', href: 'account-settings', hint: 'Password and appearance', kw: 'password security theme dark mode light color background appearance' },
-  { title: 'Help & Support', href: 'help', hint: 'FAQs, contact and replay the tour', kw: 'faq contact report issue problem tour guide' },
   { title: 'Terms & Privacy', href: 'conditions_policy', hint: 'Terms and conditions', kw: 'terms conditions privacy policy legal' },
 ];
 Setlo.mount({
