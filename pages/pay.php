@@ -28,7 +28,8 @@ require __DIR__ . '/../partials/head.php';
   <div v-else-if="error" class="flex-1 px-5 py-10 text-center">
     <p class="text-[16px] font-extrabold text-ink">QR not valid</p>
     <p class="mt-1 text-[13px] text-slate-500">{{ error }}</p>
-    <a href="dashboard" class="btn btn-primary mt-5">Go to dashboard</a>
+    <a href="my-settlements?tab=owe" class="btn btn-primary mt-5">Go to what I owe</a>
+    <a href="dashboard" class="btn btn-soft mt-5">Go to dashboard</a>
   </div>
 
   <div v-else class="flex-1 space-y-4 px-5 pb-6 pt-5">
