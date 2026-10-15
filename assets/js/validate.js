@@ -24,7 +24,7 @@
       if (!t) return `${label} is required.`;
       if (t.length < 2) return `${label} is too short.`;
       if (t.length > 100) return `${label} must be 100 characters or fewer.`;
-      return /^[\p{L}][\p{L} .'\-]*$/u.test(t) ? '' : `${label} can only have letters, spaces, periods, apostrophes and hyphens.`;
+      return /^[\p{L}][\p{L}\p{M} .'’\-]*$/u.test(t) ? '' : `${label} can only have letters, spaces, periods, apostrophes and hyphens.`;
     },
     username: (v) => {
       const t = s(v).trim().toLowerCase();
@@ -126,6 +126,39 @@
       filterMoney, filterInt,
     },
   };
+
+
+  /* ---------- Input guard: bad characters never get into the field (typing, pasting, autofill) ----------
+     One capture-phase listener for the whole app. It runs before Vue's v-model reads the value, so the model only
+     ever sees clean text. A field opts into a stricter filter with data-filter="name|ref|money|digits". */
+  const FILTERS = {
+    // letters (any alphabet), combining marks, space . ' -  — a curly apostrophe becomes a straight one; no digits
+    name: (v) => s(v).replace(/[\u2018\u2019\u02bc]/g, "'").replace(/[^\p{L}\p{M} .'\-]/gu, '').replace(/^[^\p{L}]+/u, '').replace(/ {2,}/g, ' '),
+    ref: (v) => s(v).replace(/[^A-Za-z0-9 \-]/g, ''),
+    money: filterMoney,
+    digits: (v) => s(v).replace(/\D/g, ''),
+  };
+  const TEXT_TYPES = /^(text|search|tel|url)$/;
+  function guard(el) {
+    const isArea = typeof HTMLTextAreaElement !== 'undefined' && el instanceof HTMLTextAreaElement;
+    const isInput = typeof HTMLInputElement !== 'undefined' && el instanceof HTMLInputElement;
+    if (!isArea && !(isInput && TEXT_TYPES.test(el.type))) return; // password, email, number, date, checkbox... are left alone
+    const before = el.value;
+    let v = before;
+    const f = el.dataset && el.dataset.filter;
+    if (f && FILTERS[f]) v = FILTERS[f](v);
+    else if (!el.closest('[data-allow-markup], .cm-text, .cm-cform')) v = v.replace(/[<>]/g, ''); // the server refuses < and > in free text
+    // fields without their own maxlength still get a sane cap (search boxes 60, other inputs 255, long text 1000)
+    const cap = el.maxLength > 0 ? el.maxLength : (isArea ? 1000 : (el.type === 'search' || /search/i.test(el.placeholder || '') ? 60 : 255));
+    if (v.length > cap) v = v.slice(0, cap);
+    if (v !== before) {
+      const caret = typeof el.selectionStart === 'number' ? Math.max(0, el.selectionStart - (before.length - v.length)) : null;
+      el.value = v;
+      if (caret !== null) { try { el.setSelectionRange(caret, caret); } catch (e) { /* some input types have no selection */ } }
+    }
+  }
+  document.addEventListener('input', (e) => { if (!e.isComposing) guard(e.target); }, true);
+  document.addEventListener('compositionend', (e) => guard(e.target), true); // IME text (Japanese, Thai...) is cleaned once it's committed
 
   global.V = V;
   Object.assign(global.Setlo, { validation, filterMoney, filterInt, V });

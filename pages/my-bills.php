@@ -103,7 +103,7 @@ require __DIR__ . '/../partials/head.php';
             <button v-for="(g, i) in form.guests" :key="'g' + i" type="button" @click="form.guests.splice(i, 1)" class="pill border border-dashed border-slate-300 bg-white !px-3 !py-1.5 !text-[12px] text-slate-600">{{ g }} · guest ✕</button>
           </div>
           <div class="mt-3 flex gap-2">
-            <input data-field="guest" v-model="guestName" @input="touch('guest')" @keydown.enter.prevent="addGuest" :class="{ 'is-invalid': guestName && err('guest') }" class="input-soft !h-10 flex-1" maxlength="100" placeholder="Add a guest (no account needed)" aria-label="Guest name" />
+            <input data-field="guest" data-filter="name" v-model="guestName" @input="touch('guest')" @keydown.enter.prevent="addGuest" :class="{ 'is-invalid': guestName && err('guest') }" class="input-soft !h-10 flex-1" maxlength="100" placeholder="Add a guest (no account needed)" aria-label="Guest name" />
             <button type="button" @click="addGuest" class="btn btn-outline btn-sm shrink-0">Add guest</button>
           </div>
           <p v-if="guestName && err('guest')" class="field-error">{{ err('guest') }}</p>

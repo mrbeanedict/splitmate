@@ -22,10 +22,14 @@ if (count($rows) > 100) {
 $clean = [];
 foreach ($rows as $i => $r) {
     $name = trim((string) ($r['name'] ?? ''));
-    $qty = (int) ($r['qty'] ?? 0);
+    $qtyRaw = $r['qty'] ?? 0;
+    $qty = is_numeric($qtyRaw) && (float) $qtyRaw == (int) $qtyRaw ? (int) $qtyRaw : 0; // whole numbers only (2.7 is not 2)
     $price = round((float) ($r['unit_price'] ?? -1), 2);
-    if ($name === '' || strlen($name) > 120) {
+    if ($name === '' || mb_strlen($name) > 120) {
         fail('Item ' . ($i + 1) . ' needs a name.', 422);
+    }
+    if (preg_match('/[<>]/', $name)) {
+        fail('Item ' . ($i + 1) . ' can’t contain < or >.', 422);
     }
     if ($qty < 1 || $qty > 999) {
         fail("Check the quantity of $name.", 422);
@@ -48,6 +52,11 @@ if (cents($discount) > $subtotalCents) {
 }
 $receiptTotal = input('receipt_total');
 $receiptTotal = $receiptTotal === null || $receiptTotal === '' ? null : max(0, round((float) $receiptTotal, 2));
+foreach (['tax' => $tax, 'service charge' => $svc, 'discount' => $discount, 'receipt total' => $receiptTotal ?? 0] as $label => $amount) {
+    if ($amount > 1000000) {
+        fail("Check the $label: it can’t be more than ₱1,000,000.", 422); // same ceiling as the form
+    }
+}
 
 // What the split is worked out from, before and after this save: if it changes, a Fun Mode game's result is void.
 $receiptKey = fn () => json_encode([

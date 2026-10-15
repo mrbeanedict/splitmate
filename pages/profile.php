@@ -72,7 +72,7 @@ require __DIR__ . '/../partials/head.php';
       <p class="text-[12px] text-slate-400">The name friends see on bills and settlements.</p>
       <div>
         <label class="field-label" for="name">Full Name</label>
-        <input id="name" data-field="full_name" v-model="f.full_name" @input="touch('full_name')" @blur="touch('full_name')"
+        <input id="name" data-field="full_name" data-filter="name" v-model="f.full_name" @input="touch('full_name')" @blur="touch('full_name')"
                class="input-soft" :class="{ 'is-invalid': err('full_name') }" maxlength="100" autocomplete="name" />
         <p v-if="err('full_name')" class="field-error">{{ err('full_name') }}</p>
       </div>

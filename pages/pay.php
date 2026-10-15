@@ -53,6 +53,20 @@ require __DIR__ . '/../partials/head.php';
       </div>
       <a href="my-settlements" class="btn btn-primary mt-4 w-full">Back to My Settlements</a>
     </div>
+    <div v-else-if="testDone" class="pop-in tile !border-emerald-300 !bg-emerald-50 p-5 text-center">
+      <p class="text-[44px]">✅</p>
+      <p class="text-[19px] font-extrabold text-ink">Test payment complete</p>
+      <p class="mt-1 text-[13px] text-slate-600">That’s how it looks when a friend pays you: {{ peso(testDone.amount, 'PHP') }} via {{ testDone.via }}<span v-if="testDone.detail"> ({{ testDone.detail }})</span>. Test mode: no real money moved.</p>
+      <div class="mt-4 grid grid-cols-2 gap-2.5">
+        <button type="button" @click="testPay" class="btn btn-outline" :disabled="busy">Try again</button>
+        <a href="payment-methods" class="btn btn-primary">My payment methods</a>
+      </div>
+    </div>
+    <div v-else-if="testNotYet" class="tile !border-amber-300 !bg-amber-50 p-4 text-center">
+      <p class="text-[14px] font-extrabold text-ink">The test checkout wasn’t completed</p>
+      <p class="mt-1 text-[12px] text-slate-600">{{ testNotYet }}</p>
+      <button type="button" @click="checkTest" class="btn btn-primary btn-sm mt-3" :disabled="busy">Check again</button>
+    </div>
     <div v-else-if="notYet" class="tile !border-amber-300 !bg-amber-50 p-4 text-center">
       <p class="text-[14px] font-extrabold text-ink">We haven’t received your payment yet</p>
       <p class="mt-1 text-[12px] text-slate-600">{{ notYet }}</p>
@@ -148,7 +162,16 @@ require __DIR__ . '/../partials/head.php';
       <button v-if="online.send.started" type="button" @click="checkSent" class="mt-2 w-full text-center text-[12.5px] font-bold text-brand-700" :disabled="busy || confirming">Already paid? Check payment status</button>
     </div>
 
-    <a v-if="isMe" href="payment-methods" class="btn btn-outline w-full">Back to my payment methods</a>
+    <!-- My own page: try what friends see with a PayMongo test checkout (test keys only) -->
+    <div v-if="isMe && online.test_checkout" class="tile p-4 text-center">
+      <div class="flex items-center justify-center gap-2">
+        <p class="text-[14px] font-extrabold text-ink">Try PayMongo</p>
+        <span class="pill pill-draft">Demo · test mode</span>
+      </div>
+      <p class="mt-1 text-[12px] leading-snug text-slate-500">Opens a PayMongo test checkout for {{ peso(online.min, 'PHP') }} so you can see what friends see. No real money moves.</p>
+      <button type="button" @click="testPay" class="btn btn-primary mt-3 w-full" :disabled="busy || confirming">Continue with PayMongo</button>
+    </div>
+    <a v-if="isMe && !online.test_checkout" href="payment-methods" class="btn btn-outline w-full">Back to my payment methods</a>
   </div>
 
   <?php require __DIR__ . '/../partials/nav.php'; ?>
@@ -159,7 +182,7 @@ Setlo.mount({
   data: () => ({
     code: <?= json_encode($code) ?>, loading: true, busy: false, error: '', p: null, isMe: false, owe: [], oweTotals: {},
     online: { enabled: false, test: false, min: 20, total: 0, started: false, send: { min: 20, max: 50000, started: false } },
-    confirming: false, done: null, notYet: '',
+    confirming: false, done: null, notYet: '', testDone: null, testNotYet: '',
     amount: '', note: '', amountErr: '', sent: null, sendNotYet: '',
   }),
   computed: {
@@ -180,12 +203,14 @@ Setlo.mount({
       this.loading = false;
     }
     // Back from PayMongo's checkout page: the URL only says it was left, so ask PayMongo (never trust the URL).
-    const url = new URL(location.href), back = url.searchParams.get('online'), sentBack = url.searchParams.get('sent');
-    if ((!back && !sentBack) || this.error) return;
+    const url = new URL(location.href), back = url.searchParams.get('online'), sentBack = url.searchParams.get('sent'), testBack = url.searchParams.get('test');
+    if ((!back && !sentBack && !testBack) || this.error) return;
     url.searchParams.delete('online');
     url.searchParams.delete('sent');
+    url.searchParams.delete('test');
     history.replaceState(null, '', url.pathname + url.search);
-    if (back === 'cancelled' || sentBack === 'cancelled') { Setlo.toast('Online payment cancelled. Nothing was charged.'); return; }
+    if (back === 'cancelled' || sentBack === 'cancelled' || testBack === 'cancelled') { Setlo.toast('Online payment cancelled. Nothing was charged.'); return; }
+    if (testBack) { await this.checkTest(); return; }
     if (sentBack) await this.checkSent();
     else await this.checkOnline(true);
   },
@@ -209,6 +234,27 @@ Setlo.mount({
       } catch (e) { this.amountErr = e.message; }
     },
     /** Ask PayMongo whether the money I sent was paid; if so "Sent" shows. */
+    /** The owner's test checkout: ₱20.00 on PayMongo's test mode, to see what friends see. Nothing is recorded. */
+    async testPay() {
+      this.testDone = null;
+      this.testNotYet = '';
+      try {
+        const r = await Setlo.run(this, () => api.post('pay.php', { action: 'test_start', u: this.code }));
+        if (r) location.href = r.checkout_url;
+      } catch (e) { Setlo.toast(e.message); }
+    },
+    async checkTest() {
+      this.confirming = true;
+      this.testNotYet = '';
+      try {
+        const r = await api.post('pay.php', { action: 'test_check', u: this.code });
+        if (r.paid) this.testDone = r; else this.testNotYet = 'PayMongo hasn’t received a payment yet. If you paid, give it a few seconds and check again.';
+      } catch (e) {
+        if (e.status === 409) this.testNotYet = e.message; else Setlo.toast(e.message);
+      } finally {
+        this.confirming = false;
+      }
+    },
     async checkSent() {
       this.confirming = true;
       this.sendNotYet = '';

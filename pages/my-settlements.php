@@ -275,7 +275,7 @@ require __DIR__ . '/../partials/head.php';
       <p class="mt-5 text-[13px] font-extrabold text-ink">{{ onlineOk ? 'Already sent it another way?' : 'Mark as paid' }}</p>
       <p class="mb-3 mt-0.5 text-xs text-slate-500">{{ paying.to.id === me ? 'You' : paying.to.first }} will be asked to confirm receiving it. A reference number or screenshot helps confirm faster.</p>
       <label class="field-label" for="ref">Reference no. <span class="font-medium text-slate-400">(optional)</span></label>
-      <input id="ref" data-field="ref" v-model="payRef" @input="touch('ref')" :class="{ 'is-invalid': err('ref') }" class="input-soft" maxlength="60" placeholder="e.g. 1009 234 567 890" />
+      <input id="ref" data-field="ref" data-filter="ref" v-model="payRef" @input="touch('ref')" :class="{ 'is-invalid': err('ref') }" class="input-soft" maxlength="60" placeholder="e.g. 1009 234 567 890" />
       <p v-if="err('ref')" class="field-error">{{ err('ref') }}</p>
       <p class="field-label mt-4">Proof of payment <span class="font-medium text-slate-400">(optional, up to {{ maxProofs }} photos)</span></p>
       <input ref="proof" type="file" multiple accept="image/jpeg,image/png,image/webp" class="hidden" @change="pickProofs" aria-label="Proof photos" />

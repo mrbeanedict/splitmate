@@ -81,7 +81,7 @@ function str_input(string $key, int $max = 255, bool $required = true): string
     if ($required && $v === '') {
         fail("Missing field: $key", 422);
     }
-    if (strlen($v) > $max) {
+    if (mb_strlen($v) > $max) { // characters, like the browser's maxlength (not bytes)
         fail("Field too long: $key", 422);
     }
     return $v;

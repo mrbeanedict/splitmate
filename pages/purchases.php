@@ -208,7 +208,7 @@ require __DIR__ . '/../partials/head.php';
       <div class="pc-grid2 mt-4">
         <div>
           <label class="field-label" for="pc-amount">Amount ({{ d.currency }})</label>
-          <input id="pc-amount" data-field="amount" v-model="form.amount" @input="touch('amount')" :class="{ 'is-invalid': err('amount') }" class="input-soft pc-amount" inputmode="decimal" placeholder="0.00" />
+          <input id="pc-amount" data-field="amount" data-filter="money" v-model="form.amount" @input="touch('amount')" :class="{ 'is-invalid': err('amount') }" class="input-soft pc-amount" inputmode="decimal" placeholder="0.00" />
           <p v-if="err('amount')" class="field-error">{{ err('amount') }}</p>
         </div>
         <div>

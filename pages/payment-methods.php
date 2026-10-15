@@ -38,7 +38,7 @@ require __DIR__ . '/../partials/head.php';
       <div v-if="f.payment_method !== 'Cash'">
         <label class="field-label" for="account">{{ accountLabel }}</label>
         <input v-if="isGcash" id="account" data-field="payment_account" v-model="f.payment_account" @input="onGcashInput" @blur="touch('payment_account')"
-               class="input-soft" :class="{ 'is-invalid': err('payment_account') }" inputmode="numeric" autocomplete="tel-national" placeholder="e.g. 09171234567" />
+               class="input-soft" :class="{ 'is-invalid': err('payment_account') }" inputmode="numeric" maxlength="11" pattern="09[0-9]{9}" autocomplete="tel-national" placeholder="e.g. 09171234567" />
         <input v-else id="account" data-field="payment_account" v-model="f.payment_account" @input="touch('payment_account')" @blur="touch('payment_account')"
                class="input-soft" :class="{ 'is-invalid': err('payment_account') }" maxlength="60" :placeholder="accountPlaceholder" />
         <p v-if="err('payment_account')" class="field-error">{{ err('payment_account') }}</p>

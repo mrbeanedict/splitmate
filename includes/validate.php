@@ -10,10 +10,10 @@ function valid_name(string $v, string $label = 'Name'): string
     if ($t === '') {
         return "$label is required.";
     }
-    if (strlen($t) < 2 || strlen($t) > 100) {
+    if (mb_strlen($t) < 2 || mb_strlen($t) > 100) {
         return "$label must be 2–100 characters.";
     }
-    return preg_match("/^\\p{L}[\\p{L} .'\\-]*$/u", $t) ? '' : "$label can only have letters, spaces, periods, apostrophes and hyphens.";
+    return preg_match("/^\\p{L}[\\p{L}\\p{M} .'’\\-]*$/u", $t) ? '' : "$label can only have letters, spaces, periods, apostrophes and hyphens.";
 }
 
 /** Usernames: 3–20 characters, lowercase letters, numbers and underscores. Uniqueness is checked separately (username_taken). */
@@ -40,7 +40,7 @@ function valid_bill_name(string $v): string
     if ($t === '') {
         return 'Give the bill a name.';
     }
-    if (strlen($t) > 120) {
+    if (mb_strlen($t) > 120) {
         return 'Bill name must be 120 characters or fewer.';
     }
     return preg_match('/[<>]/', $t) ? 'Bill name can’t contain < or >.' : '';
@@ -63,7 +63,7 @@ function valid_account(string $v): string
     if ($t === '') {
         return '';
     }
-    if (strlen($t) > 60) {
+    if (mb_strlen($t) > 60) {
         return 'Keep the account details to 60 characters or fewer.';
     }
     return preg_match('/^[\p{L}\d .·+\-()]+$/u', $t) ? '' : 'Use letters, numbers, spaces and · . - + ( ) only.';
@@ -85,7 +85,7 @@ function valid_ref(string $v): string
     if ($t === '') {
         return '';
     }
-    if (strlen($t) > 60) {
+    if (mb_strlen($t) > 60) {
         return 'Reference number must be 60 characters or fewer.';
     }
     return preg_match('/^[A-Za-z0-9 \-]+$/', $t) ? '' : 'Reference number can only have letters, numbers, spaces and hyphens.';

@@ -60,6 +60,49 @@ function debts_to(int $meId, int $toId): array
 
 if (method() === 'POST') {
     if ($isMe) {
+        // The owner can't pay their own page, but can try a PayMongo test checkout of it (test keys only; nothing is recorded).
+        switch (input('action', '')) {
+            case 'test_start':
+                if (!paymongo_available() || !paymongo_test_mode()) {
+                    fail('The test checkout is only available while PayMongo is in test mode.', 403);
+                }
+                $hour = date('YmdH');
+                $tries = (int) ($_SESSION['pm_test_count'][$hour] ?? 0);
+                if ($tries >= 5) {
+                    fail('That’s a lot of test checkouts. Try again in a bit.', 429);
+                }
+                try {
+                    $checkout = paymongo_create_checkout(
+                        PAYMONGO_MIN_CENTS,
+                        'Setlo test payment',
+                        'Test only: no real money moves.',
+                        absolute_url('pages/pay?u=' . $code . '&test=done'),
+                        absolute_url('pages/pay?u=' . $code . '&test=cancelled')
+                    );
+                } catch (PayMongoException $e) {
+                    fail($e->getMessage(), 502);
+                }
+                $_SESSION['pm_test_count'] = [$hour => $tries + 1];
+                $_SESSION['pm_test_session'] = $checkout['id'];
+                json_ok(['checkout_url' => $checkout['url']]);
+
+            case 'test_check':
+                // Asks PayMongo whether the test checkout was paid; never trusts the browser's return to the success page.
+                $sessionId = (string) ($_SESSION['pm_test_session'] ?? '');
+                if ($sessionId === '') {
+                    fail('There’s no test checkout waiting to be checked.', 409);
+                }
+                try {
+                    $paid = paymongo_paid_payment($sessionId);
+                } catch (PayMongoException $e) {
+                    fail($e->getMessage(), 502);
+                }
+                if (!$paid) {
+                    json_ok(['paid' => false]);
+                }
+                unset($_SESSION['pm_test_session']);
+                json_ok(['paid' => true, 'amount' => $paid['amount'] / 100, 'via' => ONLINE_VIA_NAMES[$paid['via']] ?? $paid['via'], 'detail' => $paid['detail']]);
+        }
         fail('That’s your own pay page.', 409);
     }
     $first = first_name($u['full_name']);
@@ -283,6 +326,7 @@ json_ok([
     'online' => [
         'enabled' => paymongo_available(),
         'test'    => paymongo_test_mode(),
+        'test_checkout' => $isMe && paymongo_available() && paymongo_test_mode(), // the owner may try a test checkout of their own page
         'min'     => PAYMONGO_MIN_CENTS / 100,
         'total'   => pesos($online),
         'started' => $started,

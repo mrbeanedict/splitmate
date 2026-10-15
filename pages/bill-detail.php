@@ -89,7 +89,7 @@ require __DIR__ . '/../partials/head.php';
           </button>
         </div>
         <div class="flex gap-2">
-          <input data-field="guest" v-model="guestName" @input="touch('guest')" @keydown.enter.prevent="addGuest" :class="{ 'is-invalid': guestName && err('guest') }" class="input-soft !bg-white flex-1" maxlength="100" placeholder="Or add a guest (no account)" aria-label="Guest name" />
+          <input data-field="guest" data-filter="name" v-model="guestName" @input="touch('guest')" @keydown.enter.prevent="addGuest" :class="{ 'is-invalid': guestName && err('guest') }" class="input-soft !bg-white flex-1" maxlength="100" placeholder="Or add a guest (no account)" aria-label="Guest name" />
           <button @click="addGuest" class="btn btn-outline shrink-0" :disabled="busy || !guestName">Add guest</button>
         </div>
         <p v-if="guestName && err('guest')" class="field-error !mt-1">{{ err('guest') }}</p>

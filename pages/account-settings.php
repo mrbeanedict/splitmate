@@ -27,19 +27,19 @@ require __DIR__ . '/../partials/head.php';
       <div class="acc-body">
         <form class="space-y-3" @submit.prevent="changePassword" novalidate>
       <div>
-        <input data-field="pw_current" v-model="pw.current" @input="touch('pw_current')" type="password" autocomplete="current-password"
+        <input data-field="pw_current" maxlength="72" v-model="pw.current" @input="touch('pw_current')" type="password" autocomplete="current-password"
                class="input-soft" :class="{ 'is-invalid': err('pw_current') }" placeholder="Current password" aria-label="Current password" />
         <p v-if="err('pw_current')" class="field-error">{{ err('pw_current') }}</p>
       </div>
       <div>
-        <input data-field="pw_new" v-model="pw.new" @input="touch('pw_new')" type="password" autocomplete="new-password"
+        <input data-field="pw_new" maxlength="72" v-model="pw.new" @input="touch('pw_new')" type="password" autocomplete="new-password"
                class="input-soft" :class="{ 'is-invalid': err('pw_new') }" placeholder="New password" aria-label="New password" />
         <p v-if="err('pw_new')" class="field-error">{{ err('pw_new') }}</p>
         <p v-else-if="pw.new" class="field-ok">✓ Strong enough</p>
         <p v-else class="mt-1.5 text-[12px] text-slate-400">At least 8 characters, with a letter and a number.</p>
       </div>
       <div>
-        <input data-field="pw_confirm" v-model="pw.confirm" @input="touch('pw_confirm')" type="password" autocomplete="new-password"
+        <input data-field="pw_confirm" maxlength="72" v-model="pw.confirm" @input="touch('pw_confirm')" type="password" autocomplete="new-password"
                class="input-soft" :class="{ 'is-invalid': err('pw_confirm') }" placeholder="Confirm new password" aria-label="Confirm new password" />
         <p v-if="err('pw_confirm')" class="field-error">{{ err('pw_confirm') }}</p>
       </div>

@@ -45,7 +45,7 @@ require __DIR__ . '/../partials/head.php';
             </ul>
             <span v-if="compose.lat !== null" class="cm-pinned"><span class="cm-ic" v-html="ic('check', 13)"></span>Pinned on the map</span>
           </div>
-          <input class="cm-input cm-price" v-model="compose.price" type="number" min="0" max="99999999.99" step="0.01" inputmode="decimal" placeholder="₱ Price (optional)" aria-label="Price" />
+          <input class="cm-input cm-price" v-model="compose.price" type="text" data-filter="money" maxlength="11" inputmode="decimal" placeholder="₱ Price (optional)" aria-label="Price" />
         </div>
         <div class="cm-compose-bar">
           <button type="button" class="cm-chip" @click="takePhotos" :disabled="posting || compose.files.length >= MAX_PHOTOS"><span class="cm-ic" v-html="ic('camera', 16)"></span>Camera</button>
@@ -112,7 +112,7 @@ require __DIR__ . '/../partials/head.php';
               </ul>
               <span v-if="editing.lat !== null" class="cm-pinned"><span class="cm-ic" v-html="ic('check', 13)"></span>Pinned on the map</span>
             </div>
-            <input class="cm-input cm-price" v-model="editing.price" type="number" min="0" max="99999999.99" step="0.01" inputmode="decimal" placeholder="₱ Price (optional)" aria-label="Price" />
+            <input class="cm-input cm-price" v-model="editing.price" type="text" data-filter="money" maxlength="11" inputmode="decimal" placeholder="₱ Price (optional)" aria-label="Price" />
           </div>
           <template v-if="!p.shared">
             <div class="cm-compose-bar">

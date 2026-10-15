@@ -136,7 +136,7 @@ function clean_price(): ?string
     if ($v === '') {
         return null;
     }
-    if (!is_numeric($v) || (float) $v < 0 || (float) $v > 99999999.99) {
+    if (!preg_match('/^\d{1,8}(\.\d{1,2})?$/', $v) || (float) $v > 99999999.99) { // digits and a decimal point only (no 1e3, no minus)
         fail('Enter a valid price.', 422);
     }
     return number_format((float) $v, 2, '.', '');

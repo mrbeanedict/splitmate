@@ -35,7 +35,7 @@ require __DIR__ . '/../partials/auth-landing-top.php';
       <div class="relative">
         <label for="name" class="sr-only">Full name</label>
         <svg width="20" height="20" class="landing-input-icon" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></svg>
-        <input id="name" data-field="full_name" v-model="f.full_name" @input="touch('full_name')" @blur="touch('full_name')" :class="{ 'is-invalid': err('full_name') }" autocomplete="name" class="landing-input" placeholder="Full name (e.g. Juan Dela Cruz)" maxlength="100" />
+        <input id="name" data-field="full_name" data-filter="name" v-model="f.full_name" @input="touch('full_name')" @blur="touch('full_name')" :class="{ 'is-invalid': err('full_name') }" autocomplete="name" class="landing-input" placeholder="Full name (e.g. Juan Dela Cruz)" maxlength="100" />
       </div>
       <p v-if="err('full_name')" class="field-error">{{ err('full_name') }}</p>
     </div>
