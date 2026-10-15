@@ -188,6 +188,8 @@ $steps = [
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar VARCHAR(120) NULL AFTER avatar_color',
     // Extra cash kept instead of giving change becomes an utang (the receiver owes it back)
     'ALTER TABLE bills ADD COLUMN IF NOT EXISTS change_payment_id INT UNSIGNED NULL AFTER loan_amount',
+    // An utang for paying part of someone's debt remembers that bill, so its receipt items can be shown
+    'ALTER TABLE bills ADD COLUMN IF NOT EXISTS source_bill_id INT UNSIGNED NULL AFTER change_payment_id',
     // "Forgot password?": a 6-digit code emailed to the user (only its hash is stored)
     'CREATE TABLE IF NOT EXISTS password_resets (
        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT UNSIGNED NOT NULL, code_hash CHAR(64) NOT NULL,
@@ -450,6 +452,11 @@ $steps = [
        kind ENUM(\'post\',\'comment\',\'edit\') NOT NULL, category ENUM(\'profanity\',\'hate\',\'violence\') NOT NULL,
        strike TINYINT UNSIGNED NOT NULL, restricted_until DATETIME NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, INDEX (user_id, created_at)
+     ) ENGINE=InnoDB',
+    // Guest mode's free receipt scans, counted per browser and per network (api/guest-scan.php)
+    'CREATE TABLE IF NOT EXISTS guest_scans (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, cookie_id CHAR(32) NOT NULL, ip_hash CHAR(64) NOT NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX (cookie_id, created_at), INDEX (ip_hash, created_at)
      ) ENGINE=InnoDB',
 ];
 $hadTour = (bool) db()->query("SHOW COLUMNS FROM users LIKE 'onboarded_at'")->fetch();

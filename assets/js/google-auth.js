@@ -37,8 +37,12 @@
         },
       });
       el.innerHTML = '';
+      // Google's button is a light page in an iframe: with a dark page around it the browser paints a white box behind the
+      // rounded button, so the iframe is told it's light too, and dark mode gets Google's dark button.
+      el.style.colorScheme = 'light';
+      const dark = document.documentElement.classList.contains('dark');
       global.google.accounts.id.renderButton(el, {
-        type: 'standard', theme: 'outline', size: 'large', shape: 'pill', logo_alignment: 'center',
+        type: 'standard', theme: dark ? 'filled_black' : 'outline', size: 'large', shape: 'pill', logo_alignment: 'center',
         text: opts.text || 'continue_with', width: Math.min(400, Math.max(200, el.clientWidth)),
       });
     };

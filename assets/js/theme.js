@@ -47,9 +47,10 @@
    * The user's color sits at step 600 (buttons, links), darkened if white text on it would be hard to read.
    * Returns { vars: { 50: "r g b", ... }, hex: the 600 color, adjusted: boolean }.
    */
-  function scale(hex) {
+  function scale(hex, shade) {
     if (!isHex(hex)) hex = ACCENTS.green.color;
     var hsl = hexToHsl(hex), h = hsl[0], s = hsl[1], l = hsl[2], adjusted = false;
+    if (shade) { l = shade.l(l); s = Math.min(1, s * shade.s); } // e.g. the personal-finance shade of the same hue
     // bold button text only needs the AA "large text" ratio (3:1); 3.5 keeps a margin and leaves the default teal alone
     while (l > 0.12 && whiteContrast(hslToRgb(h, s, l)) < 3.5) { l -= 0.01; adjusted = true; }
     // Steps are blended from the anchor toward near-white (50) and near-black (900), so any pick gets a usable scale
@@ -65,6 +66,15 @@
     var rgb600 = vars[600].split(' ').map(Number);
     var hex600 = '#' + rgb600.map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join('');
     return { vars: vars, hex: hex600, adjusted: adjusted };
+  }
+
+  /**
+   * Personal money (personal expenses, utang, Personal Finance sidebar group) wears a shade of the SAME accent, so it
+   * reads as "yours" next to the group-money UI without clashing with the chosen color: darker and a touch calmer
+   * (a very dark accent goes lighter instead, so the two never look identical). Written as --pf-50..900 (assets/css/personal.css).
+   */
+  function personalShade(isDark) {
+    return { s: 0.88, l: function (l) { return l < 0.3 ? l + 0.12 : Math.max(0.16, l * (isDark ? 0.82 : 0.7)); } };
   }
 
   // ---------- saved choice ----------
@@ -91,6 +101,8 @@
     } else {
       themeColor = ACCENTS[accent].color;
     }
+    var pf = scale(accent === 'custom' ? t.custom : ACCENTS[accent].color, personalShade(isDark));
+    STEPS.forEach(function (n) { root.style.setProperty('--pf-' + n, pf.vars[n]); });
     root.setAttribute('data-theme', accent);
     root.classList.toggle('dark', isDark);
     var meta = document.querySelector('meta[name="theme-color"]');

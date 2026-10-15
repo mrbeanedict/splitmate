@@ -44,6 +44,7 @@ CREATE TABLE bills (
   kind            ENUM('bill','loan') NOT NULL DEFAULT 'bill', -- loan: an utang between two people, no receipt (api/loans.php)
   loan_amount     DECIMAL(10,2) NULL,             -- loan: how much was lent
   change_payment_id INT UNSIGNED NULL,            -- loan: extra cash kept from this cash payment instead of giving change (includes/payments.php)
+  source_bill_id  INT UNSIGNED NULL,              -- loan: the bill whose debt was paid for someone (its receipt items are shown with the utang)
   group_id        INT UNSIGNED NULL,              -- saved group it was started from (user_groups), for the group's trail
   creator_id      INT UNSIGNED NOT NULL,
   payer_id        INT UNSIGNED NOT NULL,          -- who paid the restaurant; receives all settlements
@@ -623,4 +624,14 @@ CREATE TABLE community_violations (
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX (user_id, created_at)
+) ENGINE=InnoDB;
+
+-- Guest mode's free receipt scans (api/guest-scan.php): counted per browser cookie and per IP hash. No photo or text is kept.
+CREATE TABLE guest_scans (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  cookie_id  CHAR(32) NOT NULL,
+  ip_hash    CHAR(64) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX (cookie_id, created_at),
+  INDEX (ip_hash, created_at)
 ) ENGINE=InnoDB;

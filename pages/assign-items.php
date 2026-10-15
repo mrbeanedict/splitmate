@@ -93,7 +93,10 @@ require __DIR__ . '/../partials/head.php';
 
     <div class="mt-3 flex items-center justify-between px-5 text-[12px]">
       <a :href="'bill-detail.php?bill=' + billId" class="text-slate-500">Paid by <b class="text-ink">{{ paidByLabel }}</b></a>
-      <button v-if="unassignedCount" @click="splitEvenly" class="font-bold text-brand-700">Split unassigned evenly</button>
+      <span class="flex items-center gap-3">
+        <button v-if="unassignedCount && unassignedCount < items.length" @click="splitEvenly" class="font-bold text-brand-700">Split unassigned evenly</button>
+        <button v-if="items.length" @click="splitAll" class="font-bold text-brand-700">Split everything equally</button>
+      </span>
     </div>
 
     <div class="mt-3 space-y-3 px-5">
@@ -439,6 +442,13 @@ Setlo.mount({
     async splitEvenly() {
       if (this.saveTimer) await this.persist();
       const r = await Setlo.run(this, () => api.post('assignments.php', { bill_id: this.billId, action: 'split_evenly' }));
+      if (r) this.items = r.items;
+    },
+    /** Every item shared by every member, replacing what's assigned now. */
+    async splitAll() {
+      if (this.items.some((it) => it.who.length) && !(await Setlo.confirm({ title: 'Split everything equally?', text: 'Every item will be shared by everyone, replacing who you picked for each one.', confirmText: 'Split equally' }))) return;
+      if (this.saveTimer) await this.persist();
+      const r = await Setlo.run(this, () => api.post('assignments.php', { bill_id: this.billId, action: 'split_all' }));
       if (r) this.items = r.items;
     },
     async finish() {

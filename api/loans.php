@@ -30,6 +30,8 @@ function loan_row(array $b, array $me): array
         // Extra cash kept instead of giving change (includes/payments.php record_change_utang): the lender handed it over
         'from_change'   => $b['change_payment_id'] !== null,
         'created_at'    => $b['created_at'],
+        // The receipt items behind it, when it came from paying someone's share of a bill (borrower = who owes)
+        'items'         => share_items((int) $b['id'], $lender === $me['id'] ? $other : (int) $me['id']),
         'settlement'    => $s ? [
             'id'          => (int) $s['id'],
             'status'      => $s['status'],

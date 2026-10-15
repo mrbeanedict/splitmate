@@ -61,6 +61,7 @@ header('Cache-Control: no-store');
 <link rel="stylesheet" href="<?= h(url('assets/css/badge-bg.css')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/css/badge-bg.css') ?>" />
 <script src="<?= h(url('assets/js/badge-field.js')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/js/badge-field.js') ?>"></script>
 <?php endif; ?>
+<link rel="stylesheet" href="<?= h(url('assets/css/personal.css')) ?>?v=<?= @filemtime(__DIR__ . '/../assets/css/personal.css') ?>" />
 <?php foreach ($headExtra ?? [] as $extra): ?>
 <?php if (str_ends_with($extra, '.woff2')): ?>
 <link rel="preload" href="<?= h(url($extra)) ?>" as="font" type="font/woff2" crossorigin />
@@ -85,6 +86,8 @@ header('Cache-Control: no-store');
 </head>
 <?php
 // Sidebar pages: the user's chosen backdrop (badge-bg.css), set here so it's there from the first paint
+// Personal-money pages (personal expenses, utang) wear their own shade of the accent: assets/css/personal.css
+if (in_array($nav ?? '', ['purchases', 'utang'], true) && session_area() !== 'admin') $bodyClass = trim(($bodyClass ?? '') . ' personal');
 $bg = !empty($nav) && session_area() !== 'admin' && current_user() ? user_background(current_user()) : null;
 ?>
 <body class="<?= h(trim(($bodyClass ?? '') . ($bg ? ' badge-bg' : ''))) ?>"<?php if ($bg): ?> data-bg="<?= h($bg['mode']) ?>"<?php if ($bg['image']): ?> style="--bg-photo: url('<?= h($bg['image']) ?>')"<?php endif; endif; ?>>
