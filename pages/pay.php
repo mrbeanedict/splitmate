@@ -79,7 +79,7 @@ require __DIR__ . '/../partials/head.php';
       <p v-if="isMe" class="mt-1 text-[13px] text-slate-500">This is how friends see your pay page.</p>
 
       <div class="mt-4 rounded-2xl bg-brand-50 px-4 py-3 text-left">
-        <p class="text-[11px] font-bold uppercase tracking-wide text-brand-700">Pay via {{ p.payment_method }}</p>
+        <p class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-brand-700"><img v-if="payLogo(p.payment_method)" class="pay-logo" :src="payLogo(p.payment_method)" alt="" width="24" height="24" />Pay via {{ p.payment_method }}</p>
         <div class="mt-1 flex items-center justify-between gap-3">
           <p class="break-all text-[16px] font-extrabold text-ink">{{ p.payment_account || (p.payment_method === 'Cash' ? 'Pay in cash when you meet' : 'No account number added yet') }}</p>
           <button v-if="p.payment_account" @click="copy" class="btn btn-outline btn-sm shrink-0">Copy</button>
@@ -215,6 +215,7 @@ Setlo.mount({
     else await this.checkOnline(true);
   },
   methods: {
+    payLogo(method) { return (window.SETLO_PAY_LOGOS || {})[method] || ''; },
     async load() {
       const r = await api.get('pay.php', { u: this.code });
       this.p = r.person;

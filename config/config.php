@@ -18,6 +18,10 @@ $detectBase = function (): string {
 };
 
 return [
+    // Update the database by itself when the code needs newer tables/columns (see ensure_schema() in includes/bootstrap.php).
+    // Set AUTO_MIGRATE=0 where the database user can't ALTER tables; then run database/migrate.php after each deploy.
+    'auto_migrate' => $env('AUTO_MIGRATE', '1') !== '0',
+
     'db' => [
         'host'    => $env('DB_HOST', '127.0.0.1'),
         'port'    => (int) $env('DB_PORT', '3306'),

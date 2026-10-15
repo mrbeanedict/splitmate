@@ -30,19 +30,38 @@ require __DIR__ . '/../partials/head.php';
         <p class="mt-0.5 text-[12px] text-slate-400">Shown on your Pay-me page and on the “You owe” card of anyone who owes you.</p>
       </div>
       <div>
-        <label class="field-label" for="method">Preferred Payment Method</label>
-        <select id="method" v-model="f.payment_method" class="input-soft cursor-pointer">
-          <option>GCash</option><option>Maya</option><option>Bank Transfer</option><option>Cash</option>
-        </select>
+        <p class="field-label" id="method-label">Preferred Payment Method</p>
+        <div class="pm-grid" role="radiogroup" aria-labelledby="method-label" @keydown="methodKey">
+          <button v-for="m in payMethods" :key="m.key" type="button" role="radio" class="pm-card" :class="{ on: f.payment_method === m.key }"
+                  :aria-checked="f.payment_method === m.key" :tabindex="f.payment_method === m.key ? 0 : -1" :data-method="m.key" @click="f.payment_method = m.key">
+            <img class="pay-logo pay-logo-lg" :src="payLogo(m.key)" alt="" width="44" height="44" />
+            <span class="pm-text"><b>{{ m.label }}</b><small>{{ m.hint }}</small></span>
+            <span class="pm-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg></span>
+          </button>
+        </div>
       </div>
       <div v-if="f.payment_method !== 'Cash'">
         <label class="field-label" for="account">{{ accountLabel }}</label>
-        <input v-if="isGcash" id="account" data-field="payment_account" v-model="f.payment_account" @input="onGcashInput" @blur="touch('payment_account')"
-               class="input-soft" :class="{ 'is-invalid': err('payment_account') }" inputmode="numeric" maxlength="11" pattern="09[0-9]{9}" autocomplete="tel-national" placeholder="e.g. 09171234567" />
-        <input v-else id="account" data-field="payment_account" v-model="f.payment_account" @input="touch('payment_account')" @blur="touch('payment_account')"
-               class="input-soft" :class="{ 'is-invalid': err('payment_account') }" maxlength="60" :placeholder="accountPlaceholder" />
+        <div class="pm-field">
+          <img class="pay-logo pm-prefix" :src="payLogo(f.payment_method)" alt="" width="28" height="28" />
+          <input v-if="isGcash" id="account" data-field="payment_account" v-model="f.payment_account" @input="onGcashInput" @blur="touch('payment_account')"
+                 class="input-soft" :class="{ 'is-invalid': err('payment_account') }" inputmode="numeric" maxlength="11" pattern="09[0-9]{9}" autocomplete="tel-national" placeholder="e.g. 09171234567" />
+          <input v-else id="account" data-field="payment_account" v-model="f.payment_account" @input="touch('payment_account')" @blur="touch('payment_account')"
+                 class="input-soft" :class="{ 'is-invalid': err('payment_account') }" maxlength="60" :placeholder="accountPlaceholder" />
+        </div>
         <p v-if="err('payment_account')" class="field-error">{{ err('payment_account') }}</p>
         <p v-else-if="!f.payment_account.trim()" class="mt-1.5 text-[12px] text-amber-600">Add your number so friends know where to send money.</p>
+      </div>
+      <div v-else class="pm-note">No account needed. Friends will see “Pay in cash when you meet”.</div>
+      <div class="pm-preview" aria-live="polite">
+        <p class="pm-preview-label">How friends will see it</p>
+        <div class="pm-preview-card">
+          <img class="pay-logo" :src="payLogo(f.payment_method)" alt="" width="36" height="36" />
+          <div class="min-w-0 flex-1">
+            <p class="pm-preview-via">Pay via {{ f.payment_method }}</p>
+            <p class="pm-preview-acct">{{ f.payment_method === 'Cash' ? 'Pay in cash when you meet' : (f.payment_account.trim() || 'No account number added yet') }}</p>
+          </div>
+        </div>
       </div>
       <button class="btn-pill btn-pill-primary" :disabled="busy">Save payment method</button>
     </form>

@@ -103,6 +103,9 @@ require __DIR__ . '/../partials/head.php';
                 :disabled="!!busyBg" @click="setBackground(b.key)"><svg class="seg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:inline-block;width:15px;height:15px;margin:-3px 6px 0 0;vertical-align:middle" v-html="icons[b.key]"></svg>{{ b.label }}</button>
       </div>
       <p class="mt-2 text-[11.5px] text-slate-400">{{ bgHint }} Saved to your account.</p>
+      <div v-if="bg.mode === 'calm'" class="calm-styles" role="radiogroup" aria-label="Calm style">
+        <button v-for="c in calmStyles" :key="c.key" type="button" role="radio" class="calm-style" :data-s="c.key" :class="{ on: bg.style === c.key }" :aria-checked="bg.style === c.key" :disabled="!!busyBg" @click="setCalmStyle(c.key)"><i></i>{{ c.label }}</button>
+      </div>
       <div v-if="bg.mode === 'photo' && bg.image" class="mt-3 flex items-center gap-3.5 rounded-2xl border border-slate-200 bg-slate-50 p-2.5">
         <img :src="bg.image" alt="Your background photo" class="aspect-video w-28 shrink-0 rounded-xl object-cover shadow-sm ring-1 ring-black/5" />
         <div class="min-w-0 flex-1">

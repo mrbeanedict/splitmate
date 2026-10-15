@@ -183,6 +183,7 @@ Google only proves who the user is; Setlo verifies the token on the server (`inc
 ## Feature roadmap
 
 Shipped one part at a time. After deploying each part, run `migrate.php` (step 7) — every part adds tables or columns.
+The app also does this by itself: the first web request after a deploy that changes `includes/migrations.php` brings the database up to date (and a query that hits a missing table/column triggers it too). That needs a database user that may `ALTER` tables; if yours can't, set `AUTO_MIGRATE=0` and keep running `migrate.php` by hand.
 
 ### Part 1 — Scanner guidance
 - [x] Live outline around the receipt while the camera is open (OpenCV.js edge/contour detection), and the captured photo cropped and flattened to that outline

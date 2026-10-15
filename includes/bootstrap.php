@@ -99,9 +99,77 @@ function db(): PDO
  */
 function q(string $sql, array $params = []): PDOStatement
 {
-    $stmt = db()->prepare($sql);
-    $stmt->execute($params);
-    return $stmt;
+    static $healed = false;
+    try {
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+    } catch (PDOException $e) {
+        // A table (42S02) or column (42S22) the code expects isn't there: the database is behind the code. Update it once
+        // and retry. Not inside a transaction: the schema change would silently commit it.
+        if ($healed || !in_array((string) $e->getCode(), ['42S02', '42S22'], true) || db()->inTransaction()) {
+            throw $e;
+        }
+        $healed = true;
+        ensure_schema(true);
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+    }
+}
+
+/**
+ * Keeps the database in step with the code, so a `git pull` that adds tables or columns never ends in "Something went
+ * wrong". A marker file (in the system temp folder) remembers which copy of includes/migrations.php the database was last
+ * brought up to; when the file changes (or $force, after a query hit a missing table/column) the migration runs once,
+ * under a lock so concurrent requests wait instead of racing. A failure is logged and not retried for 5 minutes.
+ * Off with 'auto_migrate' => false (AUTO_MIGRATE=0), e.g. when the database user may not ALTER tables.
+ */
+function ensure_schema(bool $force = false): void
+{
+    static $busy = false;
+    if ($busy || PHP_SAPI === 'cli' || !config('auto_migrate')) {
+        return;
+    }
+    $file = __DIR__ . '/migrations.php';
+    $name = (string) (config('db')['name'] ?? '');
+    $stamp = filemtime($file) . '|' . filesize($file) . '|' . $name;
+    $base = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'setlo_schema_' . md5(__DIR__ . '|' . $name);
+    $read = static fn (string $f): string => is_file($f) ? (string) @file_get_contents($f) : '';
+    if (!$force && $read($base . '.ok') === $stamp) {
+        return;
+    }
+    $busy = true;
+    $lock = @fopen($base . '.lock', 'c');
+    try {
+        if ($lock) {
+            flock($lock, LOCK_EX);
+        }
+        if (!$force && $read($base . '.ok') === $stamp) {
+            return; // another request just did it
+        }
+        if ($read($base . '.fail') === $stamp && time() - (int) @filemtime($base . '.fail') < 300) {
+            return; // it failed a moment ago: don't hammer the database
+        }
+        require_once __DIR__ . '/migrations.php';
+        ob_start();
+        try {
+            run_migrations();
+            @file_put_contents($base . '.ok', $stamp);
+            @unlink($base . '.fail');
+        } catch (Throwable $e) {
+            @file_put_contents($base . '.fail', $stamp);
+            error_log('[setlo] Automatic database update failed: ' . $e->getMessage());
+        } finally {
+            ob_end_clean();
+        }
+    } finally {
+        if ($lock) {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+        $busy = false;
+    }
 }
 
 function h(?string $s): string
@@ -128,7 +196,7 @@ function current_user(): ?array
     if ($user === false) {
         $user = null;
         if (!empty($_SESSION['user_id'])) {
-            $row = q('SELECT id, full_name, email, payment_method, currency, avatar_color, avatar, bg_mode, bg_image, role, status, (restricted_until IS NOT NULL AND restricted_until > NOW()) AS restricted FROM users WHERE id = ?', [$_SESSION['user_id']])->fetch();
+            $row = q('SELECT id, full_name, email, payment_method, currency, avatar_color, avatar, bg_mode, bg_style, bg_image, role, status, (restricted_until IS NOT NULL AND restricted_until > NOW()) AS restricted FROM users WHERE id = ?', [$_SESSION['user_id']])->fetch();
             // An admin account is only ever signed in under the admin cookie. Under the user cookie it can only be a
             // stale session (e.g. the database was reset and its id now belongs to the admin), so treat it as signed out.
             // A community restriction (strike 1 or 2) signs the account out until it ends: includes/community_moderation.php
@@ -273,12 +341,16 @@ function avatar_url(?string $avatar, int $userId): ?string
 }
 
 /** A user's users.avatar value, fetched once per request. */
-/** A user's page backdrop: mode 'badges' (their floating badges), 'plain' or 'photo', and their photo's URL if any. */
+/** The calm backdrop styles (users.bg_style), the first being the default. */
+const CALM_STYLES = ['aurora', 'ocean', 'sunset', 'forest', 'dusk', 'clouds'];
+
+/** A user's page backdrop: mode 'calm', 'badges' (their floating badges), 'plain' or 'photo', the calm style, and their photo's URL if any. */
 function user_background(array $u): array
 {
     // ?v= changes with the file, so a new photo isn't hidden behind the cached old one.
     $image = $u['bg_image'] ? url('api/background.php') . '?v=' . substr(md5($u['bg_image']), 0, 8) : null;
-    return ['mode' => $u['bg_mode'] === 'photo' && !$image ? 'badges' : $u['bg_mode'], 'image' => $image];
+    $style = in_array($u['bg_style'] ?? '', CALM_STYLES, true) ? $u['bg_style'] : CALM_STYLES[0];
+    return ['mode' => $u['bg_mode'] === 'photo' && !$image ? 'badges' : $u['bg_mode'], 'style' => $style, 'image' => $image];
 }
 
 function user_avatar(int $userId): ?string
@@ -332,3 +404,6 @@ function first_name(string $name): string
 {
     return explode(' ', trim($name))[0];
 }
+
+// Every web request checks (cheaply) that the database matches the code.
+ensure_schema();

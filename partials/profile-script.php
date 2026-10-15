@@ -13,13 +13,15 @@ Setlo.mount({
       light: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
       dark: '<path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/>',
       system: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+      calm: '<path d="M3 15c3-4 5-4 9 0s6 4 9 0"/><path d="M3 9c3-4 5-4 9 0s6 4 9 0"/>',
       badges: '<circle cx="12" cy="9" r="6"/><path d="M8.5 14.5L7 22l5-3 5 3-1.5-7.5"/>',
-      receipts: '<path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
       plain: '<rect x="4" y="4" width="16" height="16" rx="3"/>',
       photo: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/>',
     },
     modes: [{ key: 'light', label: 'Light' }, { key: 'dark', label: 'Dark' }, { key: 'system', label: 'System' }],
-    backgrounds: [{ key: 'badges', label: 'Badges' }, { key: 'receipts', label: 'Setlo' }, { key: 'plain', label: 'Plain' }, { key: 'photo', label: 'Photo' }],
+    backgrounds: [{ key: 'calm', label: 'Calm' }, { key: 'badges', label: 'Badges' }, { key: 'plain', label: 'Plain' }, { key: 'photo', label: 'Photo' }],
+    calmStyles: [{ key: 'aurora', label: 'Aurora' }, { key: 'ocean', label: 'Ocean' }, { key: 'sunset', label: 'Sunset' }, { key: 'forest', label: 'Forest' }, { key: 'dusk', label: 'Dusk' }, { key: 'clouds', label: 'Clouds' }],
+    payMethods: [{ key: 'GCash', label: 'GCash', hint: 'Send to your number' }, { key: 'Maya', label: 'Maya', hint: 'Send to your number' }, { key: 'Bank Transfer', label: 'Bank transfer', hint: 'Bank & account' }, { key: 'Cash', label: 'Cash', hint: 'Pay in person' }],
     busyBg: null,
     f: { full_name: '', payment_method: 'GCash', payment_account: '' },
     pw: { current: '', new: '', confirm: '' }, serverErrors: {},
@@ -41,11 +43,11 @@ Setlo.mount({
       return this.f.payment_method === 'Bank Transfer' ? 'Bank & account number' : this.f.payment_method + ' number / name';
     },
     accountPlaceholder() { return this.f.payment_method === 'Bank Transfer' ? 'e.g. BPI 1234-5678-90 · Juan Dela Cruz' : 'e.g. 0917 123 4567 · Juan D.'; },
-    bg() { return this.p?.background || { mode: 'badges', image: null }; },
+    bg() { return this.p?.background || { mode: 'calm', style: 'aurora', image: null }; },
     bgHint() {
       return {
+        calm: 'Soft, slow-moving backdrops that rest your eyes. Pick a style below.',
         badges: 'Your shown badges float behind your pages; hidden ones stay out.',
-        receipts: 'The Setlo theme: a long receipt floats over little green chameleon sketches.',
         plain: 'Just the soft colour wash, nothing moving.',
         photo: 'Your photo, softened a little so your cards stay easy to read.',
       }[this.bg.mode];
@@ -77,10 +79,25 @@ Setlo.mount({
       this.p = { ...this.p, background: r.profile.background };
       window.SetloBackground?.set(r.profile.background);
     },
+    payLogo(method) { return (window.SETLO_PAY_LOGOS || {})[method] || ''; },
+    /** Arrow keys move the payment method choice, like any radio group. */
+    methodKey(e) {
+      const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      const i = this.payMethods.findIndex((m) => m.key === this.f.payment_method);
+      const next = this.payMethods[(i + d + this.payMethods.length) % this.payMethods.length];
+      this.f.payment_method = next.key;
+      this.$nextTick(() => document.querySelector('.pm-card[data-method="' + next.key + '"]')?.focus());
+    },
     async setBackground(mode) {
       if (mode === this.bg.mode || this.busyBg) return;
       if (mode === 'photo' && !this.bg.image) { this.pickBackgroundPhoto(); return; } // no photo yet: pick one first
       this.applyBackground(await Setlo.run(this, () => api.post('profile.php', { action: 'set_background', mode }), 'busyBg'));
+    },
+    async setCalmStyle(style) {
+      if (this.busyBg || (this.bg.mode === 'calm' && this.bg.style === style)) return;
+      this.applyBackground(await Setlo.run(this, () => api.post('profile.php', { action: 'set_background', mode: 'calm', style }), 'busyBg'));
     },
     /** Ask first, then open the file picker / gallery for the background photo. */
     async pickBackgroundPhoto() {

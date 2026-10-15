@@ -11,7 +11,7 @@ const PAYMENT_METHODS = ['GCash', 'Maya', 'Bank Transfer', 'Cash'];
 
 function profile_of(int $userId): array
 {
-    $u = q('SELECT id, full_name, email, email_reminders, username, username_changes, username_locked_until, payment_method, payment_account, currency, pay_code, avatar_color, avatar, featured_achievement, bg_mode, bg_image, google_sub FROM users WHERE id = ?', [$userId])->fetch();
+    $u = q('SELECT id, full_name, email, email_reminders, username, username_changes, username_locked_until, payment_method, payment_account, currency, pay_code, avatar_color, avatar, featured_achievement, bg_mode, bg_style, bg_image, google_sub FROM users WHERE id = ?', [$userId])->fetch();
     if ($u['pay_code'] === null) {
         // Safety net: every account has its own Pay-me code.
         $u['pay_code'] = new_pay_code();
@@ -201,15 +201,19 @@ switch (input('action', '')) {
         json_ok(['profile' => profile_of($me['id'])]);
 
     case 'set_background':
-        // mode: 'badges' (floating badges), 'receipts' (floating receipts + chameleon), 'plain', or 'photo' (needs a photo uploaded first)
+        // mode: 'calm' (soft backdrops; optional style, see CALM_STYLES), 'badges' (floating badges), 'plain', or 'photo' (needs a photo uploaded first)
         $mode = (string) input('mode', '');
-        if (!in_array($mode, ['badges', 'receipts', 'plain', 'photo'], true)) {
+        if (!in_array($mode, ['calm', 'badges', 'plain', 'photo'], true)) {
             fail('Pick a background.', 422);
         }
         if ($mode === 'photo' && !q('SELECT bg_image FROM users WHERE id = ?', [$me['id']])->fetchColumn()) {
             fail('Upload a photo first.', 422);
         }
-        q('UPDATE users SET bg_mode = ? WHERE id = ?', [$mode, $me['id']]);
+        $style = input('style', null);
+        if ($style !== null && !in_array($style, CALM_STYLES, true)) {
+            fail('Pick a style.', 422);
+        }
+        q('UPDATE users SET bg_mode = ?, bg_style = COALESCE(?, bg_style) WHERE id = ?', [$mode, $style, $me['id']]);
         json_ok(['profile' => profile_of($me['id'])]);
 
     case 'upload_background':

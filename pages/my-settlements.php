@@ -70,7 +70,7 @@ require __DIR__ . '/../partials/head.php';
       <div v-if="tab === 'owe' && s.open > 0 && s.status !== 'settled'" class="mt-2.5 flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2">
         <div class="min-w-0 flex-1 text-xs text-slate-600">
           <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Send to</p>
-          <p class="break-all"><b class="text-slate-800">{{ s.to.payment_method }}</b>
+          <p class="break-all"><img v-if="payLogo(s.to.payment_method)" class="pay-logo mr-1.5 inline-block align-middle" :src="payLogo(s.to.payment_method)" alt="" width="20" height="20" /><b class="text-slate-800">{{ s.to.payment_method }}</b>
             <span v-if="s.to.payment_account"> · {{ s.to.payment_account }}</span>
             <span v-else-if="s.to.payment_method !== 'Cash'" class="text-slate-400"> · no account details yet</span>
           </p>
@@ -470,6 +470,7 @@ Setlo.mount({
     }
   },
   methods: {
+    payLogo(method) { return (window.SETLO_PAY_LOGOS || {})[method] || ''; },
     money,
     fill(r) {
       this.owe = r.owe;

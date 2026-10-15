@@ -1018,28 +1018,93 @@
    * full. A transparent native <select> sits over the label, so the list, keyboard and phone pickers are the default ones.
    * props: modelValue, label (aria), disabled, compact.
    */
+  // Currency picker: a button that opens a floating, searchable list (teleported to <body>, so no card can clip it).
+  // Same props/emit as the old native <select>: modelValue, label, disabled, compact -> update:modelValue.
   const CurrencySelect = {
     props: { modelValue: String, label: { type: String, default: 'Currency' }, disabled: Boolean, compact: Boolean },
     emits: ['update:modelValue'],
+    data: () => ({ open: false, q: '', idx: 0, pos: { left: 0, top: 0, width: 280, maxH: 320, up: false } }),
     computed: {
       current() { return cinfo(this.modelValue || 'PHP'); },
       groups() {
         const all = Object.values(CURRENCIES);
         const top = ['PHP', 'USD', 'JPY', 'KRW', 'SGD', 'HKD', 'EUR'].map((c) => CURRENCIES[c]).filter(Boolean);
-        return [{ label: 'Common', list: top }, { label: 'All currencies', list: all.filter((c) => !top.includes(c)).sort((a, b) => a.name.localeCompare(b.name)) }];
+        const rest = all.filter((c) => !top.includes(c)).sort((a, b) => a.name.localeCompare(b.name));
+        const q = this.q.trim().toLowerCase();
+        const hit = (c) => !q || c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || c.symbol.toLowerCase().includes(q);
+        return [{ label: 'Common', list: top.filter(hit) }, { label: 'All currencies', list: rest.filter(hit) }].filter((g) => g.list.length);
       },
+      flat() { return this.groups.flatMap((g) => g.list); },
     },
-    template: `<label class="cur-select" :class="{ 'cur-compact': compact, 'cur-disabled': disabled }">
-      <span class="cur-sym">{{ current.symbol }}</span>
-      <span class="cur-code">{{ current.code }}</span>
-      <span v-if="!compact" class="cur-name">{{ current.name }}</span>
-      <svg class="cur-chev" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
-      <select :value="modelValue" @change="$emit('update:modelValue', $event.target.value)" :disabled="disabled" :aria-label="label" class="cur-native">
-        <optgroup v-for="g in groups" :key="g.label" :label="g.label">
-          <option v-for="c in g.list" :key="c.code" :value="c.code">{{ c.symbol }} {{ c.code }} — {{ c.name }}</option>
-        </optgroup>
-      </select>
-    </label>`,
+    watch: { q() { this.idx = 0; } },
+    beforeUnmount() { this.detach(); },
+    methods: {
+      toggle() { if (this.disabled) return; this.open ? this.close() : this.show(); },
+      show() {
+        const r = this.$refs.btn.getBoundingClientRect();
+        const width = Math.max(r.width, 280), below = window.innerHeight - r.bottom - 12, above = r.top - 12;
+        const up = below < 260 && above > below;
+        this.pos = { left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)), top: up ? r.top - 8 : r.bottom + 8, width: Math.min(width, window.innerWidth - 16), maxH: Math.max(200, Math.min(380, (up ? above : below) - 8)), up };
+        this.q = '';
+        this.idx = Math.max(0, this.flat.findIndex((c) => c.code === this.current.code));
+        this.open = true;
+        document.addEventListener('pointerdown', this.outside, true);
+        window.addEventListener('resize', this.close);
+        window.addEventListener('scroll', this.onScroll, true);
+        this.$nextTick(() => {
+          if (window.matchMedia('(pointer: fine)').matches) this.$refs.search?.focus();
+          this.reveal();
+        });
+      },
+      close(focusBtn) {
+        this.open = false;
+        this.detach();
+        if (focusBtn === true) this.$refs.btn?.focus();
+      },
+      detach() {
+        document.removeEventListener('pointerdown', this.outside, true);
+        window.removeEventListener('resize', this.close);
+        window.removeEventListener('scroll', this.onScroll, true);
+      },
+      outside(e) { if (!this.$refs.panel?.contains(e.target) && !this.$refs.btn?.contains(e.target)) this.close(); },
+      onScroll(e) { if (!this.$refs.panel?.contains(e.target)) this.close(); },
+      pick(c) { this.$emit('update:modelValue', c.code); this.close(true); },
+      reveal() { this.$refs.panel?.querySelector('[data-i="' + this.idx + '"]')?.scrollIntoView({ block: 'nearest' }); },
+      key(e) {
+        const n = this.flat.length;
+        if (e.key === 'ArrowDown') { e.preventDefault(); this.idx = (this.idx + 1) % n; this.$nextTick(this.reveal); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); this.idx = (this.idx - 1 + n) % n; this.$nextTick(this.reveal); }
+        else if (e.key === 'Enter') { e.preventDefault(); if (this.flat[this.idx]) this.pick(this.flat[this.idx]); }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.close(true); }
+        else if (e.key === 'Tab') this.close();
+      },
+      btnKey(e) { if (!this.open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); this.show(); } },
+      flatIndex(c) { return this.flat.indexOf(c); },
+    },
+    template: `<div class="cur2" :class="{ 'cur2-compact': compact, 'cur2-open': open, 'cur2-disabled': disabled }">
+      <button ref="btn" type="button" class="cur2-btn" :disabled="disabled" :aria-expanded="open ? 'true' : 'false'" aria-haspopup="listbox" :aria-label="label + ': ' + current.name" @click="toggle" @keydown="btnKey">
+        <span class="cur2-badge">{{ current.symbol }}</span>
+        <span class="cur2-main"><b>{{ current.code }}</b><small v-if="!compact">{{ current.name }}</small></span>
+        <svg class="cur2-chev" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <teleport to="body"><transition name="cur2-pop">
+        <div v-if="open" ref="panel" class="cur2-panel" :class="{ up: pos.up }" :style="{ left: pos.left + 'px', top: pos.top + 'px', width: pos.width + 'px', maxHeight: pos.maxH + 'px' }" @keydown="key">
+          <div class="cur2-search"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path stroke-linecap="round" d="M20 20l-4-4"/></svg>
+            <input ref="search" v-model="q" type="search" placeholder="Search currency" autocomplete="off" aria-label="Search currency" @keydown="key" /></div>
+          <div class="cur2-list" role="listbox" :aria-label="label">
+            <template v-for="g in groups" :key="g.label">
+              <p class="cur2-group">{{ g.label }}</p>
+              <button v-for="c in g.list" :key="c.code" type="button" role="option" :data-i="flatIndex(c)" class="cur2-opt" :class="{ on: c.code === current.code, hl: flatIndex(c) === idx }" :aria-selected="c.code === current.code ? 'true' : 'false'" @click="pick(c)" @mousemove="idx = flatIndex(c)">
+                <span class="cur2-badge">{{ c.symbol }}</span>
+                <span class="cur2-main"><b>{{ c.code }}</b><small>{{ c.name }}</small></span>
+                <svg v-if="c.code === current.code" class="cur2-tick" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+              </button>
+            </template>
+            <p v-if="!flat.length" class="cur2-empty">No currency matches “{{ q }}”.</p>
+          </div>
+        </div>
+      </transition></teleport>
+    </div>`,
   };
 
   /** Where to go after Google or email sign-in: a brand-new account picks a profile picture first. */
@@ -1524,6 +1589,30 @@
       .catch((err) => { console.error('Sign-out dialog failed:', err); return window.confirm('Sign out?'); })
       .then((ok) => { if (ok) form.submit(); });
   }, true);
+
+  // Smooth open/close for every <details class="acc"> (settings, payment methods…): the body's height and opacity are
+  // animated; the native `open` flips at the start (open) or at the end (close). Reduced motion keeps the instant toggle.
+  document.addEventListener('click', (e) => {
+    const sum = e.target.closest && e.target.closest('details.acc > summary');
+    if (!sum || e.target.closest('a, button, input, select, label')) return;
+    const d = sum.parentElement, body = d.querySelector(':scope > .acc-body');
+    if (!body || !body.animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    e.preventDefault();
+    d._acc?.cancel();
+    body.style.overflow = 'hidden';
+    const done = () => { body.style.overflow = ''; d.classList.remove('acc-closing'); d._acc = null; };
+    if (d.open) {
+      d.classList.add('acc-closing');
+      d._acc = body.animate([{ height: body.offsetHeight + 'px', opacity: 1 }, { height: '0px', opacity: 0 }], { duration: 240, easing: 'cubic-bezier(.4,0,.2,1)' });
+      d._acc.onfinish = () => { d.open = false; done(); };
+      d._acc.oncancel = done;
+    } else {
+      d.open = true;
+      d._acc = body.animate([{ height: '0px', opacity: 0 }, { height: body.scrollHeight + 'px', opacity: 1 }], { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      d._acc.onfinish = done;
+      d._acc.oncancel = done;
+    }
+  });
 
   global.Setlo = { mount, run, load, useCurrency, allocate, roundShares, convertShares, currencies: CURRENCIES, homeCurrency: global.SETLO_HOME_CURRENCY || 'PHP', confirm: confirmDialog, alert: alertDialog, promptText, showCopy, escapeHtml, payLink, isLocalLink, parsePayQr, decodeQr, qrCard, qrSvg, qrPng, showPayQr, groupByReceipt, toggleArchive, afterSignUp, cropPhoto, captureCamera, compressImage, photoViewer, confetti, showAchievements, showAchievement: (a) => achievementModal(a, { reopened: true }), ...helpers };
 })(window);
