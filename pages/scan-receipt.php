@@ -63,7 +63,7 @@ require __DIR__ . '/../partials/head.php';
       <canvas ref="overlay" v-show="state === 'camera'" class="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true"></canvas>
       <div v-if="state === 'camera'" class="absolute inset-x-0 bottom-4 flex flex-wrap justify-center gap-1.5 px-3" role="status" aria-live="polite">
         <span v-if="guide.outline !== 'off'" class="vf-chip" :class="guide.outline === 'loading' ? '' : guide.found ? '!bg-emerald-500/80' : '!bg-amber-500/85'">
-          {{ guide.outline === 'loading' ? '… Finding edges' : guide.found ? (guide.sides ? '▯ Receipt sides found' : guide.count > 1 ? '▭ ' + guide.count + ' receipts found' : '▭ Receipt found') : '▭ No receipt in frame' }}
+          {{ guide.outline === 'loading' ? '… Finding edges' : guide.found ? (guide.sides ? '▯ Receipt edges found' : guide.count > 1 ? '▭ ' + guide.count + ' receipts found' : '▭ Receipt found') : '▭ No receipt in frame' }}
         </span>
         <span v-if="guide.light" class="vf-chip" :class="guide.light === 'ok' ? '!bg-emerald-500/80' : '!bg-amber-500/85'">{{ lightLabel[guide.light] }}</span>
         <span v-if="guide.light" class="vf-chip" :class="guide.sharp ? '!bg-emerald-500/80' : '!bg-amber-500/85'">{{ guide.sharp ? '✓ Sharp' : '≋ Blurry' }}</span>
@@ -214,7 +214,7 @@ Setlo.mount({
       if (g.outline === 'on' && !g.stable) return { title: many ? g.count + ' receipts — hold steady…' : 'Hold steady…', text: 'Almost there.' };
       if (many) return { title: g.count + ' receipts in view — tap Capture', text: 'Each one is saved as its own receipt on this bill.', ready: true };
       const text = g.outline === 'on'
-        ? (g.sides ? 'The photo will be cropped to the receipt’s left and right edges.' : 'The photo will be cropped to the green outline.')
+        ? (g.sides ? 'The photo will be cropped to the receipt’s two long edges.' : 'The photo will be cropped to the green outline.')
         : g.outline === 'loading' ? 'Loading receipt detection… you can capture already.' : 'Item names, prices, tax and total should be clearly visible.';
       return { title: 'Ready — tap Capture', text, ready: true };
     },

@@ -134,17 +134,27 @@ function gemini_image_part(string $path): array
     $info = @getimagesizefromstring($bytes);
     $mime = $info['mime'] ?? 'image/jpeg';
 
-    if ($info && extension_loaded('gd') && max($info[0], $info[1]) > GEMINI_IMAGE_MAX_EDGE) {
-        $img = @imagecreatefromstring($bytes);
+    if ($info && extension_loaded('gd')) {
+        // Re-encoding drops EXIF, so the camera's orientation is applied first: when the photo is scaled down, and
+        // also when it is small but turned (a phone photo of a sideways receipt).
+        $orientation = $mime === 'image/jpeg' && function_exists('exif_read_data') ? (int) (@exif_read_data($path)['Orientation'] ?? 1) : 1;
+        $big = max($info[0], $info[1]) > GEMINI_IMAGE_MAX_EDGE;
+        $img = $big || $orientation > 1 ? @imagecreatefromstring($bytes) : false;
         if ($img) {
-            // Re-encoding drops EXIF, so apply the camera's orientation first.
-            $orientation = $mime === 'image/jpeg' && function_exists('exif_read_data') ? (int) (@exif_read_data($path)['Orientation'] ?? 1) : 1;
-            $angle = [3 => 180, 6 => -90, 8 => 90][$orientation] ?? 0;
+            // 2, 4, 5, 7 are mirrored: flip first, then turn (EXIF: 5 = mirror + 270° clockwise, 7 = mirror + 90° clockwise).
+            if (in_array($orientation, [2, 5, 7], true)) {
+                imageflip($img, IMG_FLIP_HORIZONTAL);
+            } elseif ($orientation === 4) {
+                imageflip($img, IMG_FLIP_VERTICAL);
+            }
+            $angle = [3 => 180, 5 => 90, 6 => -90, 7 => -90, 8 => 90][$orientation] ?? 0;
             if ($angle) {
                 $img = imagerotate($img, $angle, 0);
             }
-            $scale = GEMINI_IMAGE_MAX_EDGE / max(imagesx($img), imagesy($img));
-            $img = imagescale($img, (int) round(imagesx($img) * $scale), (int) round(imagesy($img) * $scale));
+            if ($big) {
+                $scale = GEMINI_IMAGE_MAX_EDGE / max(imagesx($img), imagesy($img));
+                $img = imagescale($img, (int) round(imagesx($img) * $scale), (int) round(imagesy($img) * $scale));
+            }
             ob_start();
             imagejpeg($img, null, 85);
             $bytes = (string) ob_get_clean();

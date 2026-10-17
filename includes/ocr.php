@@ -10,6 +10,9 @@ const RECEIPT_PROMPT = <<<'TXT'
 You are reading photos of restaurant or food receipts. Most are from the Philippines (pesos), but they can be from
 any country, in any currency. Copy amounts exactly as printed; never convert them.
 
+The photo may be turned: a receipt lying landscape, sideways or upside down. Read it in its correct orientation
+and ignore the rotation; do not skip a receipt because its text runs sideways.
+
 Return receipts: one entry per separate receipt you can see. If a photo shows two or more receipts side by side
 or overlapping, return each one separately; never combine two receipts into one. For each receipt:
 - currency: the ISO 4217 code of the amounts (PHP, JPY, USD, KRW, EUR, SGD, HKD, TWD, CNY, THB, VND, IDR, MYR...).

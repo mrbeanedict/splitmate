@@ -14,8 +14,9 @@
   const FLAT_VAR = 25;       // brightness variance below this means nothing to judge (blank wall, plain paper)
   const STABLE_FRAMES = 4;   // the outline must hold still over this many frames
   const STABLE_DRIFT = 0.03; // ... moving its corners less than this share of the frame diagonal
-  // A long receipt often runs past the top or bottom of the frame, so its outline never closes. Then its left and
-  // right edges are looked for instead: two long, near-vertical, near-parallel lines.
+  // A long receipt often runs past the top or bottom of the frame (or the left and right, held sideways), so its
+  // outline never closes. Then its two long edges are looked for instead: two long, near-parallel lines, near-vertical
+  // for an upright receipt, near-horizontal for a sideways one (the search is run on the transposed image).
   const SIDE_MIN_LEN = 0.3;  // each side line covers at least this share of the frame height
   const SIDE_SLANT = 0.27;   // at most this much sideways per unit down (≈15° off vertical)
   const SIDE_PARALLEL = 0.1; // the two sides' slants differ by at most this
@@ -112,11 +113,28 @@
       if (top < SIDE_TO_EDGE * h) top = 0;
       if (bottom > (1 - SIDE_TO_EDGE) * h) bottom = h - 1;
       const at = (s, y) => ({ x: Math.min(w - 1, Math.max(0, s.x1 + s.slope * (y - s.y1))), y });
-      return [at(l, top), at(r, top), at(r, bottom), at(l, bottom)];
+      return { quad: [at(l, top), at(r, top), at(r, bottom), at(l, bottom)], len: bestLen };
     } catch (e) {
       return null;
     } finally {
       lines.delete();
+    }
+  }
+
+  /**
+   * findSides() for a receipt held sideways: its top and bottom edges are near-horizontal, so look for them in the
+   * transposed edge image and swap the corners' x and y back.
+   */
+  function findSidesSideways(cv, edges, w, h) {
+    const t = new cv.Mat();
+    try {
+      cv.transpose(edges, t);
+      const found = findSides(cv, t, h, w);
+      return found && { quad: order(found.quad.map((p) => ({ x: p.y, y: p.x }))), len: found.len };
+    } catch (e) {
+      return null;
+    } finally {
+      t.delete();
     }
   }
 
@@ -198,7 +216,10 @@
         return { quads: found.slice(0, MAX_RECEIPTS).map((f) => f.quad), sides: false };
       }
       // Between the two side lines there must be paper too (not the edges of a dark screen or doorway).
-      const sides = findSides(cv, soft, img.width, img.height);
+      // Upright (left and right edges) or sideways (top and bottom edges): whichever pair of lines is longer.
+      const upright = findSides(cv, soft, img.width, img.height), sideways = findSidesSideways(cv, soft, img.width, img.height);
+      const best = upright && sideways ? (sideways.len > upright.len ? sideways : upright) : upright || sideways;
+      const sides = best && best.quad;
       return sides && meanIn(gray, img.width, boxOf([sides], img.width, img.height)) >= Math.max(90, frameMean)
         ? { quads: [sides], sides: true } : null;
     } catch (e) {
