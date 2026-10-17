@@ -20,7 +20,7 @@ if (method() === 'GET' && isset($_GET['received'])) {
          WHERE qp.to_user_id = ? AND qp.status = 'paid' AND qp.amount > qp.applied ORDER BY qp.paid_at DESC, qp.id DESC LIMIT 30",
         [$me['id']]
     )->fetchAll(PDO::FETCH_NUM);
-    json_ok(['received' => array_map(fn ($r) => [
+    json_ok(['balance' => wallet_cents((int) $me['id']) / 100, 'received' => array_map(fn ($r) => [
         'id'       => (int) $r[0],
         'amount'   => (float) $r[1],
         'currency' => $r[2],
@@ -290,7 +290,10 @@ if (method() === 'POST') {
                     }
                 }
                 if ($applied['left_over'] > 0) {
-                    notify((int) $u['id'], 'paid', first_name($me['full_name']) . ' sent you ' . money_str($applied['left_over'], $row['currency']) . " via $via through your Pay-me QR" . ($row['note'] ? " — “{$row['note']}”" : '') . '.', 'payment-methods');
+                    if (($row['currency'] ?? 'PHP') === 'PHP') {
+                        wallet_credit((int) $u['id'], $applied['left_over'], (int) $row['id']);
+                    }
+                    notify((int) $u['id'], 'paid', first_name($me['full_name']) . ' sent you ' . money_str($applied['left_over'], $row['currency']) . " via $via through your Pay-me QR (added to your wallet)" . ($row['note'] ? " — “{$row['note']}”" : '') . '.', 'payment-methods');
                 }
             }
             json_ok(['done' => true, 'amount' => (float) $row['amount'], 'via' => $via, 'note' => $row['note'], 'id' => (int) $row['id'],

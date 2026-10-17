@@ -6,7 +6,7 @@ Setlo.mount({
   data: () => ({
     loading: true, busy: false, busyAch: false, p: null, money: null, ach: null, canShare: !!navigator.share,
     presets: [], picking: false,
-    cardShowAcct: false, received: [], receivedLoaded: false,
+    cardShowAcct: false, received: [], receivedLoaded: false, walletBalance: 0,
     theme: SetloTheme.get(), accents: SetloTheme.ACCENTS, hexDraft: SetloTheme.get().custom,
     // Line icons for the Mode and Background buttons (24×24, stroke = the button's text colour)
     icons: {
@@ -199,7 +199,7 @@ Setlo.mount({
     },
     /** Money friends sent through my QR (Payment Methods page). */
     async loadReceived() {
-      try { this.received = (await api.get('pay.php', { received: 1 })).received; } catch (e) { /* the list just stays empty */ }
+      try { const r = await api.get('pay.php', { received: 1 }); this.received = r.received; this.walletBalance = r.balance || 0; } catch (e) { /* the list just stays empty */ }
       this.receivedLoaded = true;
     },
     /** My shareable "Pay me" card (PNG). The number is on it only if I ticked the box: the image can be sent to anyone. */

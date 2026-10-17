@@ -466,6 +466,23 @@ $steps = [
        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, cookie_id CHAR(32) NOT NULL, ip_hash CHAR(64) NOT NULL,
        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX (cookie_id, created_at), INDEX (ip_hash, created_at)
      ) ENGINE=InnoDB',
+    // Wallet: money friends sent through my Pay-me QR that wasn't needed for their debts (api/pay.php send_check) is a balance
+    // I can spend on my own debts (api/settlements.php pay_wallet). amount is signed: + received, - spent. The balance is the sum.
+    "CREATE TABLE IF NOT EXISTS wallet_entries (
+       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT UNSIGNED NOT NULL, amount DECIMAL(10,2) NOT NULL,
+       kind ENUM('received','spent') NOT NULL, qr_payment_id INT UNSIGNED NULL UNIQUE, payment_id INT UNSIGNED NULL,
+       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+       FOREIGN KEY (qr_payment_id) REFERENCES qr_payments(id) ON DELETE SET NULL,
+       FOREIGN KEY (payment_id) REFERENCES settlement_payments(id) ON DELETE SET NULL,
+       INDEX (user_id)
+     ) ENGINE=InnoDB",
+    "ALTER TABLE settlement_payments MODIFY method ENUM('online','transfer','cash','credit','wallet') NOT NULL",
+    "ALTER TABLE settlements MODIFY settle_method ENUM('online','transfer','cash','credit','wallet','mixed') NULL",
+    // Money received before the wallet existed becomes its starting balance (once per payment: qr_payment_id is unique)
+    "INSERT IGNORE INTO wallet_entries (user_id, amount, kind, qr_payment_id, created_at)
+       SELECT to_user_id, amount - applied, 'received', id, paid_at FROM qr_payments
+       WHERE status = 'paid' AND currency = 'PHP' AND amount > applied",
 ];
 $hadTour = (bool) db()->query("SHOW COLUMNS FROM users LIKE 'onboarded_at'")->fetch();
 foreach ($steps as $sql) {

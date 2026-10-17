@@ -112,7 +112,7 @@ Setlo.mount({
     groupId: <?= $groupId ?>, me: <?= (int) $user['id'] ?>, loading: true, busy: false,
     g: null, members: [], bills: [], trail: [], open: 0, search: '', results: [], timer: null,
     tab: 'trail', tabs: [{ key: 'trail', label: 'Payments' }, { key: 'bills', label: 'Bills' }, { key: 'people', label: 'People' }],
-    methodName: { online: 'Online', transfer: 'Transfer', cash: 'Cash', credit: 'Kept change' },
+    methodName: { online: 'Online', transfer: 'Transfer', cash: 'Cash', credit: 'Kept change', wallet: 'Wallet' },
     statusName: { confirmed: 'Received', awaiting: 'Waiting', rejected: 'Rejected' },
     statusTone: { confirmed: 'text-emerald-600', awaiting: 'text-blue-600', rejected: 'text-red-600' },
   }),

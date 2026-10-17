@@ -436,7 +436,7 @@ Setlo.mount({
     paidPct(s) { return s.amount > 0 ? Math.min(100, Math.round(100 * s.paid_amount / s.amount)) : 0; },
     methodLabel(p) {
       if (p.method === 'online') return 'Online' + (p.online_via ? ' (' + p.online_via + ')' : '');
-      return { transfer: 'Bank/e-wallet transfer', cash: 'Cash', credit: 'Credit' }[p.method] || p.method;
+      return { transfer: 'Bank/e-wallet transfer', cash: 'Cash', credit: 'Credit', wallet: 'Wallet' }[p.method] || p.method;
     },
     settleName(id) {
       const s = this.detail.settlements.find((x) => x.id === id);

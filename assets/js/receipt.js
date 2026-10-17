@@ -5,7 +5,7 @@
   const PAD = 40;
   const FONT = '"Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif';
   const peso = (n, cur) => global.Setlo.peso(n, cur || 'PHP'); // a payment's receipt is in its debt's currency (r.currency)
-  const METHOD = { online: 'Online via PayMongo', transfer: 'Transfer', cash: 'Cash, in person', credit: 'Kept change from earlier cash' };
+  const METHOD = { online: 'Online via PayMongo', transfer: 'Transfer', cash: 'Cash, in person', credit: 'Kept change from earlier cash', wallet: 'Paid from wallet' };
   const when = (s) => new Date(String(s).replace(' ', 'T')).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
   function text(ctx, str, x, y, { size = 20, weight = 600, color = '#0f172a', align = 'left', max } = {}) {
@@ -76,7 +76,7 @@
       text(ctx, row[1], W - PAD - 6, y, { size: 18, weight: 700, align: 'right', max: W - PAD * 2 - 200 });
       y += ROW;
     }
-    const by = r.method === 'online' ? 'Verified by PayMongo' : 'Confirmed by ' + r.to.name.split(' ')[0];
+    const by = r.method === 'online' ? 'Verified by PayMongo' : r.method === 'wallet' ? 'Paid from wallet, counted automatically' : 'Confirmed by ' + r.to.name.split(' ')[0];
     text(ctx, by + ' · recorded on Setlo', W / 2, cardBottom + 28, { size: 14, weight: 600, color: '#94a3b8', align: 'center' });
     return canvas;
   }

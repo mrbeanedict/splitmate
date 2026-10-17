@@ -102,6 +102,11 @@ require __DIR__ . '/../partials/head.php';
     <details class="tile acc">
       <summary><span><span class="acc-title">Received via your QR</span><span class="acc-sub">Money friends sent you</span></span><svg class="acc-chev" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg></summary>
       <div class="acc-body">
+        <div class="mb-3 rounded-2xl bg-emerald-50 px-4 py-3">
+          <p class="text-[11px] font-bold uppercase tracking-wide text-emerald-700">My wallet</p>
+          <p class="text-[22px] font-extrabold text-ink">{{ peso(walletBalance, 'PHP') }}</p>
+          <p class="text-[12px] text-slate-500">Money friends sent that isn’t needed for what they owed you. Use it to pay your own debts: tap Pay in My Settlements, then “Pay from my wallet”.</p>
+        </div>
         <p v-if="!received.length" class="text-[13px] text-slate-400">{{ receivedLoaded ? 'Nothing yet. When a friend sends money through your QR, it shows up here.' : 'Loading…' }}</p>
         <div v-else class="divide-y divide-slate-100">
           <div v-for="r in received" :key="r.id" class="flex items-center gap-3 py-2.5">

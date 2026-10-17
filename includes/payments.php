@@ -30,6 +30,22 @@ function open_cents(array $s): int
     return max(0, cents($s['amount']) - cents($s['paid_amount']) - $awaiting);
 }
 
+// ---------- Wallet ----------
+// Money friends sent through my Pay-me QR that wasn't needed for their own debts to me is my wallet balance
+// (wallet_entries, signed; the balance is their sum). It pays my own debts instantly (api/settlements.php pay_wallet).
+
+/** My wallet balance in cents. $lock: also lock my entries until the transaction ends (use it when spending). */
+function wallet_cents(int $userId, bool $lock = false): int
+{
+    return (int) round(100 * (float) q('SELECT COALESCE(SUM(amount), 0) FROM wallet_entries WHERE user_id = ?' . ($lock ? ' FOR UPDATE' : ''), [$userId])->fetchColumn());
+}
+
+/** Add money someone sent me through my QR to my wallet; counted once per QR payment. */
+function wallet_credit(int $userId, int $cents, int $qrPaymentId): void
+{
+    q("INSERT IGNORE INTO wallet_entries (user_id, amount, kind, qr_payment_id) VALUES (?, ?, 'received', ?)", [$userId, pesos($cents), $qrPaymentId]);
+}
+
 /** A payment part of a settlement in the given status. Without an id: the latest one (older clients send none). */
 function load_payment(int $settlementId, ?int $paymentId, string $status): array
 {

@@ -134,7 +134,7 @@ require __DIR__ . '/../partials/head.php';
       <p class="text-[19px] font-extrabold text-ink">Sent!</p>
       <p class="mt-1 text-[13px] text-slate-600">You sent {{ p.first }} {{ peso(sent.amount, 'PHP') }} via {{ sent.via }}<span v-if="sent.note"> — “{{ sent.note }}”</span>. {{ p.first }} has been told.</p>
       <p v-for="d in sent.debts" :key="d.bill" class="mt-1 text-[12.5px] font-semibold text-emerald-700">{{ peso(d.amount, 'PHP') }} counted toward {{ d.bill }}<span v-if="d.left > 0"> · {{ peso(d.left, 'PHP') }} left</span><span v-else> · paid in full</span></p>
-      <p v-if="sent.applied > 0 && sent.left_over > 0" class="mt-1 text-[12.5px] text-slate-500">The other {{ peso(sent.left_over, 'PHP') }} went to {{ p.first }} as a plain transfer.</p>
+      <p v-if="sent.applied > 0 && sent.left_over > 0" class="mt-1 text-[12.5px] text-slate-500">The other {{ peso(sent.left_over, 'PHP') }} went to {{ p.first }}’s wallet.</p>
       <button type="button" class="btn btn-primary mt-4 w-full" @click="sent = null">Done</button>
     </div>
     <div v-else-if="sendNotYet" class="tile !border-amber-300 !bg-amber-50 p-4 text-center">

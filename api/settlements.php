@@ -354,6 +354,58 @@ switch (input('action', '')) {
         $pdo->commit();
         break;
 
+    case 'pay_wallet':
+        // Pays this part from my wallet balance (money friends sent through my Pay-me QR). Counted at once: the
+        // receiver doesn't need to confirm, like an online payment.
+        if ((int) $s['from_user_id'] !== $me['id']) {
+            fail('Only the person who owes can pay this from their wallet.', 403);
+        }
+        if (($s['currency'] ?? 'PHP') !== 'PHP') {
+            fail("Your wallet holds pesos, and this debt is in {$s['currency']}. Send it another way and mark it paid.", 422);
+        }
+        $pdo->beginTransaction();
+        try {
+            $locked = lock_settlement($id);
+            if (!in_array($locked['status'], ['pending', 'awaiting'], true)) {
+                fail('This settlement isn’t waiting for payment.', 409);
+            }
+            $balance = wallet_cents((int) $me['id'], true);
+            if ($balance < 100) {
+                fail('Your wallet is empty. Money friends send through your Pay-me QR shows up here.', 409);
+            }
+            $raw = input('amount');
+            if ($raw === null || $raw === '') {
+                $cents = min(open_cents($locked), $balance); // everything the wallet can cover
+                if ($cents <= 0) {
+                    fail('Nothing is left to pay right now — a payment is already waiting for confirmation.', 409);
+                }
+                if ($cents < min(100, open_cents($locked))) {
+                    fail('Pay at least ' . s_money($s, 100) . '.', 422);
+                }
+            } else {
+                $cents = part_cents($locked);
+                if ($cents > $balance) {
+                    fail('Your wallet has ' . s_money($s, $balance) . '.', 422, ['fields' => ['amount' => 'At most ' . s_money($s, $balance) . '.']]);
+                }
+            }
+            $paymentId = add_payment($locked, (int) $me['id'], $cents, 'wallet', 'awaiting');
+            q("INSERT INTO wallet_entries (user_id, amount, kind, payment_id) VALUES (?, ?, 'spent', ?)", [$me['id'], -pesos($cents), $paymentId]);
+            $row = q('SELECT * FROM settlement_payments WHERE id = ?', [$paymentId])->fetch();
+            log_event($id, $me['id'], 'marked_paid', "$myName paid " . part_words($cents, $locked) . " from their Setlo wallet.");
+            confirm_payment($locked, $row, null);
+            $after = q('SELECT amount, paid_amount FROM settlements WHERE id = ?', [$id])->fetch();
+            $left = max(0, cents($after['amount']) - cents($after['paid_amount']));
+            log_event($id, null, 'confirmed', 'Counted automatically from the wallet.' . ($left > 0 ? '' : ' Settlement closed.'));
+            notify((int) $s['to_user_id'], 'confirmed', "$myName paid you " . s_money($s, $cents) . " from their wallet for {$s['bill_name']}. Counted automatically.", 'settlement-audit?id=' . $id);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+        break;
+
     case 'pay_online':
         // Opens a PayMongo checkout page for this part; it counts only after PayMongo confirms payment (check_online).
         if (!$isSender && !$covering) {
