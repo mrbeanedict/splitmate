@@ -5,8 +5,18 @@ $user = require_login();
 $title = 'My Settlements';
 $nav = 'settle';
 $back = 'dashboard.php';
+$headExtra = ['assets/css/print.css'];
 require __DIR__ . '/../partials/head.php';
 ?>
+<style>
+  /* Choose which debts to print */
+  .sel-check { flex: none; width: 18px; height: 18px; margin-top: 9px; accent-color: rgb(var(--brand-600)); cursor: pointer; }
+  .sel-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 8px 12px; border-radius: 14px; background: rgb(var(--brand-50)); font-size: 13px; font-weight: 600; color: rgb(var(--brand-800, 17 94 89)); }
+  html.dark .sel-bar { background: rgb(var(--brand-900) / .4); color: rgb(var(--brand-200)); }
+  .sel-bar label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+  .sel-bar button { border: 0; background: none; padding: 4px 6px; font: inherit; font-weight: 800; color: inherit; cursor: pointer; text-decoration: underline; }
+  .sel-bar .sel-print { text-decoration: none; padding: 7px 14px; border-radius: 999px; background: rgb(var(--brand-600)); color: #fff; }
+</style>
 <div id="app" class="device" v-cloak>
 
   <div class="app-hero px-5 pb-5 pt-8">
@@ -28,6 +38,12 @@ require __DIR__ . '/../partials/head.php';
       <p class="text-sm font-bold text-ink">{{ tab === 'owe' ? "You don't owe anyone" : 'Nobody owes you' }}</p>
       <p class="mt-1 text-[12px] text-slate-400">Settlements appear once a bill's split is confirmed.</p>
     </div>
+    <div v-if="!loading && (list.length || cover.length)" class="sel-bar" role="group" aria-label="Choose debts to print">
+      <label><input type="checkbox" class="sel-check !mt-0" :checked="allSelected" :indeterminate.prop="someSelected && !allSelected" @change="allSelected ? clearSel() : selectAll()" /> Select all</label>
+      <span v-if="selectedCount">{{ selectedCount }} selected</span>
+      <span v-else class="font-medium opacity-80">Tick debts to print only those</span>
+      <span v-if="selectedCount"><button type="button" @click="clearSel">Clear</button> <button type="button" class="sel-print" @click="printList">🖨 Print selected</button></span>
+    </div>
     <p v-if="q.trim() && !loading && !sections.length" class="tile p-5 text-center text-[13px] text-slate-400">Nothing matches “{{ q.trim() }}”.</p>
     <section v-for="sec in sections" :key="sec.key">
       <div v-if="sec.title" class="mb-2 flex items-baseline justify-between gap-2 px-1">
@@ -37,6 +53,7 @@ require __DIR__ . '/../partials/head.php';
       <div class="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0">
     <div v-for="s in sec.items" :key="s.id" class="tile p-3.5" :class="{ '!border-red-200 ring-1 ring-red-100': s.status === 'disputed', 'tile-muted': s.status === 'settled' }">
       <div class="flex items-start gap-3">
+        <input type="checkbox" class="sel-check" :checked="isSel(s)" @change="toggleSel(s)" :aria-label="'Select ' + other(s).name + ' · ' + s.bill_name + ' for printing'" />
         <button @click="showPerson(other(s).id)" class="shrink-0 rounded-full" :aria-label="'About ' + other(s).name"><avatar :user="other(s)" :size="36"></avatar></button>
         <div class="min-w-0 flex-1">
           <button @click="showPerson(other(s).id)" class="block max-w-full truncate text-left text-sm font-semibold hover:underline">{{ tab === 'owe' ? (s.from.is_guest ? s.from.first + ' → ' + s.to.name : 'To ' + s.to.name) : 'From ' + s.from.name }}</button>
@@ -165,6 +182,7 @@ require __DIR__ . '/../partials/head.php';
       <div class="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0">
         <div v-for="s in cover" :key="'c' + s.id" class="tile p-3.5">
           <div class="flex items-center gap-3">
+            <input type="checkbox" class="sel-check !mt-0" :checked="isSel(s)" @change="toggleSel(s)" :aria-label="'Select ' + s.from.name + ' · ' + s.bill_name + ' for printing'" />
             <button @click="showPerson(s.from.id)" class="shrink-0 rounded-full" :aria-label="'About ' + s.from.name"><avatar :user="s.from" :size="32"></avatar></button>
             <div class="min-w-0 flex-1">
               <button @click="showPerson(s.from.id)" class="block max-w-full truncate text-left text-sm font-semibold hover:underline">{{ s.from.first }} → {{ s.to.id === me ? 'you' : s.to.first }}</button>
@@ -185,6 +203,47 @@ require __DIR__ . '/../partials/head.php';
   </div>
 
   <?php require __DIR__ . '/../partials/nav.php'; ?>
+
+  <!-- Printed copy of every debt, with the receipt items behind each (hidden on screen; assets/css/print.css) -->
+  <div class="print-report" aria-hidden="true">
+    <header>
+      <img src="<?= h(url('assets/mascot/read.png')) ?>" alt="" />
+      <div>
+        <h1>Setlo · Debts report</h1>
+        <p class="meta"><?= h($user['full_name'] ?? '') ?> · Printed {{ printedOn }}<span v-if="selectedCount"> · {{ selectedCount }} selected {{ selectedCount === 1 ? 'debt' : 'debts' }}</span></p>
+      </div>
+    </header>
+    <p v-if="!printGroups.length" class="meta">Nothing to print.</p>
+    <template v-for="g in printGroups" :key="g.key">
+      <h2>{{ g.title }} ({{ g.items.length }})</h2>
+      <table>
+        <thead><tr><th>{{ g.key === 'owed' ? 'From' : 'To' }}</th><th>Bill</th><th>Date</th><th>Status</th><th class="num">Amount</th><th class="num">Paid</th><th class="num">Left</th></tr></thead>
+        <tbody>
+          <template v-for="s in g.items" :key="s.id">
+            <tr :class="{ 'has-items': s.items }">
+              <td>{{ g.key === 'owed' ? s.from.name : g.key === 'cover' ? s.from.first + ' → ' + s.to.first : s.to.name }}</td>
+              <td>{{ s.bill_name }}<span v-if="s.bill_kind === 'loan'" class="sub"> · utang</span><span v-if="s.interest_rate" class="sub"> · {{ s.interest_rate }}% per partial payment</span></td>
+              <td>{{ fmtDate(s.created_at, true) }}</td>
+              <td>{{ printStatus(s) }}</td>
+              <td class="num">{{ peso(s.amount, s.currency) }}</td>
+              <td class="num">{{ peso(s.paid_amount, s.currency) }}</td>
+              <td class="num">{{ peso(s.status === 'settled' ? 0 : s.remaining, s.currency) }}</td>
+            </tr>
+            <tr v-if="s.items" class="items-row">
+              <td colspan="7">
+                <p class="sub items-title">{{ g.key === 'owed' ? s.from.first + ' ordered' : g.key === 'cover' ? s.from.first + ' ordered' : 'You ordered' }} (receipt items)</p>
+                <p v-for="(it, i) in s.items.lines" :key="i" class="item-line">
+                  <span>{{ it.qty }}× {{ it.name }}<span v-if="it.shared_by > 1" class="sub"> · shared by {{ it.shared_by }}</span></span>
+                  <b>{{ peso(it.portion !== null ? it.portion : it.line_total, s.items.currency) }}</b>
+                </p>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </template>
+    <footer>Generated by Setlo — split bills, settle utang.</footer>
+  </div>
 
   <div v-if="paying" class="sheet-backdrop" @click.self="paying = null">
     <form class="sheet" @submit.prevent="submitPay">
@@ -342,7 +401,7 @@ Setlo.mount({
     me: <?= (int) $user['id'] ?>, loading: true, busy: false, tab: new URLSearchParams(location.search).get('tab') === 'owed' ? 'owed' : 'owe',
     q: '', owe: [], owed: [], cover: [], rejecting: null, reason: '',
     paying: null, covering: false, payBack: true, payAmount: '', cashing: null, extraMode: 'change', cashMembers: [], cashPayer: '', cashPayBack: true,
-    payRef: '', proofs: [], maxProofs: 5, viewer: null,
+    payRef: '', proofs: [], maxProofs: 5, viewer: null, selected: [],
     online: { enabled: <?= paymongo_available() ? 'true' : 'false' ?>, test: <?= paymongo_test_mode() ? 'true' : 'false' ?>, min: <?= PAYMONGO_MIN_CENTS ?> },
     methodLabel: { online: 'Paid online · verified by PayMongo', transfer: 'Paid by transfer · confirmed by receiver', cash: 'Paid in cash · settled by receiver', credit: 'Paid from kept change (extra cash)', mixed: 'Paid in parts, several ways' },
     methodName: { online: 'Online', transfer: 'Transfer', cash: 'Cash', credit: 'Kept change' },
@@ -364,6 +423,22 @@ Setlo.mount({
         { key: 'done', title: 'Past settlements', hint: 'Archive a closed bill to clear it from here', items: done },
       ].filter((sec) => sec.items.length);
     },
+    /** What the printed report holds: the debts I ticked, or everything (ignoring tab and search) when none are ticked. */
+    printGroups() {
+      const pick = (items) => (this.selected.length ? items.filter((s) => this.selected.includes(s.id)) : items);
+      return [
+        { key: 'owe', title: 'You owe', items: pick(this.owe) },
+        { key: 'owed', title: 'Owed to you', items: pick(this.owed) },
+        { key: 'cover', title: 'Others’ open debts you could pay for', items: pick(this.cover) },
+      ].filter((g) => g.items.length);
+    },
+    /** How many of the ticked debts still exist (a refresh can drop some). */
+    selectedCount() { return this.printGroups.reduce((n, g) => n + (this.selected.length ? g.items.length : 0), 0); },
+    /** Debts on screen now (this tab and search), plus the "pay for someone else" ones. */
+    shownDebts() { return [...this.list, ...(this.tab === 'owe' ? this.cover : [])]; },
+    allSelected() { return this.shownDebts.length > 0 && this.shownDebts.every((s) => this.selected.includes(s.id)); },
+    someSelected() { return this.shownDebts.some((s) => this.selected.includes(s.id)); },
+    printedOn() { return new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }); },
     /** The settlement in the open sheet (pay or cash). */
     current() { return this.paying || this.cashing; },
     isPart() { return !!this.current && money(this.payAmount) > 0 && money(this.payAmount) < this.current.open; },
@@ -431,6 +506,20 @@ Setlo.mount({
       this.cover = r.others_open || []; // a cached reply from before paying for others existed has none
     },
     async load() { this.fill(await api.get('settlements.php')); },
+    isSel(s) { return this.selected.includes(s.id); },
+    toggleSel(s) { const i = this.selected.indexOf(s.id); if (i >= 0) this.selected.splice(i, 1); else this.selected.push(s.id); },
+    selectAll() { this.selected = [...new Set([...this.selected, ...this.shownDebts.map((s) => s.id)])]; },
+    clearSel() { this.selected = []; },
+    printList() {
+      if (this.selected.length && !this.selectedCount) this.selected = []; // everything ticked has gone: print it all
+      this.$nextTick(() => window.print());
+    },
+    printStatus(s) {
+      if (s.status === 'settled') return 'Settled';
+      if (s.status === 'disputed') return 'Disputed';
+      if (s.status === 'awaiting') return 'Awaiting confirmation';
+      return s.paid_amount > 0 ? 'Partially paid' : 'Unpaid';
+    },
     amountLabel(s) {
       if (s.status === 'settled') return this.tab === 'owe' ? 'You paid' : 'You received';
       return this.tab === 'owe' ? 'You owe' : 'Owes you';
