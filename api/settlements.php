@@ -363,6 +363,8 @@ switch (input('action', '')) {
         if (($s['currency'] ?? 'PHP') !== 'PHP') {
             fail("Your wallet holds pesos, and this debt is in {$s['currency']}. Send it another way and mark it paid.", 422);
         }
+        // Photos attached in the pay window are saved with this payment
+        $proofs = save_uploaded_images('proofs', 'proofs', 'settlement' . $id, MAX_PROOF_PHOTOS);
         $pdo->beginTransaction();
         try {
             $locked = lock_settlement($id);
@@ -389,6 +391,7 @@ switch (input('action', '')) {
                 }
             }
             $paymentId = add_payment($locked, (int) $me['id'], $cents, 'wallet', 'awaiting');
+            store_payment_proofs($paymentId, $proofs);
             q("INSERT INTO wallet_entries (user_id, amount, kind, payment_id) VALUES (?, ?, 'spent', ?)", [$me['id'], -pesos($cents), $paymentId]);
             $row = q('SELECT * FROM settlement_payments WHERE id = ?', [$paymentId])->fetch();
             log_event($id, $me['id'], 'marked_paid', "$myName paid " . part_words($cents, $locked) . " from their Setlo wallet.");
@@ -401,6 +404,9 @@ switch (input('action', '')) {
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
+            }
+            foreach ($proofs as $file) {
+                delete_upload('proofs', $file);
             }
             throw $e;
         }

@@ -284,7 +284,7 @@ require __DIR__ . '/../partials/head.php';
       <!-- My wallet: money friends sent through my Pay-me QR, counted at once -->
       <div v-if="walletOk" class="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3.5">
         <p class="text-[13px] font-extrabold text-ink">Pay from my wallet</p>
-        <p class="mt-0.5 text-[12px] text-slate-500">You have {{ peso(wallet, 'PHP') }} from friends who paid through your Pay-me QR. Counts right away, no confirmation needed.</p>
+        <p class="mt-0.5 text-[12px] text-slate-500">You have {{ peso(wallet, 'PHP') }} from friends who paid through your Pay-me QR. Counts right away, no confirmation needed. Any photos you attach below are saved with this payment too.</p>
         <button type="button" @click="payWallet" class="btn btn-primary mt-3 w-full" :disabled="busy || walletPays < 1">Pay {{ peso(walletPays) }} from wallet</button>
       </div>
 
@@ -526,8 +526,16 @@ Setlo.mount({
     /** Pay this part from my wallet; it's counted at once. */
     async payWallet() {
       if (!this.validateAll(['amount'])) return;
-      const r = await Setlo.run(this, () => api.post('settlements.php', { action: 'pay_wallet', id: this.paying.id, amount: this.walletPays }));
-      if (r) this.paying = null;
+      let body = { action: 'pay_wallet', id: this.paying.id, amount: this.walletPays };
+      if (this.proofs.length) { // photos attached in this window are saved with the wallet payment too
+        body = new FormData();
+        body.append('action', 'pay_wallet');
+        body.append('id', this.paying.id);
+        body.append('amount', this.walletPays);
+        this.proofs.forEach((f, i) => body.append('proofs[]', f.file, f.file.name || 'proof-' + (i + 1) + '.jpg'));
+      }
+      const r = await Setlo.run(this, () => api.post('settlements.php', body));
+      if (r) { this.paying = null; this.clearProof(); }
       await this.loadWallet();
       await this.after(r, r && r.settlement.status === 'settled' ? 'Paid from your wallet · settled ✓' : 'Paid from your wallet · ' + this.peso(r ? r.settlement.remaining : 0) + ' left');
     },
