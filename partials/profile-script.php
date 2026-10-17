@@ -6,7 +6,7 @@ Setlo.mount({
   data: () => ({
     loading: true, busy: false, busyAch: false, p: null, money: null, ach: null, canShare: !!navigator.share,
     presets: [], picking: false,
-    cardShowAcct: false, received: [], receivedLoaded: false, walletBalance: 0,
+    cardShowAcct: false,
     theme: SetloTheme.get(), accents: SetloTheme.ACCENTS, hexDraft: SetloTheme.get().custom,
     // Line icons for the Mode and Background buttons (24×24, stroke = the button's text colour)
     icons: {
@@ -65,7 +65,6 @@ Setlo.mount({
   async mounted() {
     await Setlo.load(this, 'profile.php', null, (r) => { this.set(r.profile); this.money = r.money || null; this.presets = r.presets || []; });
     if (PAGE === 'profile') Setlo.load(this, 'achievements.php', null, (r) => { this.ach = r; }, 'busyAch');
-    if (PAGE === 'payments') this.loadReceived();
   },
   methods: {
     openBadge(a) { Setlo.showAchievement(a); },
@@ -196,11 +195,6 @@ Setlo.mount({
       } finally {
         this.busy = false;
       }
-    },
-    /** Money friends sent through my QR (Payment Methods page). */
-    async loadReceived() {
-      try { const r = await api.get('pay.php', { received: 1 }); this.received = r.received; this.walletBalance = r.balance || 0; } catch (e) { /* the list just stays empty */ }
-      this.receivedLoaded = true;
     },
     /** My shareable "Pay me" card (PNG). The number is on it only if I ticked the box: the image can be sent to anyone. */
     cardImage() {

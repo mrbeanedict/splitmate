@@ -6,7 +6,7 @@
   const peso = (n, cur) => global.Setlo.peso(n, cur || 'PHP');
   const esc = (s) => global.Setlo.escapeHtml(String(s ?? ''));
   const day = (s) => new Date(String(s).replace(' ', 'T')).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
-  const METHOD = { online: 'Online', transfer: 'Transfer', cash: 'Cash', credit: 'Kept change', wallet: 'Wallet' };
+  const METHOD = { online: 'Online', transfer: 'Transfer', cash: 'Cash', credit: 'Kept change' };
   const PART = { confirmed: ['Received', 'text-emerald-700'], awaiting: ['Waiting', 'text-blue-700'], rejected: ['Rejected', 'text-red-600'] };
 
   const avatar = (u, size) => u.photo

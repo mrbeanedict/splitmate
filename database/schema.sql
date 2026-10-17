@@ -5,7 +5,7 @@ CREATE DATABASE IF NOT EXISTS setlo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicod
 USE setlo;
 
 SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS wallet_entries, qr_payments, community_violations, assistant_messages, purchase_events, purchases, community_translations, community_saves, community_comments, community_reactions, community_photos, community_post_tags, community_posts, feedback, settlement_payment_proofs, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
+DROP TABLE IF EXISTS qr_payments, community_violations, assistant_messages, purchase_events, purchases, community_translations, community_saves, community_comments, community_reactions, community_photos, community_post_tags, community_posts, feedback, settlement_payment_proofs, user_activity, fx_rates, bill_fx_log, game_players, game_sessions, achievement_progress, user_achievements, user_group_members, user_groups, password_resets, login_attempts, notifications, settlement_events, credits, settlement_payments, settlements, item_assignments, receipt_items, receipt_photos, receipts, bill_payments, bill_members, bills, users;
 SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE users (
@@ -203,7 +203,7 @@ CREATE TABLE settlements (
   due_on          DATE NULL,                      -- when the person owed wants it paid by (reminders follow it)
   auto_reminded_at DATETIME NULL,                 -- last automatic reminder (tools/send-reminders.php)
   status          ENUM('pending','awaiting','settled','disputed') NOT NULL DEFAULT 'pending',
-  settle_method   ENUM('online','transfer','cash','credit','wallet','mixed') NULL, -- how it was paid: online = PayMongo, transfer = ref/screenshot, cash = receiver settled in person, wallet = from the payer's wallet balance
+  settle_method   ENUM('online','transfer','cash','credit','mixed') NULL, -- how it was paid: online = PayMongo, transfer = ref/screenshot, cash = receiver settled in person
   paid_at         DATETIME NULL,
   confirmed_at    DATETIME NULL,
   disputed_at     DATETIME NULL,
@@ -237,7 +237,7 @@ CREATE TABLE settlement_payments (
   settlement_id    INT UNSIGNED NOT NULL,
   paid_by          INT UNSIGNED NOT NULL,
   amount           DECIMAL(10,2) NOT NULL,
-  method           ENUM('online','transfer','cash','credit','wallet') NOT NULL, -- credit: paid from an earlier cash overpayment; wallet: paid from the payer's wallet balance
+  method           ENUM('online','transfer','cash','credit') NOT NULL, -- credit: paid from an earlier cash overpayment
   online_via    VARCHAR(20) NULL,                 -- online: the PayMongo channel — card, gcash, maya (or grab_pay…)
   online_detail VARCHAR(40) NULL,                 -- online card: brand and last 4 digits, e.g. "Visa •4242"
   status           ENUM('started','awaiting','confirmed','rejected') NOT NULL DEFAULT 'awaiting',
@@ -276,22 +276,6 @@ CREATE TABLE qr_payments (
   FOREIGN KEY (to_user_id)   REFERENCES users(id),
   INDEX (to_user_id, status),
   INDEX (from_user_id, status)
-) ENGINE=InnoDB;
-
--- Wallet: money sent through someone's Pay-me QR that wasn't needed for the sender's debts (api/pay.php send_check)
--- becomes their balance, spent on their own debts (api/settlements.php pay_wallet). amount is signed; balance = SUM(amount).
-CREATE TABLE wallet_entries (
-  id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  user_id       INT UNSIGNED NOT NULL,
-  amount        DECIMAL(10,2) NOT NULL,                  -- + received, - spent
-  kind          ENUM('received','spent') NOT NULL,
-  qr_payment_id INT UNSIGNED NULL UNIQUE,                -- the qr_payments row a 'received' entry came from (unique: credited once)
-  payment_id    INT UNSIGNED NULL,                       -- the settlement_payments row a 'spent' entry paid
-  created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id)       REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (qr_payment_id) REFERENCES qr_payments(id) ON DELETE SET NULL,
-  FOREIGN KEY (payment_id)    REFERENCES settlement_payments(id) ON DELETE SET NULL,
-  INDEX (user_id)
 ) ENGINE=InnoDB;
 
 -- Legacy: extra cash kept by the receiver, before it became a change utang (bills.change_payment_id).

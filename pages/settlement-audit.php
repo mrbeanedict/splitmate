@@ -108,7 +108,7 @@ Setlo.mount({
       disputed: 'bg-red-500 ring-red-100', resent: 'bg-sky-500 ring-sky-100', nudged: 'bg-slate-500 ring-slate-100',
       interest: 'bg-orange-500 ring-orange-100', covered: 'bg-violet-500 ring-violet-100', proof_added: 'bg-sky-500 ring-sky-100',
     },
-    methodName: { online: 'Online (PayMongo)', transfer: 'Transfer', cash: 'Cash', credit: 'Kept change (extra cash from earlier)', wallet: 'Wallet' },
+    methodName: { online: 'Online (PayMongo)', transfer: 'Transfer', cash: 'Cash', credit: 'Kept change (extra cash from earlier)' },
     statusName: { awaiting: 'waiting for confirmation', confirmed: 'received', rejected: 'rejected' },
   }),
   async mounted() {

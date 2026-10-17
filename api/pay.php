@@ -12,26 +12,7 @@ const QR_SEND_PER_HOUR = 10;         // checkouts one person can open in an hour
 
 $me = api_user();
 
-// The money others sent me through my Pay-me QR (Payment Methods page): GET pay.php?received=1
-if (method() === 'GET' && isset($_GET['received'])) {
-    $rows = q(
-        "SELECT qp.id, qp.amount - qp.applied, qp.currency, qp.note, qp.online_via, qp.online_detail, qp.paid_at, u.id, u.full_name, u.avatar_color, u.role
-         FROM qr_payments qp JOIN users u ON u.id = qp.from_user_id
-         WHERE qp.to_user_id = ? AND qp.status = 'paid' AND qp.amount > qp.applied ORDER BY qp.paid_at DESC, qp.id DESC LIMIT 30",
-        [$me['id']]
-    )->fetchAll(PDO::FETCH_NUM);
-    json_ok(['balance' => wallet_cents((int) $me['id']) / 100, 'received' => array_map(fn ($r) => [
-        'id'       => (int) $r[0],
-        'amount'   => (float) $r[1],
-        'currency' => $r[2],
-        'note'     => $r[3],
-        'via'      => online_via_name($r[4], $r[5]),
-        'at'       => $r[6],
-        'from'     => public_user(['id' => $r[7], 'full_name' => $r[8], 'avatar_color' => $r[9], 'role' => $r[10]]),
-    ], $rows)]);
-}
-
-$code = (string) (method() === 'GET' ? ($_GET['u'] ?? '') : input('u', ''));
+$code =(string) (method() === 'GET' ? ($_GET['u'] ?? '') : input('u', ''));
 if (!preg_match('/^[A-Za-z0-9]{12}$/', $code)) {
     fail('This Pay-me QR is not valid.', 404);
 }
@@ -290,10 +271,7 @@ if (method() === 'POST') {
                     }
                 }
                 if ($applied['left_over'] > 0) {
-                    if (($row['currency'] ?? 'PHP') === 'PHP') {
-                        wallet_credit((int) $u['id'], $applied['left_over'], (int) $row['id']);
-                    }
-                    notify((int) $u['id'], 'paid', first_name($me['full_name']) . ' sent you ' . money_str($applied['left_over'], $row['currency']) . " via $via through your Pay-me QR (added to your wallet)" . ($row['note'] ? " — “{$row['note']}”" : '') . '.', 'payment-methods');
+                    notify((int) $u['id'], 'paid', first_name($me['full_name']) . ' sent you ' . money_str($applied['left_over'], $row['currency']) . " via $via through your Pay-me QR" . ($row['note'] ? " — “{$row['note']}”" : '') . '.', 'payment-methods');
                 }
             }
             json_ok(['done' => true, 'amount' => (float) $row['amount'], 'via' => $via, 'note' => $row['note'], 'id' => (int) $row['id'],

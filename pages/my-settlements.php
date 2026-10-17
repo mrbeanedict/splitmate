@@ -281,13 +281,6 @@ require __DIR__ . '/../partials/head.php';
         <span><b class="text-ink">{{ paying.from.first }} will pay me back</b><br />{{ payBack ? 'Once ' + (paying.to.id === me ? 'you confirm' : paying.to.first + ' confirms') + ' it, ' + paying.from.first + ' owes you this amount instead.' : 'Off: it’s a treat — ' + paying.from.first + ' owes nothing back.' }}</span>
       </label>
 
-      <!-- My wallet: money friends sent through my Pay-me QR, counted at once -->
-      <div v-if="walletOk" class="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3.5">
-        <p class="text-[13px] font-extrabold text-ink">Pay from my wallet</p>
-        <p class="mt-0.5 text-[12px] text-slate-500">You have {{ peso(wallet, 'PHP') }} from friends who paid through your Pay-me QR. Counts right away, no confirmation needed. Any photos you attach below are saved with this payment too.</p>
-        <button type="button" @click="payWallet" class="btn btn-primary mt-3 w-full" :disabled="busy || walletPays < 1">Pay {{ peso(walletPays) }} from wallet</button>
-      </div>
-
       <!-- Digital, verified: PayMongo -->
       <div v-if="onlineOk" class="mt-4 rounded-2xl border border-brand-100 bg-brand-50/60 p-3.5">
         <div class="flex items-center gap-2">
@@ -411,9 +404,8 @@ Setlo.mount({
     paying: null, covering: false, payBack: true, payAmount: '', cashing: null, extraMode: 'change', cashMembers: [], cashPayer: '', cashPayBack: true,
     payRef: '', proofs: [], maxProofs: 5, viewer: null, selected: [],
     online: { enabled: <?= paymongo_available() ? 'true' : 'false' ?>, test: <?= paymongo_test_mode() ? 'true' : 'false' ?>, min: <?= PAYMONGO_MIN_CENTS ?> },
-    wallet: 0, // my wallet balance in pesos (money friends sent through my Pay-me QR)
-    methodLabel: { online: 'Paid online · verified by PayMongo', transfer: 'Paid by transfer · confirmed by receiver', cash: 'Paid in cash · settled by receiver', credit: 'Paid from kept change (extra cash)', wallet: 'Paid from the payer’s wallet', mixed: 'Paid in parts, several ways' },
-    methodName: { online: 'Online', transfer: 'Transfer', cash: 'Cash', credit: 'Kept change', wallet: 'Wallet' },
+    methodLabel: { online: 'Paid online · verified by PayMongo', transfer: 'Paid by transfer · confirmed by receiver', cash: 'Paid in cash · settled by receiver', credit: 'Paid from kept change (extra cash)', mixed: 'Paid in parts, several ways' },
+    methodName: { online: 'Online', transfer: 'Transfer', cash: 'Cash', credit: 'Kept change' },
     partStyle: { awaiting: 'bg-blue-50 text-blue-800', confirmed: 'bg-emerald-50 text-emerald-800', rejected: 'bg-red-50 text-red-700' },
   }),
   computed: {
@@ -485,13 +477,8 @@ Setlo.mount({
     onlineOk() { return this.online.enabled && !!this.paying && (this.paying.currency || 'PHP') === 'PHP'; },
     // PayMongo takes nothing below its minimum, even when that's all that's left.
     tooSmallOnline() { return !!this.paying && Math.round(money(this.payAmount) * 100) < this.online.min; },
-    /** My wallet can pay my own peso debts (not when covering for someone else). */
-    walletOk() { return !!this.paying && !this.covering && this.wallet >= 1 && (this.paying.currency || 'PHP') === 'PHP'; },
-    /** What the wallet would pay now: the amount typed, but never more than the wallet holds. */
-    walletPays() { return Math.min(money(this.payAmount), this.wallet); },
   },
   async mounted() {
-    this.loadWallet();
     await Setlo.load(this, 'settlements.php', null, (r) => { this.fill(r); });
     const params = new URLSearchParams(location.search);
     // From Bill Detail's "Pay for them".
@@ -520,25 +507,6 @@ Setlo.mount({
       this.cover = r.others_open || []; // a cached reply from before paying for others existed has none
     },
     async load() { this.fill(await api.get('settlements.php')); },
-    async loadWallet() {
-      try { this.wallet = (await api.get('pay.php', { received: 1 })).balance || 0; } catch (e) { this.wallet = 0; }
-    },
-    /** Pay this part from my wallet; it's counted at once. */
-    async payWallet() {
-      if (!this.validateAll(['amount'])) return;
-      let body = { action: 'pay_wallet', id: this.paying.id, amount: this.walletPays };
-      if (this.proofs.length) { // photos attached in this window are saved with the wallet payment too
-        body = new FormData();
-        body.append('action', 'pay_wallet');
-        body.append('id', this.paying.id);
-        body.append('amount', this.walletPays);
-        this.proofs.forEach((f, i) => body.append('proofs[]', f.file, f.file.name || 'proof-' + (i + 1) + '.jpg'));
-      }
-      const r = await Setlo.run(this, () => api.post('settlements.php', body));
-      if (r) { this.paying = null; this.clearProof(); }
-      await this.loadWallet();
-      await this.after(r, r && r.settlement.status === 'settled' ? 'Paid from your wallet · settled ✓' : 'Paid from your wallet · ' + this.peso(r ? r.settlement.remaining : 0) + ' left');
-    },
     isSel(s) { return this.selected.includes(s.id); },
     toggleSel(s) { const i = this.selected.indexOf(s.id); if (i >= 0) this.selected.splice(i, 1); else this.selected.push(s.id); },
     selectAll() { this.selected = [...new Set([...this.selected, ...this.shownDebts.map((s) => s.id)])]; },

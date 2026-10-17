@@ -220,7 +220,7 @@ function achievements_after_payment(array $s, array $p): void
     // Different methods: cash, transfer, and each online channel (GCash, Maya, card…) on its own.
     $methods = (int) q(
         "SELECT COUNT(DISTINCT IF(method = 'online', COALESCE(online_via, 'online'), method)) FROM settlement_payments
-         WHERE settlement_id = ? AND status = 'confirmed' AND paid_by = ? AND method NOT IN ('credit','wallet')",
+         WHERE settlement_id = ? AND status = 'confirmed' AND paid_by = ? AND method <> 'credit'",
         [$sid, $debtor]
     )->fetchColumn();
     if ($methods >= 2) {
