@@ -1,6 +1,6 @@
 <?php
-// One-time web installer for hosts without a terminal (e.g. InfinityFree).
-// 1. Upload Setlo, and create config/local.php with the database details and an INSTALL_KEY (see HOSTING-INFINITYFREE.md).
+// One-time web installer for hosts without a terminal.
+// 1. Upload Setlo, and create config/local.php with the database details and an INSTALL_KEY.
 // 2. Open  https://YOUR-SITE/install.php?key=YOUR_INSTALL_KEY
 // It shows whether this host can run Setlo (PHP, extensions, database, calls to Gemini/PayMongo/Google), then creates the
 // tables and your admin account. After that it locks itself (config/installed.lock); delete this file from the server.
